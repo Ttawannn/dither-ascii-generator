@@ -2,7 +2,9 @@ import './styles.css';
 import { atlasKey, buildAtlas, type Atlas } from './ascii/atlas';
 import { CHARSETS, COLOR_MODES, FONTS, rampFor } from './ascii/charsets';
 import { buildGrid, gridToHtml, gridToText, type AsciiGrid } from './ascii/grid';
+import type { AnimationFormat, FrameSequence } from './export/animation';
 import { download, exportPng } from './export/png';
+import { canvasToSvg } from './export/svg';
 import { ALGORITHMS, GROUP_LABELS, getAlgorithm } from './pipeline/algorithms';
 import { Diffuser } from './pipeline/diffuser';
 import { Renderer } from './pipeline/gl';
@@ -28,6 +30,9 @@ import {
   BOIL_SLIDER,
   DITHER_KEYS,
   DITHER_SLIDERS,
+  EXPORT_FORMATS,
+  EXPORT_SLIDERS,
+  isAnimatedFormat,
   Store,
   type Params,
 } from './state';
@@ -267,7 +272,22 @@ effect.head.append(
   button('Reset', () => store.reset(store.params.mode === 'ascii' ? ASCII_KEYS : DITHER_KEYS), 'link'),
 );
 
-const exportBtn = button('Export PNG', () => void doExport(), 'btn primary');
+const exportInfo = el('div', { class: 'note export-info' });
+const exportSection = section(
+  'Export',
+  select(
+    'exportFormat',
+    'Format',
+    EXPORT_FORMATS.map((f) => ({ value: f.id, label: f.label })),
+    store,
+  ),
+  slider(EXPORT_SLIDERS.scale, store),
+  showWhen(slider(EXPORT_SLIDERS.duration, store), store, (p) => isAnimatedFormat(p.exportFormat)),
+  showWhen(slider(EXPORT_SLIDERS.fps, store), store, (p) => isAnimatedFormat(p.exportFormat)),
+  exportInfo,
+);
+
+const exportBtn = button('Export', () => void onExportClick(), 'btn primary');
 const textExports = [
   button('Copy', () => void copyText(), 'btn small'),
   button('.txt', () => exportText(), 'btn small'),
@@ -278,7 +298,7 @@ for (const b of [exportBtn, ...textExports]) b.disabled = true;
 const panel = el(
   'aside',
   { class: 'panel' },
-  el('div', { class: 'panel-scroll' }, source.root, adjust.root, effect.root, animation.root),
+  el('div', { class: 'panel-scroll' }, source.root, adjust.root, effect.root, animation.root, exportSection.root),
   el(
     'div',
     { class: 'panel-foot' },
@@ -504,6 +524,7 @@ function draw(): void {
   const [sw, sh] = renderer.sourceSize;
   const downscaled = current.originalWidth !== sw;
   info.size.textContent = `${current.originalWidth}×${current.originalHeight}${downscaled ? ` → ${sw}×${sh}` : ''}`;
+  syncExportInfo();
 }
 
 function drawDither(p: Params): void {
@@ -608,14 +629,173 @@ async function toggleWebcam(): Promise<void> {
   }
 }
 
-async function doExport(): Promise<void> {
-  if (!current) return;
-  // Make sure the canvas holds the processed frame, not the original preview.
-  setOriginal(false);
+// ---------- export ----------
+
+let exporting: { cancelled: boolean } | null = null;
+
+function syncExportInfo(): void {
+  const p = store.params;
+  const format = EXPORT_FORMATS.find((f) => f.id === p.exportFormat)!;
+  exportBtn.textContent = exporting ? exportBtn.textContent : `Export ${p.exportFormat.toUpperCase()}`;
+  if (!current) {
+    exportInfo.textContent = '';
+    return;
+  }
+  const size = `${canvas.width * p.exportScale}×${canvas.height * p.exportScale}`;
+  if (!format.animated) {
+    exportInfo.textContent = `→ ${size}`;
+    return;
+  }
+  const plan = animationLength();
+  exportInfo.textContent =
+    typeof plan === 'string' ? plan : `→ ${size} · ${plan.count} frames · ${(plan.count / plan.fps).toFixed(1)} s`;
+}
+const EXPORT_KEYS: (keyof Params)[] = ['exportFormat', 'exportScale', 'exportDuration', 'exportFps', 'animate'];
+store.subscribe((_, changed) => EXPORT_KEYS.includes(changed) && syncExportInfo());
+syncExportInfo();
+
+/** Frame count for an animated export, or a reason it is not possible. */
+function animationLength(): { count: number; fps: number } | string {
+  const p = store.params;
+  const fps = p.exportFps;
+  if (!current) return 'Load a source first';
+  if (current.kind === 'image' && !p.animate) return 'Static image — turn on Boil or load a video';
+  let seconds = p.exportDuration;
+  if (current.kind === 'video') {
+    const v = current.element as HTMLVideoElement;
+    const start = v.currentTime >= v.duration - 0.05 ? 0 : v.currentTime;
+    seconds = Math.min(seconds, v.duration - start);
+  }
+  return { count: Math.max(1, Math.round(seconds * fps)), fps };
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Draw synchronously and wait until the canvas really shows the result (atlas built, worker done). */
+async function renderNow(): Promise<void> {
+  for (let tries = 0; store.params.mode === 'ascii' && !currentAtlas(store.params) && tries < 100; tries++) {
+    await sleep(20);
+  }
   draw();
   await diffuser.idle();
+}
+
+function seek(v: HTMLVideoElement, t: number): Promise<void> {
+  if (Math.abs(v.currentTime - t) < 1e-4) return Promise.resolve();
+  return new Promise((resolve) => {
+    v.addEventListener('seeked', () => resolve(), { once: true });
+    v.currentTime = t;
+  });
+}
+
+function frameSequence(): FrameSequence | string {
+  const plan = animationLength();
+  if (typeof plan === 'string') return plan;
+  const src = current!;
+  const { fps, count } = plan;
+  const { animate, boilFps } = store.params;
+  // Boil keeps its own pace regardless of the export frame rate.
+  const boilSeed = (i: number) => (animate ? Math.floor((i * boilFps) / fps) + 1 : 0);
+
+  if (src.kind === 'video') {
+    const v = src.element as HTMLVideoElement;
+    const start = v.currentTime >= v.duration - 0.05 ? 0 : v.currentTime;
+    return {
+      count,
+      fps,
+      render: async (i) => {
+        await seek(v, start + i / fps);
+        seed = boilSeed(i);
+        await renderNow();
+      },
+    };
+  }
+  if (src.kind === 'webcam') {
+    const t0 = performance.now();
+    return {
+      count,
+      fps,
+      render: async (i) => {
+        const wait = t0 + (i * 1000) / fps - performance.now();
+        if (wait > 0) await sleep(wait);
+        seed = boilSeed(i);
+        await renderNow();
+      },
+    };
+  }
+  return {
+    count,
+    fps,
+    render: async (i) => {
+      seed = boilSeed(i);
+      await renderNow();
+    },
+  };
+}
+
+async function onExportClick(): Promise<void> {
+  if (exporting) {
+    exporting.cancelled = true;
+    return;
+  }
+  if (!current) return;
   const p = store.params;
-  await exportPng(canvas, p.mode === 'ascii' ? 1 : p.pixelSize, `${current.name}-${p.mode}.png`);
+  const name = `${current.name}-${p.mode}`;
+  setOriginal(false);
+
+  if (p.exportFormat === 'png') {
+    await renderNow();
+    await exportPng(canvas, p.exportScale, `${name}.png`);
+    return;
+  }
+  if (p.exportFormat === 'svg') {
+    if (p.mode !== 'dither') return flash('SVG export is for dither mode');
+    await renderNow();
+    const svg = canvasToSvg(canvas, p.exportScale);
+    if (!svg) return flash('Too many colours for SVG — use a palette with ≤ 32 colours');
+    download(new Blob([svg], { type: 'image/svg+xml' }), `${name}.svg`);
+    return;
+  }
+
+  const frames = frameSequence();
+  if (typeof frames === 'string') return flash(frames);
+
+  const job = { cancelled: false };
+  exporting = job;
+  // Video files are stepped frame by frame; the webcam keeps streaming in real time.
+  const video = current.kind === 'video' ? (current.element as HTMLVideoElement) : null;
+  const wasPlaying = video ? !video.paused : false;
+  const resumeAt = video?.currentTime ?? 0;
+  video?.pause();
+  clearInterval(boilTimer); // export drives the seed itself
+  exportBtn.textContent = 'Cancel';
+  // Encoders are loaded on first use to keep the initial page light.
+  const { exportAnimation, ExportCancelled } = await import('./export/animation');
+  try {
+    const blob = await exportAnimation({
+      format: p.exportFormat as AnimationFormat,
+      source: canvas,
+      scale: p.exportScale,
+      frames,
+      onProgress: (done, total) => (exportBtn.textContent = `Cancel · ${done}/${total}`),
+      isCancelled: () => job.cancelled,
+    });
+    download(blob, `${name}.${p.exportFormat}`);
+    flash(`Saved ${(blob.size / 1e6).toFixed(1)} MB`);
+  } catch (err) {
+    if (err instanceof ExportCancelled) flash('Export cancelled');
+    else {
+      console.error(err);
+      flash((err as Error).message || 'Export failed');
+    }
+  } finally {
+    exporting = null;
+    syncBoil();
+    if (video) video.currentTime = resumeAt;
+    if (wasPlaying) void video!.play().catch(() => undefined);
+    syncExportInfo();
+    requestRender();
+  }
 }
 
 // ---------- input ----------

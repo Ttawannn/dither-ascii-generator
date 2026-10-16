@@ -43,6 +43,11 @@ export interface Params {
   asciiEdges: boolean;
   asciiEdgeThreshold: number;
   asciiDither: boolean;
+  // export
+  exportFormat: string;
+  exportScale: number;
+  exportDuration: number;
+  exportFps: number;
 }
 
 export const DEFAULTS: Params = {
@@ -80,6 +85,26 @@ export const DEFAULTS: Params = {
   asciiEdges: false,
   asciiEdgeThreshold: 50,
   asciiDither: false,
+  exportFormat: 'png',
+  exportScale: 2,
+  exportDuration: 4,
+  exportFps: 15,
+};
+
+export const EXPORT_FORMATS = [
+  { id: 'png', label: 'PNG image', animated: false },
+  { id: 'svg', label: 'SVG vector (dither)', animated: false },
+  { id: 'gif', label: 'GIF animation', animated: true },
+  { id: 'webm', label: 'WebM video', animated: true },
+  { id: 'mp4', label: 'MP4 video', animated: true },
+];
+
+export const isAnimatedFormat = (id: string) => EXPORT_FORMATS.some((f) => f.id === id && f.animated);
+
+export const EXPORT_SLIDERS: Record<string, SliderSpec> = {
+  scale: { key: 'exportScale', label: 'Scale', min: 1, max: 8, step: 1, format: (v) => `${v}×` },
+  duration: { key: 'exportDuration', label: 'Duration', min: 1, max: 30, step: 1, format: (v) => `${v} s` },
+  fps: { key: 'exportFps', label: 'Frame rate', min: 5, max: 30, step: 1, format: (v) => `${v} fps` },
 };
 
 type KeysOfType<T> = { [K in keyof Params]: Params[K] extends T ? K : never }[keyof Params];
@@ -178,6 +203,7 @@ const ENUMS: Partial<Record<keyof Params, string[]>> = {
   asciiCharset: CHARSETS.map((c) => c.id),
   asciiFont: FONTS.map((f) => f.id),
   asciiColor: COLOR_MODES.map((c) => c.id),
+  exportFormat: EXPORT_FORMATS.map((f) => f.id),
 };
 const COLOR_KEYS: (keyof Params)[] = ['ink', 'paper', 'asciiFg', 'asciiBg'];
 const HEX = /^#[0-9a-f]{6}$/i;

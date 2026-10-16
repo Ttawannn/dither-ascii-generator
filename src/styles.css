@@ -783,3 +783,10 @@ input[type='text']:focus {
 .source-note {
   margin: 10px 0 12px;
 }
+
+/* ---------- phase 5: export ---------- */
+
+.export-info {
+  margin-top: 12px;
+  font-variant-numeric: tabular-nums;
+}
