@@ -137,8 +137,10 @@ export function select(key: StringKey, label: string, options: SelectOption[], s
   return root;
 }
 
+export type ColorKey = 'ink' | 'paper' | 'asciiFg' | 'asciiBg';
+
 /** Colour swatch bound to a hex string param. */
-export function colorInput(key: 'ink' | 'paper', label: string, store: Store): HTMLElement {
+export function colorInput(key: ColorKey, label: string, store: Store): HTMLElement {
   const input = el('input', { type: 'color', 'aria-label': label });
   const hex = el('span', { class: 'control-value' });
   const root = el('label', { class: 'color-input' }, input, el('span', { class: 'control-label' }, label), hex);
@@ -172,4 +174,40 @@ export function showWhen(node: HTMLElement, store: Store, when: (p: Params) => b
   store.subscribe(sync);
   sync(store.params);
   return node;
+}
+
+/** Single-line text field bound to a string param. */
+export function textInput(key: StringKey, label: string, store: Store, maxLength = 64): HTMLElement {
+  const input = el('input', { type: 'text', maxlength: `${maxLength}`, spellcheck: 'false', 'aria-label': label });
+  const root = el(
+    'label',
+    { class: 'control' },
+    el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, label)),
+    input,
+  );
+  input.addEventListener('input', () => store.set(key, input.value as Params[typeof key]));
+  store.subscribe((p, changed) => changed === key && input.value !== p[key] && (input.value = p[key]));
+  input.value = store.params[key];
+  return root;
+}
+
+/** Ink/paper style preset chips; `apply` receives the (dark, light) pair. */
+export function colorPresets(
+  presets: { label: string; ink: string; paper: string }[],
+  apply: (ink: string, paper: string) => void,
+): HTMLElement {
+  return el(
+    'div',
+    { class: 'presets' },
+    ...presets.map((m) => {
+      const b = el(
+        'button',
+        { class: 'preset', type: 'button', title: m.label },
+        el('span', { style: `background:${m.ink}` }),
+        el('span', { style: `background:${m.paper}` }),
+      );
+      b.addEventListener('click', () => apply(m.ink, m.paper));
+      return b;
+    }),
+  );
 }

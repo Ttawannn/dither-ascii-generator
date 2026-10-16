@@ -1,3 +1,6 @@
+import type { Atlas } from '../ascii/atlas';
+import type { AsciiGrid } from '../ascii/grid';
+import { hexToRgb } from './palettes';
 import type { Params } from '../state';
 import { getAlgorithm } from './algorithms';
 import { blueNoise } from './bluenoise';
@@ -6,6 +9,7 @@ import fullscreenVert from './shaders/fullscreen.vert?raw';
 import adjustFrag from './shaders/adjust.frag?raw';
 import ditherFrag from './shaders/dither.frag?raw';
 import blitFrag from './shaders/blit.frag?raw';
+import asciiFrag from './shaders/ascii.frag?raw';
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
   const sh = gl.createShader(type)!;
@@ -53,7 +57,8 @@ function texture(gl: WebGL2RenderingContext, filter: number, wrap: number = gl.C
  *   source texture ──adjust──▶ adjusted FBO (output resolution)
  *   adjusted ──dither──▶ canvas            (ordered / pattern / threshold, GPU)
  *   adjusted ──readPixels──▶ worker ──▶ result texture ──blit──▶ canvas   (error diffusion, CPU)
- *   adjusted ──blit──▶ canvas              (original view, ASCII placeholder)
+ *   adjusted ──blit──▶ canvas              (original view)
+ *   adjusted (grid res) ──readPixels──▶ glyph grid (CPU) ──ascii──▶ canvas
  */
 export class Renderer {
   readonly gl: WebGL2RenderingContext;
@@ -61,10 +66,14 @@ export class Renderer {
   private adjust: Program;
   private dither: Program;
   private blit: Program;
+  private ascii: Program;
   private srcTex: WebGLTexture;
   private adjTex: WebGLTexture;
   private resultTex: WebGLTexture;
   private noiseTex: WebGLTexture;
+  private gridTex: WebGLTexture;
+  private atlasTex: WebGLTexture;
+  private atlasKey = '';
   private fbo: WebGLFramebuffer;
   private srcW = 0;
   private srcH = 0;
@@ -82,11 +91,14 @@ export class Renderer {
     this.adjust = program(gl, fullscreenVert, adjustFrag);
     this.dither = program(gl, fullscreenVert, ditherFrag);
     this.blit = program(gl, fullscreenVert, blitFrag);
+    this.ascii = program(gl, fullscreenVert, asciiFrag);
 
     // Mipmaps give a clean box-filtered downsample when pixel size > 1.
     this.srcTex = texture(gl, gl.LINEAR_MIPMAP_LINEAR);
     this.adjTex = texture(gl, gl.NEAREST);
     this.resultTex = texture(gl, gl.NEAREST);
+    this.gridTex = texture(gl, gl.NEAREST);
+    this.atlasTex = texture(gl, gl.NEAREST);
     this.noiseTex = texture(gl, gl.NEAREST, gl.REPEAT);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 64, 64, 0, gl.RED, gl.UNSIGNED_BYTE, blueNoise(64));
@@ -118,10 +130,10 @@ export class Renderer {
     return [Math.max(1, Math.round(this.srcW / pixelSize)), Math.max(1, Math.round(this.srcH / pixelSize))];
   }
 
-  /** Pass 1: source → adjusted FBO at output resolution. */
-  renderAdjust(p: Params, bypass: boolean): void {
+  /** Pass 1: source → adjusted FBO, at the dither output resolution unless `size` is given. */
+  renderAdjust(p: Params, bypass: boolean, size?: [number, number]): void {
     const gl = this.gl;
-    const [w, h] = this.outputSize(p.pixelSize);
+    const [w, h] = size ?? this.outputSize(p.pixelSize);
     if (w !== this.adjW || h !== this.adjH) {
       gl.bindTexture(gl.TEXTURE_2D, this.adjTex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
@@ -206,6 +218,35 @@ export class Renderer {
     this.blitToCanvas(this.adjTex);
   }
 
+  /** ASCII pass: glyph grid + atlas → canvas at cols×cellW by rows×cellH. */
+  renderAscii(grid: AsciiGrid, atlas: Atlas, mode: string, fg: string, bg: string): void {
+    const gl = this.gl;
+    if (this.atlasKey !== atlas.key) {
+      gl.bindTexture(gl.TEXTURE_2D, this.atlasTex);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, atlas.canvas);
+      this.atlasKey = atlas.key;
+    }
+    gl.bindTexture(gl.TEXTURE_2D, this.gridTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, grid.cols, grid.rows, 0, gl.RGBA, gl.UNSIGNED_BYTE, grid.cells);
+
+    this.toCanvas(grid.cols * atlas.cellW, grid.rows * atlas.cellH);
+    const { prog, u } = this.ascii;
+    gl.useProgram(prog);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.gridTex);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.atlasTex);
+    gl.uniform1i(u('u_grid'), 0);
+    gl.uniform1i(u('u_atlas'), 1);
+    gl.uniform2i(u('u_cell'), atlas.cellW, atlas.cellH);
+    gl.uniform1i(u('u_rows'), grid.rows);
+    gl.uniform1i(u('u_colorMode'), mode === 'color' ? 1 : mode === 'colorBg' ? 2 : 0);
+    gl.uniform3fv(u('u_fg'), hexToRgb(fg));
+    gl.uniform3fv(u('u_bg'), hexToRgb(bg));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
   private blitToCanvas(tex: WebGLTexture): void {
     const gl = this.gl;
     this.toCanvas();
@@ -218,14 +259,14 @@ export class Renderer {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
-  private toCanvas(): void {
+  private toCanvas(w = this.adjW, h = this.adjH): void {
     const gl = this.gl;
-    if (this.canvas.width !== this.adjW || this.canvas.height !== this.adjH) {
-      this.canvas.width = this.adjW;
-      this.canvas.height = this.adjH;
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width = w;
+      this.canvas.height = h;
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, this.adjW, this.adjH);
+    gl.viewport(0, 0, w, h);
   }
 
   private setPalette(u: Program['u'], p: Palette): void {

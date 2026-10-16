@@ -1,3 +1,4 @@
+import { CHARSETS, COLOR_MODES, FONTS } from './ascii/charsets';
 import { ALGORITHMS } from './pipeline/algorithms';
 import { PALETTES } from './pipeline/palettes';
 
@@ -25,6 +26,19 @@ export interface Params {
   levels: number;
   ink: string;
   paper: string;
+  // ascii
+  asciiCharset: string;
+  asciiCustom: string;
+  asciiColumns: number;
+  asciiFont: string;
+  asciiFontSize: number;
+  asciiLineHeight: number;
+  asciiColor: string;
+  asciiFg: string;
+  asciiBg: string;
+  asciiEdges: boolean;
+  asciiEdgeThreshold: number;
+  asciiDither: boolean;
 }
 
 export const DEFAULTS: Params = {
@@ -47,6 +61,18 @@ export const DEFAULTS: Params = {
   levels: 2,
   ink: '#000000',
   paper: '#ffffff',
+  asciiCharset: 'standard',
+  asciiCustom: ' .oO@',
+  asciiColumns: 120,
+  asciiFont: 'jetbrains',
+  asciiFontSize: 12,
+  asciiLineHeight: 1,
+  asciiColor: 'mono',
+  asciiFg: '#f2f2f2',
+  asciiBg: '#0a0a0a',
+  asciiEdges: false,
+  asciiEdgeThreshold: 50,
+  asciiDither: false,
 };
 
 type KeysOfType<T> = { [K in keyof Params]: Params[K] extends T ? K : never }[keyof Params];
@@ -84,6 +110,20 @@ export const DITHER_SLIDERS: Record<string, SliderSpec> = {
   levels: { key: 'levels', label: 'Levels', min: 2, max: 16, step: 1 },
 };
 
+export const ASCII_SLIDERS: Record<string, SliderSpec> = {
+  columns: { key: 'asciiColumns', label: 'Columns', min: 20, max: 300, step: 1 },
+  fontSize: { key: 'asciiFontSize', label: 'Font size', min: 6, max: 24, step: 1, format: (v) => `${v}px` },
+  lineHeight: {
+    key: 'asciiLineHeight',
+    label: 'Line height',
+    min: 0.8,
+    max: 1.6,
+    step: 0.05,
+    format: (v) => `${v.toFixed(2)}×`,
+  },
+  edgeThreshold: { key: 'asciiEdgeThreshold', label: 'Edge threshold', min: 0, max: 100, step: 1, format: pct },
+};
+
 export const ADJUST_KEYS: (keyof Params)[] = [...ADJUST_SLIDERS.map((s) => s.key), 'invert'];
 export const DITHER_KEYS: (keyof Params)[] = [
   'algorithm',
@@ -99,12 +139,31 @@ export const DITHER_KEYS: (keyof Params)[] = [
   'paper',
 ];
 
+export const ASCII_KEYS: (keyof Params)[] = [
+  'asciiCharset',
+  'asciiCustom',
+  'asciiColumns',
+  'asciiFont',
+  'asciiFontSize',
+  'asciiLineHeight',
+  'asciiColor',
+  'asciiFg',
+  'asciiBg',
+  'asciiEdges',
+  'asciiEdgeThreshold',
+  'asciiDither',
+];
+
 /** Allowed values for string params that come from a fixed list. */
 const ENUMS: Partial<Record<keyof Params, string[]>> = {
   mode: ['dither', 'ascii'],
   algorithm: ALGORITHMS.map((a) => a.id),
   palette: PALETTES.map((p) => p.id),
+  asciiCharset: CHARSETS.map((c) => c.id),
+  asciiFont: FONTS.map((f) => f.id),
+  asciiColor: COLOR_MODES.map((c) => c.id),
 };
+const COLOR_KEYS: (keyof Params)[] = ['ink', 'paper', 'asciiFg', 'asciiBg'];
 const HEX = /^#[0-9a-f]{6}$/i;
 
 const STORAGE_KEY = 'dag.params.v1';
@@ -120,7 +179,7 @@ function load(): Partial<Params> {
       const v = data[key];
       if (typeof v !== typeof DEFAULTS[key]) continue;
       if (ENUMS[key] && !ENUMS[key]!.includes(v as string)) continue;
-      if ((key === 'ink' || key === 'paper') && !HEX.test(v as string)) continue;
+      if (COLOR_KEYS.includes(key) && !HEX.test(v as string)) continue;
       out[key] = v;
     }
     return out as Partial<Params>;

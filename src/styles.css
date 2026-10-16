@@ -671,3 +671,46 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
 .busy {
   color: var(--faint);
 }
+
+/* ---------- phase 3 ---------- */
+
+input[type='text'] {
+  width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  font-size: 12px;
+  white-space: pre;
+}
+
+input[type='text']:focus {
+  border-color: var(--text);
+  outline: none;
+}
+
+.preset.swap {
+  width: auto;
+  height: 14px;
+  padding: 0 6px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.preset.swap:hover {
+  color: var(--text);
+}
+
+.export-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.stage.ascii canvas {
+  image-rendering: auto;
+}
