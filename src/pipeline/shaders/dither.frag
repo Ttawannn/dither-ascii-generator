@@ -10,6 +10,7 @@ uniform float u_threshold;  // 0..1, threshold algorithm only
 uniform float u_cell;       // pattern cell size in pixels
 uniform float u_angle;      // pattern angle in radians
 uniform uint u_seed;
+uniform vec2 u_offset;      // pattern shift; changes per frame when boiling
 
 uniform int u_kind;         // 0 ramp, 1 set, 2 rgb
 uniform vec3 u_pal[32];
@@ -71,7 +72,7 @@ vec3 nearest(vec3 c) {
 
 void main() {
   vec3 c = texelFetch(u_src, ivec2(gl_FragCoord.xy), 0).rgb;
-  float off = u_algo == 8 ? 0.5 - u_threshold : u_spread * (pattern(gl_FragCoord.xy) - 0.5);
+  float off = u_algo == 8 ? 0.5 - u_threshold : u_spread * (pattern(gl_FragCoord.xy + u_offset) - 0.5);
 
   vec3 q;
   if (u_kind == 0) {

@@ -112,13 +112,13 @@ export function baseSpread(p: Palette): number {
 const luma = ([r, g, b]: RGB) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
 /** Median-cut palette extraction from an image, sorted dark → light. */
-export function extractPalette(bitmap: ImageBitmap, count: number): RGB[] {
-  const scale = Math.min(1, 128 / Math.max(bitmap.width, bitmap.height));
-  const w = Math.max(1, Math.round(bitmap.width * scale));
-  const h = Math.max(1, Math.round(bitmap.height * scale));
+export function extractPalette(image: CanvasImageSource, width: number, height: number, count: number): RGB[] {
+  const scale = Math.min(1, 128 / Math.max(width, height));
+  const w = Math.max(1, Math.round(width * scale));
+  const h = Math.max(1, Math.round(height * scale));
   const c = new OffscreenCanvas(w, h);
   const g = c.getContext('2d')!;
-  g.drawImage(bitmap, 0, 0, w, h);
+  g.drawImage(image, 0, 0, w, h);
   const data = g.getImageData(0, 0, w, h).data;
 
   const pixels: RGB[] = [];

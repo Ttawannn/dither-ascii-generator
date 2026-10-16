@@ -14,6 +14,10 @@ export interface Params {
   saturation: number;
   sharpen: number;
   invert: boolean;
+  mirror: boolean;
+  // animation
+  animate: boolean;
+  boilFps: number;
   // dither
   algorithm: string;
   strength: number;
@@ -50,6 +54,9 @@ export const DEFAULTS: Params = {
   saturation: 100,
   sharpen: 0,
   invert: false,
+  mirror: false,
+  animate: false,
+  boilFps: 8,
   algorithm: 'atkinson',
   strength: 100,
   threshold: 50,
@@ -122,6 +129,15 @@ export const ASCII_SLIDERS: Record<string, SliderSpec> = {
     format: (v) => `${v.toFixed(2)}×`,
   },
   edgeThreshold: { key: 'asciiEdgeThreshold', label: 'Edge threshold', min: 0, max: 100, step: 1, format: pct },
+};
+
+export const BOIL_SLIDER: SliderSpec = {
+  key: 'boilFps',
+  label: 'Speed',
+  min: 1,
+  max: 30,
+  step: 1,
+  format: (v) => `${v} fps`,
 };
 
 export const ADJUST_KEYS: (keyof Params)[] = [...ADJUST_SLIDERS.map((s) => s.key), 'invert'];

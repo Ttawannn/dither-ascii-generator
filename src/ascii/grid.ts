@@ -9,6 +9,8 @@ export interface GridOptions {
   dither: boolean;
   /** True when glyphs are lighter than the background, so bright pixels get dense glyphs. */
   lightOnDark: boolean;
+  /** Non-zero while boiling: shifts the dither pattern and jitters glyph choice per frame. */
+  seed: number;
 }
 
 export interface AsciiGrid {
@@ -42,6 +44,10 @@ export function buildGrid(data: Uint8Array, cols: number, rows: number, opts: Gr
     }
   }
   const density = (v: number) => (opts.lightOnDark ? v : 1 - v);
+  const ox = (opts.seed * 29) & 3;
+  const oy = (opts.seed * 47) & 3;
+  const shake = (x: number, y: number) =>
+    opts.seed ? ((Math.imul(x * 73856093 ^ y * 19349663, opts.seed * 83492791 + 1) >>> 0) / 4294967296 - 0.5) : 0;
   const pixel = (x: number, y: number) => (gh - 1 - y) * gw * 4 + x * 4;
 
   const cells = new Uint8Array(cols * rows * 4);
@@ -59,7 +65,7 @@ export function buildGrid(data: Uint8Array, cols: number, rows: number, opts: Gr
         BRAILLE_DOTS.forEach(([dx, dy], bit) => {
           const x = col * 2 + dx;
           const y = row * 4 + dy;
-          const threshold = opts.dither ? bayer(x, y) : 0.5;
+          const threshold = (opts.dither ? bayer(x + ox, y + oy) : 0.5) + shake(x, y) * 0.3;
           if (density(luma[y * gw + x]) > threshold) glyph |= 1 << bit;
           const p = pixel(x, y);
           r += data[p];
@@ -76,7 +82,8 @@ export function buildGrid(data: Uint8Array, cols: number, rows: number, opts: Gr
         b = data[p + 2];
         const n = opts.rampSize;
         let d = density(luma[c]);
-        if (opts.dither) d += (bayer(col, row) - 0.5) / (n - 1);
+        if (opts.dither) d += (bayer(col + ox, row + oy) - 0.5) / (n - 1);
+        d += (shake(col, row) * 0.7) / (n - 1);
         glyph = Math.min(n - 1, Math.max(0, Math.round(d * (n - 1))));
         if (opts.edges) {
           const edge = edgeGlyph(luma, cols, rows, col, row, opts.edgeThreshold);

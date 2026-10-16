@@ -1,10 +1,19 @@
-export interface LoadedImage {
-  bitmap: ImageBitmap;
-  name: string;
-  /** Original size before any downscale. */
-  originalWidth: number;
-  originalHeight: number;
+import type { Source } from './source';
+
+function imageSource(bitmap: ImageBitmap, name: string, originalWidth: number, originalHeight: number): Source {
+  return {
+    kind: 'image',
+    name,
+    width: bitmap.width,
+    height: bitmap.height,
+    originalWidth,
+    originalHeight,
+    element: bitmap,
+    dispose: () => bitmap.close(),
+  };
 }
+
+export const baseName = (file: File) => file.name.replace(/\.[^.]+$/, '') || 'untitled';
 
 const ACCEPTED = /^image\/(png|jpe?g|webp|gif|bmp|avif|svg\+xml)$/;
 
@@ -13,7 +22,7 @@ export function isImageFile(file: File): boolean {
 }
 
 /** Decode a file into an ImageBitmap, downscaling so the long edge fits `maxSize`. */
-export async function loadImageFile(file: File, maxSize: number): Promise<LoadedImage> {
+export async function loadImageFile(file: File, maxSize: number): Promise<Source> {
   const full = await createImageBitmap(file, { imageOrientation: 'from-image' });
   const { width, height } = full;
   const scale = Math.min(1, maxSize / Math.max(width, height));
@@ -26,11 +35,11 @@ export async function loadImageFile(file: File, maxSize: number): Promise<Loaded
     });
     full.close();
   }
-  return { bitmap, name: file.name.replace(/\.[^.]+$/, '') || 'image', originalWidth: width, originalHeight: height };
+  return imageSource(bitmap, baseName(file), width, height);
 }
 
 /** Procedural test image: tonal ramps, colour and shapes — useful for judging dither quality. */
-export async function sampleImage(): Promise<LoadedImage> {
+export async function sampleImage(): Promise<Source> {
   const w = 1200;
   const h = 800;
   const c = new OffscreenCanvas(w, h);
@@ -73,5 +82,5 @@ export async function sampleImage(): Promise<LoadedImage> {
   g.font = '500 64px "JetBrains Mono", monospace';
   g.fillText('DITHER/ASCII', 620, 640);
 
-  return { bitmap: await createImageBitmap(c), name: 'sample', originalWidth: w, originalHeight: h };
+  return imageSource(await createImageBitmap(c), 'sample', w, h);
 }

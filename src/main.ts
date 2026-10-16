@@ -17,12 +17,15 @@ import {
   type Palette,
   type RGB,
 } from './pipeline/palettes';
-import { isImageFile, loadImageFile, sampleImage, type LoadedImage } from './source/image';
+import { isImageFile, loadImageFile, sampleImage } from './source/image';
+import { isVideo, type Source } from './source/source';
+import { isVideoFile, loadVideoFile, openWebcam } from './source/video';
 import {
   ADJUST_KEYS,
   ADJUST_SLIDERS,
   ASCII_KEYS,
   ASCII_SLIDERS,
+  BOIL_SLIDER,
   DITHER_KEYS,
   DITHER_SLIDERS,
   Store,
@@ -42,6 +45,7 @@ import {
   textInput,
   toggle,
 } from './ui/controls';
+import { Transport } from './ui/transport';
 import { Viewer } from './ui/viewer';
 
 const MAX_SOURCE_SIZE = 4096;
@@ -53,7 +57,7 @@ const group = (p: Params) => getAlgorithm(p.algorithm).group;
 // ---------- DOM ----------
 
 const canvas = el('canvas');
-const fileInput = el('input', { type: 'file', accept: 'image/*', hidden: '' });
+const fileInput = el('input', { type: 'file', accept: 'image/*,video/*', hidden: '' });
 
 const stage = el(
   'main',
@@ -62,13 +66,14 @@ const stage = el(
   el(
     'div',
     { class: 'empty-state' },
-    el('div', { class: 'big' }, 'Drop an image'),
-    el('div', {}, 'or paste · or browse'),
+    el('div', { class: 'big' }, 'Drop an image or video'),
+    el('div', {}, 'or paste · browse · webcam'),
     el(
       'div',
       { class: 'row' },
       button('Browse', () => fileInput.click()),
       button('Sample', () => void openSample()),
+      button('Webcam', () => void toggleWebcam()),
     ),
   ),
   el('div', { class: 'drop-overlay' }, 'DROP TO LOAD'),
@@ -90,6 +95,8 @@ const header = el(
   el('div', { class: 'hint' }, 'Hold Space — original'),
 );
 
+const transport = new Transport();
+
 const info = {
   name: el('span', { class: 'name' }, '—'),
   size: el('span', { class: 'hide-sm' }),
@@ -101,6 +108,7 @@ const footer = el(
   'footer',
   { class: 'footer' },
   info.name,
+  transport.root,
   info.size,
   info.out,
   info.status,
@@ -112,12 +120,7 @@ const footer = el(
 
 // Panel
 
-function comingSoon(label: string, phase: string): HTMLButtonElement {
-  const b = button(label, () => {});
-  b.disabled = true;
-  b.title = `Coming in ${phase}`;
-  return b;
-}
+const webcamBtn = button('Webcam', () => void toggleWebcam(), 'btn wide');
 
 const source = section(
   'Source',
@@ -126,9 +129,16 @@ const source = section(
     { class: 'btn-row' },
     button('Upload', () => fileInput.click()),
     button('Sample', () => void openSample()),
-    comingSoon('Webcam', 'phase 4'),
-    comingSoon('Video', 'phase 4'),
+    webcamBtn,
   ),
+  el('div', { class: 'note source-note' }, 'Images or videos · drop, paste or upload'),
+  toggle('mirror', 'Mirror', store),
+);
+
+const animation = section(
+  'Animation',
+  toggle('animate', 'Boil', store),
+  showWhen(slider(BOIL_SLIDER, store), store, (p) => p.animate),
 );
 
 const adjust = section(
@@ -268,7 +278,7 @@ for (const b of [exportBtn, ...textExports]) b.disabled = true;
 const panel = el(
   'aside',
   { class: 'panel' },
-  el('div', { class: 'panel-scroll' }, source.root, adjust.root, effect.root),
+  el('div', { class: 'panel-scroll' }, source.root, adjust.root, effect.root, animation.root),
   el(
     'div',
     { class: 'panel-foot' },
@@ -302,17 +312,18 @@ const diffuser = new Diffuser((result) => {
   info.status.textContent = `${Math.round(result.ms)} ms`;
 });
 
-let current: LoadedImage | null = null;
+let current: Source | null = null;
 let showOriginal = false;
 let frame = 0;
 
-// Median-cut palette for "From image", cached per image + colour count.
-let extracted: { image: LoadedImage; count: number; colors: RGB[] } | null = null;
+// Median-cut palette for "From image", cached per source + colour count (first frame for videos).
+let extracted: { source: Source; count: number; colors: RGB[] } | null = null;
 
 function currentPalette(): Palette {
   const p = store.params;
-  if (p.palette === 'image' && current && (extracted?.image !== current || extracted.count !== p.levels)) {
-    extracted = { image: current, count: p.levels, colors: extractPalette(current.bitmap, p.levels) };
+  if (p.palette === 'image' && current && (extracted?.source !== current || extracted.count !== p.levels)) {
+    const { element, width, height } = current;
+    extracted = { source: current, count: p.levels, colors: extractPalette(element, width, height, p.levels) };
   }
   return resolvePalette(p.palette, {
     levels: p.levels,
@@ -338,6 +349,42 @@ function requestRender(): void {
     frame = 0;
     draw();
   });
+}
+
+// ---------- animation ----------
+
+/** Boil seed: 0 = static; advances at `boilFps` while animating. */
+let seed = 0;
+let boilTimer = 0;
+
+function syncBoil(): void {
+  clearInterval(boilTimer);
+  seed = 0;
+  const { animate, boilFps } = store.params;
+  if (animate) {
+    boilTimer = window.setInterval(() => {
+      seed = (seed % 100000) + 1;
+      requestRender();
+    }, 1000 / boilFps);
+  }
+  requestRender();
+}
+store.subscribe((_, changed) => (changed === 'animate' || changed === 'boilFps') && syncBoil());
+syncBoil();
+
+/** Redraw on every decoded video frame (or every animation frame where rVFC is missing). */
+function watchVideo(src: Source & { element: HTMLVideoElement }): void {
+  const v = src.element;
+  const tick = () => {
+    if (current !== src) return;
+    requestRender();
+    schedule();
+  };
+  const schedule = () => {
+    if ('requestVideoFrameCallback' in v) v.requestVideoFrameCallback(tick);
+    else requestAnimationFrame(tick);
+  };
+  schedule();
 }
 
 // ---------- ASCII ----------
@@ -391,6 +438,7 @@ function drawAscii(p: Params): void {
     edgeThreshold: p.asciiEdgeThreshold / 100,
     dither: p.asciiDither,
     lightOnDark,
+    seed,
   });
   lastAscii = { grid, atlas: a };
   renderer.renderAscii(grid, a, p.asciiColor, p.asciiFg, p.asciiBg);
@@ -437,6 +485,9 @@ function exportHtml(): void {
 function draw(): void {
   if (!renderer.hasSource || !current) return;
   const p = store.params;
+  if (isVideo(current) && current.element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+    renderer.setSource(current.element, current.width, current.height);
+  }
   stage.classList.toggle('ascii', p.mode === 'ascii' && !showOriginal);
 
   if (showOriginal) {
@@ -474,9 +525,11 @@ function drawDither(p: Params): void {
       kind: pal.kind,
       colors: new Float32Array(pal.colors.flat()),
       levels: pal.levels,
+      noise: seed ? 0.06 : 0,
+      seed,
     });
   } else {
-    renderer.renderDither(p, currentPalette());
+    renderer.renderDither(p, currentPalette(), seed);
     info.status.textContent = '';
   }
 }
@@ -490,34 +543,69 @@ function flash(msg: string): void {
   statusTimer = window.setTimeout(() => (info.status.textContent = ''), 3000);
 }
 
-function setImage(img: LoadedImage): void {
-  current?.bitmap.close();
-  current = img;
-  renderer.setSource(img.bitmap, img.bitmap.width, img.bitmap.height);
+function setSource(src: Source): void {
+  current?.dispose();
+  current = src;
+  renderer.setSource(src.element, src.width, src.height);
   if (store.params.palette === 'image') syncSwatches();
   stage.classList.remove('empty');
-  info.name.textContent = img.name;
+  info.name.textContent = src.name;
   for (const b of [exportBtn, ...textExports]) b.disabled = false;
-  viewer.setImageSize(img.bitmap.width, img.bitmap.height);
+  webcamBtn.textContent = src.kind === 'webcam' ? 'Stop webcam' : 'Webcam';
+  webcamBtn.classList.toggle('active', src.kind === 'webcam');
+  transport.attach(src);
+  viewer.setImageSize(src.width, src.height);
+  if (isVideo(src)) watchVideo(src);
   requestRender();
+}
+
+function clearSource(): void {
+  current?.dispose();
+  current = null;
+  transport.attach(null);
+  webcamBtn.textContent = 'Webcam';
+  webcamBtn.classList.remove('active');
+  stage.classList.add('empty');
+  info.name.textContent = '—';
+  for (const node of [info.size, info.out, info.status, info.zoom]) node.textContent = '';
+  for (const b of [exportBtn, ...textExports]) b.disabled = true;
 }
 
 async function openFile(file: File | undefined): Promise<void> {
   if (!file) return;
-  if (!isImageFile(file)) {
+  const video = isVideoFile(file);
+  if (!video && !isImageFile(file)) {
     flash(`Unsupported file: ${file.type || file.name}`);
     return;
   }
   try {
-    setImage(await loadImageFile(file, Math.min(renderer.maxTextureSize, MAX_SOURCE_SIZE)));
+    setSource(
+      video ? await loadVideoFile(file) : await loadImageFile(file, Math.min(renderer.maxTextureSize, MAX_SOURCE_SIZE)),
+    );
   } catch (err) {
     console.error(err);
-    flash('Could not decode image');
+    flash(video ? 'Could not play this video' : 'Could not decode image');
   }
 }
 
 async function openSample(): Promise<void> {
-  setImage(await sampleImage());
+  setSource(await sampleImage());
+}
+
+async function toggleWebcam(): Promise<void> {
+  if (current?.kind === 'webcam') {
+    clearSource();
+    return;
+  }
+  try {
+    const cam = await openWebcam();
+    store.set('mirror', true); // selfie view feels natural; the toggle stays available
+    setSource(cam);
+  } catch (err) {
+    console.error(err);
+    const denied = err instanceof DOMException && err.name === 'NotAllowedError';
+    flash(denied ? 'Camera permission denied' : 'No camera available');
+  }
 }
 
 async function doExport(): Promise<void> {
@@ -578,6 +666,8 @@ window.addEventListener('keydown', (e) => {
     viewer.fit();
   } else if (e.key === '1') {
     viewer.setZoom(1);
+  } else if (e.key === 'k') {
+    transport.toggle();
   }
 });
 window.addEventListener('keyup', (e) => {

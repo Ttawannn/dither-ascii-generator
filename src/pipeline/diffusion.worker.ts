@@ -13,6 +13,9 @@ export interface DiffusionJob {
   kind: PaletteKind;
   colors: Float32Array; // flat RGB 0..1
   levels: number;
+  /** Per-pixel input jitter amplitude (0 = none); used for the boil animation. */
+  noise: number;
+  seed: number;
 }
 
 export interface DiffusionResult {
@@ -36,10 +39,19 @@ function diffuse(job: DiffusionJob): Uint8Array {
   const ch = kind === 'ramp' ? 1 : 3;
   const buf = new Float32Array(n * ch);
 
+  let rng = (job.seed * 2654435761) >>> 0 || 1;
+  const jitter = () => {
+    rng ^= rng << 13;
+    rng ^= rng >>> 17;
+    rng ^= rng << 5;
+    return ((rng >>> 0) / 4294967296 - 0.5) * job.noise;
+  };
+
   for (let i = 0; i < n; i++) {
-    const r = data[i * 4] / 255;
-    const g = data[i * 4 + 1] / 255;
-    const b = data[i * 4 + 2] / 255;
+    const j = job.noise ? jitter() : 0;
+    const r = data[i * 4] / 255 + j;
+    const g = data[i * 4 + 1] / 255 + j;
+    const b = data[i * 4 + 2] / 255 + j;
     if (ch === 1) buf[i] = LR * r + LG * g + LB * b;
     else {
       buf[i * 3] = r;

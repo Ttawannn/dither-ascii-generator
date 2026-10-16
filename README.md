@@ -1,6 +1,8 @@
 # Dither / ASCII
 
-Browser-based dither and ASCII art generator. Runs entirely client-side (WebGL2), deployable to GitHub Pages.
+Browser-based dither and ASCII art generator for images, videos and webcam. Runs entirely client-side (WebGL2), deployable to GitHub Pages.
+
+**Live:** https://ttawannn.github.io/dither-ascii-generator/
 
 See [PLAN.md](PLAN.md) for the roadmap.
 
@@ -26,6 +28,7 @@ npm run dev
 | Hold `Space` | Show original |
 | `F` / double-click preview | Fit to view |
 | `1` | 100% zoom |
+| `K` | Play / pause video |
 | Wheel / drag | Zoom / pan |
 | Double-click slider | Reset that value |
 | `Ctrl+V` | Paste image |

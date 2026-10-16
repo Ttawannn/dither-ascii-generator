@@ -158,6 +158,7 @@ export class Renderer {
     gl.uniform1f(u('u_sharpen'), p.sharpen / 100);
     gl.uniform1i(u('u_invert'), p.invert ? 1 : 0);
     gl.uniform1i(u('u_bypass'), bypass ? 1 : 0);
+    gl.uniform1i(u('u_mirror'), p.mirror ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
@@ -179,8 +180,8 @@ export class Renderer {
     return this.canvas.width === this.adjW && this.canvas.height === this.adjH;
   }
 
-  /** Pass 2 (GPU): ordered / pattern / threshold dither to the canvas. */
-  renderDither(p: Params, palette: Palette): void {
+  /** Pass 2 (GPU): ordered / pattern / threshold dither to the canvas. `seed` 0 = static pattern. */
+  renderDither(p: Params, palette: Palette, seed = 0): void {
     const gl = this.gl;
     const algo = getAlgorithm(p.algorithm);
     this.toCanvas();
@@ -197,7 +198,8 @@ export class Renderer {
     gl.uniform1f(u('u_threshold'), p.threshold / 100);
     gl.uniform1f(u('u_cell'), p.cellSize);
     gl.uniform1f(u('u_angle'), (p.angle * Math.PI) / 180);
-    gl.uniform1ui(u('u_seed'), 1);
+    gl.uniform1ui(u('u_seed'), seed + 1);
+    gl.uniform2f(u('u_offset'), (seed * 29) % 64, (seed * 47) % 64);
     this.setPalette(u, palette);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }

@@ -714,3 +714,72 @@ input[type='text']:focus {
 .stage.ascii canvas {
   image-rendering: auto;
 }
+
+/* ---------- phase 4: video ---------- */
+
+.offscreen-video {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 2px;
+  height: 2px;
+  opacity: 0.01;
+  pointer-events: none;
+}
+
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.transport input[type='range'] {
+  width: 180px;
+  min-width: 60px;
+  flex: 1 1 180px;
+}
+
+.transport .icon {
+  width: 28px;
+  padding: 0;
+  font-size: 9px;
+  letter-spacing: 0;
+}
+
+.transport .time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.transport .btn.on {
+  border-color: var(--text);
+  color: var(--text);
+}
+
+.transport .btn:not(.on):not(.icon) {
+  color: var(--faint);
+}
+
+.live {
+  color: #ff4d4d;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+.btn.active {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+@media (max-width: 760px) {
+  .transport .time,
+  .transport .btn:not(.icon) {
+    display: none;
+  }
+}
+
+.source-note {
+  margin: 10px 0 12px;
+}
