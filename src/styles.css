@@ -790,3 +790,129 @@ input[type='text']:focus {
   margin-top: 12px;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- phase 6: presets, help, mobile ---------- */
+
+.preset-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  height: 24px;
+  padding: 0 9px;
+  background: none;
+  border: 1px solid var(--line-strong);
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chip:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+
+.chip-wrap {
+  display: inline-flex;
+}
+
+.chip-wrap .chip:first-child {
+  border-right: 0;
+}
+
+.chip-x {
+  padding: 0 7px;
+  color: var(--faint);
+}
+
+.save-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.save-row .btn {
+  height: 28px;
+}
+
+.share-btn {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.help-btn {
+  width: 22px;
+  padding: 0;
+}
+
+.hint + .help-btn {
+  margin-left: -12px;
+}
+
+.help {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.help-card {
+  width: min(420px, 100%);
+  padding: 16px 20px 20px;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+}
+
+.help dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 20px;
+  margin: 0;
+}
+
+.help dt {
+  color: var(--text);
+}
+
+.help dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+.hold {
+  touch-action: none;
+  user-select: none;
+}
+
+@media (max-width: 760px) {
+  .app {
+    grid-template-rows: 44px 48vh 36px auto;
+  }
+
+  /* Keep the preview in view while scrolling through controls. */
+  .stage {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+
+  .footer {
+    position: sticky;
+    top: 48vh;
+    z-index: 5;
+    background: var(--bg);
+  }
+
+  .header .help-btn {
+    margin-left: auto;
+  }
+}

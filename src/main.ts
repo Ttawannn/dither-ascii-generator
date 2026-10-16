@@ -19,6 +19,7 @@ import {
   type Palette,
   type RGB,
 } from './pipeline/palettes';
+import { BUILT_IN, decodeShare, encodeShare, loadSaved, resolvePreset, snapshot, storeSaved, type Preset } from './presets';
 import { isImageFile, loadImageFile, sampleImage } from './source/image';
 import { isVideo, type Source } from './source/source';
 import { isVideoFile, loadVideoFile, openWebcam } from './source/video';
@@ -98,6 +99,7 @@ const header = el(
     store,
   ),
   el('div', { class: 'hint' }, 'Hold Space — original'),
+  button('?', () => toggleHelp(), 'btn small help-btn'),
 );
 
 const transport = new Transport();
@@ -106,7 +108,7 @@ const info = {
   name: el('span', { class: 'name' }, '—'),
   size: el('span', { class: 'hide-sm' }),
   out: el('span'),
-  zoom: el('span'),
+  zoom: el('span', { class: 'hide-sm' }),
   status: el('span', { class: 'busy' }),
 };
 const footer = el(
@@ -119,8 +121,9 @@ const footer = el(
   info.status,
   el('span', { class: 'spacer' }),
   info.zoom,
+  holdOriginalButton(),
   button('Fit', () => viewer.fit(), 'btn small'),
-  button('1:1', () => viewer.setZoom(1), 'btn small'),
+  button('1:1', () => viewer.setZoom(1), 'btn small hide-sm'),
 );
 
 // Panel
@@ -139,6 +142,65 @@ const source = section(
   el('div', { class: 'note source-note' }, 'Images or videos · drop, paste or upload'),
   toggle('mirror', 'Mirror', store),
 );
+
+// ---------- presets ----------
+
+let saved = loadSaved();
+const builtInGrid = el('div', { class: 'preset-grid' });
+const savedGrid = el('div', { class: 'preset-grid' });
+const savedHead = el('div', { class: 'subhead' }, 'Saved');
+const presetName = el('input', { type: 'text', maxlength: '40', placeholder: 'Name this look', 'aria-label': 'Preset name' });
+
+const chip = (preset: Preset) => button(preset.name, () => store.apply(resolvePreset(preset)), 'chip');
+
+function renderPresets(): void {
+  builtInGrid.replaceChildren(...BUILT_IN.map(chip));
+  savedGrid.replaceChildren(
+    ...saved.map((preset) =>
+      el(
+        'span',
+        { class: 'chip-wrap' },
+        chip(preset),
+        button('×', () => {
+          saved = saved.filter((s) => s !== preset);
+          storeSaved(saved);
+          renderPresets();
+        }, 'chip chip-x'),
+      ),
+    ),
+  );
+  savedHead.hidden = savedGrid.hidden = saved.length === 0;
+}
+
+function savePreset(): void {
+  const name = presetName.value.trim() || `Look ${saved.length + 1}`;
+  saved = [...saved.filter((s) => s.name !== name), { name, params: snapshot(store.params) }];
+  if (!storeSaved(saved)) flash('Could not save — browser storage is blocked');
+  presetName.value = '';
+  renderPresets();
+}
+presetName.addEventListener('keydown', (e) => e.key === 'Enter' && savePreset());
+
+async function copyShareLink(): Promise<void> {
+  const hash = `#s=${encodeShare(store.params)}`;
+  history.replaceState(null, '', hash);
+  try {
+    await navigator.clipboard.writeText(location.href);
+    flash('Share link copied');
+  } catch {
+    flash('Link is in the address bar');
+  }
+}
+
+const presets = section(
+  'Presets',
+  builtInGrid,
+  savedHead,
+  savedGrid,
+  el('div', { class: 'save-row' }, presetName, button('Save', savePreset, 'btn small')),
+  button('Copy share link', () => void copyShareLink(), 'btn small share-btn'),
+);
+renderPresets();
 
 const animation = section(
   'Animation',
@@ -298,7 +360,16 @@ for (const b of [exportBtn, ...textExports]) b.disabled = true;
 const panel = el(
   'aside',
   { class: 'panel' },
-  el('div', { class: 'panel-scroll' }, source.root, adjust.root, effect.root, animation.root, exportSection.root),
+  el(
+    'div',
+    { class: 'panel-scroll' },
+    source.root,
+    presets.root,
+    adjust.root,
+    effect.root,
+    animation.root,
+    exportSection.root,
+  ),
   el(
     'div',
     { class: 'panel-foot' },
@@ -307,7 +378,40 @@ const panel = el(
   ),
 );
 
-document.querySelector('#app')!.append(el('div', { class: 'app' }, header, stage, footer, panel), fileInput);
+const SHORTCUTS: [string, string][] = [
+  ['Space (hold)', 'Show original'],
+  ['F · double-click', 'Fit to view'],
+  ['1', '100% zoom'],
+  ['Wheel · drag', 'Zoom · pan'],
+  ['D · A', 'Dither · ASCII mode'],
+  ['K', 'Play / pause video'],
+  ['B', 'Toggle boil'],
+  ['O', 'Open file'],
+  ['E', 'Export'],
+  ['Ctrl+V', 'Paste image'],
+  ['?', 'This help'],
+];
+const help = el(
+  'div',
+  { class: 'help', hidden: '', role: 'dialog', 'aria-label': 'Keyboard shortcuts' },
+  el(
+    'div',
+    { class: 'help-card' },
+    el(
+      'div',
+      { class: 'section-head' },
+      el('span', { class: 'section-title' }, 'Shortcuts'),
+      button('Close', () => toggleHelp(false), 'link'),
+    ),
+    el('dl', {}, ...SHORTCUTS.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)])),
+  ),
+);
+help.addEventListener('click', (e) => e.target === help && toggleHelp(false));
+function toggleHelp(on = help.hidden): void {
+  help.hidden = !on;
+}
+
+document.querySelector('#app')!.append(el('div', { class: 'app' }, header, stage, footer, panel), fileInput, help);
 
 // ---------- renderer ----------
 
@@ -826,6 +930,19 @@ window.addEventListener('paste', (e) => {
   if (file) void openFile(file);
 });
 
+/** Press-and-hold comparison for touch screens (Space does the same on a keyboard). */
+function holdOriginalButton(): HTMLButtonElement {
+  const b = button('Original', () => {}, 'btn small hold');
+  b.title = 'Hold to compare with the original (Space)';
+  b.addEventListener('pointerdown', (e) => {
+    if (!current) return;
+    b.setPointerCapture(e.pointerId);
+    setOriginal(true);
+  });
+  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, () => setOriginal(false));
+  return b;
+}
+
 function setOriginal(on: boolean): void {
   if (showOriginal === on) return;
   showOriginal = on;
@@ -848,6 +965,20 @@ window.addEventListener('keydown', (e) => {
     viewer.setZoom(1);
   } else if (e.key === 'k') {
     transport.toggle();
+  } else if (e.key === 'd') {
+    store.set('mode', 'dither');
+  } else if (e.key === 'a') {
+    store.set('mode', 'ascii');
+  } else if (e.key === 'b') {
+    store.set('animate', !store.params.animate);
+  } else if (e.key === 'o') {
+    fileInput.click();
+  } else if (e.key === 'e') {
+    void onExportClick();
+  } else if (e.key === '?') {
+    toggleHelp();
+  } else if (e.key === 'Escape') {
+    toggleHelp(false);
   }
 });
 window.addEventListener('keyup', (e) => {
@@ -857,3 +988,16 @@ window.addEventListener('keyup', (e) => {
   }
 });
 window.addEventListener('blur', () => setOriginal(false));
+
+// ---------- startup ----------
+
+function applyShareLink(): void {
+  const shared = decodeShare(location.hash);
+  if (shared) {
+    store.apply(shared);
+    flash('Loaded shared settings');
+  }
+}
+window.addEventListener('hashchange', applyShareLink);
+applyShareLink();
+if (new URLSearchParams(location.search).has('sample')) void openSample();

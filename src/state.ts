@@ -210,21 +210,41 @@ const HEX = /^#[0-9a-f]{6}$/i;
 
 const STORAGE_KEY = 'dag.params.v1';
 
+const RANGES = new Map(
+  [...ADJUST_SLIDERS, ...Object.values(DITHER_SLIDERS), ...Object.values(ASCII_SLIDERS), ...Object.values(EXPORT_SLIDERS), BOIL_SLIDER].map(
+    (s) => [s.key, s] as const,
+  ),
+);
+
+/**
+ * Keep only known keys with valid values. Used for localStorage, saved presets and share links,
+ * which may all be stale or hand-edited.
+ */
+export function sanitize(data: unknown): Partial<Params> {
+  if (!data || typeof data !== 'object') return {};
+  const src = data as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(DEFAULTS) as (keyof Params)[]) {
+    const v = src[key];
+    if (typeof v !== typeof DEFAULTS[key]) continue;
+    if (ENUMS[key] && !ENUMS[key]!.includes(v as string)) continue;
+    if (COLOR_KEYS.includes(key) && !HEX.test(v as string)) continue;
+    if (key === 'asciiCustom' && (v as string).length > 64) continue;
+    const range = RANGES.get(key as NumericKey);
+    if (range) {
+      if (!Number.isFinite(v)) continue;
+      out[key] = Math.min(range.max, Math.max(range.min, v as number));
+      continue;
+    }
+    out[key] = v;
+  }
+  return out as Partial<Params>;
+}
+
 function load(): Partial<Params> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const data = JSON.parse(raw) as Record<string, unknown>;
-    const out: Record<string, unknown> = {};
-    // Only accept keys we know, with the same type as the default.
-    for (const key of Object.keys(DEFAULTS) as (keyof Params)[]) {
-      const v = data[key];
-      if (typeof v !== typeof DEFAULTS[key]) continue;
-      if (ENUMS[key] && !ENUMS[key]!.includes(v as string)) continue;
-      if (COLOR_KEYS.includes(key) && !HEX.test(v as string)) continue;
-      out[key] = v;
-    }
-    return out as Partial<Params>;
+    return raw ? sanitize(JSON.parse(raw)) : {};
   } catch {
     return {};
   }
@@ -246,6 +266,11 @@ export class Store {
 
   reset(keys: (keyof Params)[]): void {
     for (const key of keys) this.set(key, DEFAULTS[key]);
+  }
+
+  /** Set several params at once (already sanitized). */
+  apply(values: Partial<Params>): void {
+    for (const key of Object.keys(values) as (keyof Params)[]) this.set(key, values[key] as Params[typeof key]);
   }
 
   subscribe(fn: Listener): () => void {
