@@ -1,7 +1,11 @@
+import { ALGORITHMS } from './pipeline/algorithms';
+import { PALETTES } from './pipeline/palettes';
+
 export type Mode = 'dither' | 'ascii';
 
 export interface Params {
   mode: Mode;
+  // adjust
   pixelSize: number;
   brightness: number;
   contrast: number;
@@ -9,6 +13,18 @@ export interface Params {
   saturation: number;
   sharpen: number;
   invert: boolean;
+  // dither
+  algorithm: string;
+  strength: number;
+  threshold: number;
+  cellSize: number;
+  angle: number;
+  diffusion: number;
+  serpentine: boolean;
+  palette: string;
+  levels: number;
+  ink: string;
+  paper: string;
 }
 
 export const DEFAULTS: Params = {
@@ -20,11 +36,23 @@ export const DEFAULTS: Params = {
   saturation: 100,
   sharpen: 0,
   invert: false,
+  algorithm: 'atkinson',
+  strength: 100,
+  threshold: 50,
+  cellSize: 6,
+  angle: 45,
+  diffusion: 100,
+  serpentine: true,
+  palette: 'mono',
+  levels: 2,
+  ink: '#000000',
+  paper: '#ffffff',
 };
 
 type KeysOfType<T> = { [K in keyof Params]: Params[K] extends T ? K : never }[keyof Params];
 export type NumericKey = KeysOfType<number>;
 export type BooleanKey = KeysOfType<boolean>;
+export type StringKey = KeysOfType<string>;
 
 export interface SliderSpec {
   key: NumericKey;
@@ -36,17 +64,48 @@ export interface SliderSpec {
 }
 
 const signed = (v: number) => (v > 0 ? `+${v}` : `${v}`);
+const pct = (v: number) => `${v}%`;
 
 export const ADJUST_SLIDERS: SliderSpec[] = [
   { key: 'pixelSize', label: 'Pixel size', min: 1, max: 16, step: 1, format: (v) => `${v}px` },
   { key: 'brightness', label: 'Brightness', min: -100, max: 100, step: 1, format: signed },
   { key: 'contrast', label: 'Contrast', min: -100, max: 100, step: 1, format: signed },
   { key: 'gamma', label: 'Gamma', min: 0.2, max: 3, step: 0.01, format: (v) => v.toFixed(2) },
-  { key: 'saturation', label: 'Saturation', min: 0, max: 200, step: 1, format: (v) => `${v}%` },
+  { key: 'saturation', label: 'Saturation', min: 0, max: 200, step: 1, format: pct },
   { key: 'sharpen', label: 'Sharpen', min: 0, max: 100, step: 1 },
 ];
 
+export const DITHER_SLIDERS: Record<string, SliderSpec> = {
+  strength: { key: 'strength', label: 'Strength', min: 0, max: 200, step: 1, format: pct },
+  threshold: { key: 'threshold', label: 'Threshold', min: 0, max: 100, step: 1, format: pct },
+  cellSize: { key: 'cellSize', label: 'Cell size', min: 2, max: 32, step: 1, format: (v) => `${v}px` },
+  angle: { key: 'angle', label: 'Angle', min: 0, max: 90, step: 1, format: (v) => `${v}°` },
+  diffusion: { key: 'diffusion', label: 'Diffusion', min: 0, max: 100, step: 1, format: pct },
+  levels: { key: 'levels', label: 'Levels', min: 2, max: 16, step: 1 },
+};
+
 export const ADJUST_KEYS: (keyof Params)[] = [...ADJUST_SLIDERS.map((s) => s.key), 'invert'];
+export const DITHER_KEYS: (keyof Params)[] = [
+  'algorithm',
+  'strength',
+  'threshold',
+  'cellSize',
+  'angle',
+  'diffusion',
+  'serpentine',
+  'palette',
+  'levels',
+  'ink',
+  'paper',
+];
+
+/** Allowed values for string params that come from a fixed list. */
+const ENUMS: Partial<Record<keyof Params, string[]>> = {
+  mode: ['dither', 'ascii'],
+  algorithm: ALGORITHMS.map((a) => a.id),
+  palette: PALETTES.map((p) => p.id),
+};
+const HEX = /^#[0-9a-f]{6}$/i;
 
 const STORAGE_KEY = 'dag.params.v1';
 
@@ -58,9 +117,12 @@ function load(): Partial<Params> {
     const out: Record<string, unknown> = {};
     // Only accept keys we know, with the same type as the default.
     for (const key of Object.keys(DEFAULTS) as (keyof Params)[]) {
-      if (typeof data[key] === typeof DEFAULTS[key]) out[key] = data[key];
+      const v = data[key];
+      if (typeof v !== typeof DEFAULTS[key]) continue;
+      if (ENUMS[key] && !ENUMS[key]!.includes(v as string)) continue;
+      if ((key === 'ink' || key === 'paper') && !HEX.test(v as string)) continue;
+      out[key] = v;
     }
-    if (out.mode !== 'dither' && out.mode !== 'ascii') delete out.mode;
     return out as Partial<Params>;
   } catch {
     return {};

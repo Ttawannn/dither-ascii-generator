@@ -1,4 +1,4 @@
-import { DEFAULTS, type BooleanKey, type Params, type SliderSpec, type Store } from '../state';
+import { DEFAULTS, type BooleanKey, type Params, type SliderSpec, type Store, type StringKey } from '../state';
 
 type Attrs = Record<string, string>;
 
@@ -100,4 +100,76 @@ export function segmented<K extends 'mode'>(
   store.subscribe((p, changed) => changed === key && sync(p));
   sync(store.params);
   return root;
+}
+
+export interface SelectOption {
+  value: string;
+  label: string;
+  group?: string;
+}
+
+/** Native <select> bound to a string param; options with a `group` go into <optgroup>s. */
+export function select(key: StringKey, label: string, options: SelectOption[], store: Store): HTMLElement {
+  const input = el('select', { 'aria-label': label });
+  const groups = new Map<string, HTMLOptGroupElement>();
+  for (const opt of options) {
+    const o = el('option', { value: opt.value }, opt.label);
+    if (!opt.group) {
+      input.append(o);
+      continue;
+    }
+    if (!groups.has(opt.group)) {
+      const g = el('optgroup', { label: opt.group });
+      groups.set(opt.group, g);
+      input.append(g);
+    }
+    groups.get(opt.group)!.append(o);
+  }
+  const root = el(
+    'label',
+    { class: 'control' },
+    el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, label)),
+    el('div', { class: 'select' }, input),
+  );
+  input.addEventListener('change', () => store.set(key, input.value as Params[typeof key]));
+  store.subscribe((p, changed) => changed === key && (input.value = p[key]));
+  input.value = store.params[key];
+  return root;
+}
+
+/** Colour swatch bound to a hex string param. */
+export function colorInput(key: 'ink' | 'paper', label: string, store: Store): HTMLElement {
+  const input = el('input', { type: 'color', 'aria-label': label });
+  const hex = el('span', { class: 'control-value' });
+  const root = el('label', { class: 'color-input' }, input, el('span', { class: 'control-label' }, label), hex);
+  const sync = (p: Params) => {
+    input.value = p[key];
+    hex.textContent = p[key].toUpperCase();
+  };
+  input.addEventListener('input', () => store.set(key, input.value));
+  store.subscribe((p, changed) => changed === key && sync(p));
+  sync(store.params);
+  return root;
+}
+
+/** Row of colour chips; re-render with `update`. */
+export function swatches(): { root: HTMLElement; update: (hexes: string[], extra?: string) => void } {
+  const root = el('div', { class: 'swatches' });
+  return {
+    root,
+    update(hexes, extra) {
+      root.replaceChildren(
+        ...hexes.map((h) => el('span', { class: 'swatch', style: `background:${h}`, title: h.toUpperCase() })),
+        ...(extra ? [el('span', { class: 'swatch-extra' }, extra)] : []),
+      );
+    },
+  };
+}
+
+/** Show `node` only while `when(params)` is true. */
+export function showWhen(node: HTMLElement, store: Store, when: (p: Params) => boolean): HTMLElement {
+  const sync = (p: Params) => (node.hidden = !when(p));
+  store.subscribe(sync);
+  sync(store.params);
+  return node;
 }
