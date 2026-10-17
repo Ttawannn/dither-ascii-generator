@@ -424,6 +424,19 @@ try {
   throw err;
 }
 
+// Mobile browsers and GPU driver resets can take the WebGL context away. preventDefault()
+// asks for it back; on restore every GPU object is rebuilt and the source re-uploaded.
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  flash('GPU reset — restoring…');
+});
+canvas.addEventListener('webglcontextrestored', () => {
+  renderer.restore();
+  if (current) renderer.setSource(current.element, current.width, current.height);
+  requestRender();
+  flash('Preview restored');
+});
+
 const viewer = new Viewer(stage, canvas);
 viewer.onChange = () => {
   info.zoom.textContent = renderer.hasSource ? `${Math.round(viewer.zoom * 100)}%` : '';
@@ -607,7 +620,7 @@ function exportHtml(): void {
 // ---------- draw ----------
 
 function draw(): void {
-  if (!renderer.hasSource || !current) return;
+  if (!renderer.hasSource || !current || renderer.contextLost) return;
   const p = store.params;
   if (isVideo(current) && current.element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
     renderer.setSource(current.element, current.width, current.height);

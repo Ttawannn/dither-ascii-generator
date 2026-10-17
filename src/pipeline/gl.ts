@@ -63,31 +63,48 @@ function texture(gl: WebGL2RenderingContext, filter: number, wrap: number = gl.C
 export class Renderer {
   readonly gl: WebGL2RenderingContext;
   readonly maxTextureSize: number;
-  private adjust: Program;
-  private dither: Program;
-  private blit: Program;
-  private ascii: Program;
-  private srcTex: WebGLTexture;
-  private adjTex: WebGLTexture;
-  private resultTex: WebGLTexture;
-  private noiseTex: WebGLTexture;
-  private gridTex: WebGLTexture;
-  private atlasTex: WebGLTexture;
+  // GPU objects, rebuilt by createResources() after a context loss.
+  private adjust!: Program;
+  private dither!: Program;
+  private blit!: Program;
+  private ascii!: Program;
+  private srcTex!: WebGLTexture;
+  private adjTex!: WebGLTexture;
+  private resultTex!: WebGLTexture;
+  private noiseTex!: WebGLTexture;
+  private gridTex!: WebGLTexture;
+  private atlasTex!: WebGLTexture;
+  private fbo!: WebGLFramebuffer;
   private atlasKey = '';
-  private fbo: WebGLFramebuffer;
   private srcW = 0;
   private srcH = 0;
   private adjW = 0;
   private adjH = 0;
   private hasResult = false;
   private palBuf = new Float32Array(MAX_PALETTE * 3);
+  private static noiseData: Uint8Array | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true, alpha: false });
     if (!gl) throw new Error('WebGL2 is not available in this browser.');
     this.gl = gl;
     this.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+    this.createResources();
+  }
 
+  /** True while the browser has taken the GPU context away (tab backgrounded, driver reset…). */
+  get contextLost(): boolean {
+    return this.gl.isContextLost();
+  }
+
+  /** Call on `webglcontextrestored`, then upload the source again with setSource(). */
+  restore(): void {
+    this.srcW = this.srcH = 0;
+    this.createResources();
+  }
+
+  private createResources(): void {
+    const gl = this.gl;
     this.adjust = program(gl, fullscreenVert, adjustFrag);
     this.dither = program(gl, fullscreenVert, ditherFrag);
     this.blit = program(gl, fullscreenVert, blitFrag);
@@ -101,9 +118,14 @@ export class Renderer {
     this.atlasTex = texture(gl, gl.NEAREST);
     this.noiseTex = texture(gl, gl.NEAREST, gl.REPEAT);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 64, 64, 0, gl.RED, gl.UNSIGNED_BYTE, blueNoise(64));
+    Renderer.noiseData ??= blueNoise(64);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 64, 64, 0, gl.RED, gl.UNSIGNED_BYTE, Renderer.noiseData);
 
     this.fbo = gl.createFramebuffer()!;
+    // Cached sizes and uploads referred to the previous objects.
+    this.adjW = this.adjH = 0;
+    this.atlasKey = '';
+    this.hasResult = false;
   }
 
   get hasSource(): boolean {
