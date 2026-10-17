@@ -1,6 +1,7 @@
 import { ASCII_PALETTES, CHARSETS, COLOR_MODES, FONTS, MAX_INJECT } from './ascii/charsets';
 import { LFO_SHAPES } from './ascii/lfo';
 import { ALGORITHMS } from './pipeline/algorithms';
+import { DEFAULT_ORDER, normalizeOrder } from './pipeline/effects';
 import { PALETTES } from './pipeline/palettes';
 
 export type Mode = 'dither' | 'ascii';
@@ -56,6 +57,26 @@ export interface Params {
   asciiDepthAmount: number;
   asciiPalette: string;
   asciiTransparent: boolean;
+  // post-effects
+  fxOrder: string;
+  fxGlow: boolean;
+  fxGlowRadius: number;
+  fxGlowIntensity: number;
+  fxGlowThreshold: number;
+  fxGlitch: boolean;
+  fxGlitchAmount: number;
+  fxGlitchBlock: number;
+  fxChroma: boolean;
+  fxChromaAmount: number;
+  fxScan: boolean;
+  fxScanPeriod: number;
+  fxScanIntensity: number;
+  fxScanCurve: number;
+  fxVignette: boolean;
+  fxVignetteAmount: number;
+  fxGrain: boolean;
+  fxGrainAmount: number;
+  fxGrainSize: number;
   // export
   exportFormat: string;
   exportScale: number;
@@ -110,6 +131,25 @@ export const DEFAULTS: Params = {
   asciiDepthAmount: 50,
   asciiPalette: 'pico8',
   asciiTransparent: false,
+  fxOrder: DEFAULT_ORDER,
+  fxGlow: false,
+  fxGlowRadius: 6,
+  fxGlowIntensity: 80,
+  fxGlowThreshold: 55,
+  fxGlitch: false,
+  fxGlitchAmount: 30,
+  fxGlitchBlock: 16,
+  fxChroma: false,
+  fxChromaAmount: 3,
+  fxScan: false,
+  fxScanPeriod: 3,
+  fxScanIntensity: 40,
+  fxScanCurve: 0,
+  fxVignette: false,
+  fxVignetteAmount: 50,
+  fxGrain: false,
+  fxGrainAmount: 25,
+  fxGrainSize: 1,
   exportFormat: 'png',
   exportScale: 2,
   exportDuration: 4,
@@ -187,6 +227,30 @@ export const ASCII_SLIDERS: Record<string, SliderSpec> = {
   depthAmount: { key: 'asciiDepthAmount', label: 'Amount', min: 0, max: 100, step: 1, format: pct },
 };
 
+/** Sliders per post-effect id (see pipeline/effects.ts). */
+export const FX_SLIDERS: Record<string, SliderSpec[]> = {
+  glow: [
+    { key: 'fxGlowRadius', label: 'Radius', min: 1, max: 32, step: 1, format: (v) => `${v}px` },
+    { key: 'fxGlowIntensity', label: 'Intensity', min: 0, max: 200, step: 1, format: pct },
+    { key: 'fxGlowThreshold', label: 'Threshold', min: 0, max: 100, step: 1, format: pct },
+  ],
+  glitch: [
+    { key: 'fxGlitchAmount', label: 'Amount', min: 0, max: 100, step: 1, format: pct },
+    { key: 'fxGlitchBlock', label: 'Block size', min: 4, max: 64, step: 1, format: (v) => `${v}px` },
+  ],
+  chroma: [{ key: 'fxChromaAmount', label: 'Shift', min: 0, max: 20, step: 0.5, format: (v) => `${v}px` }],
+  scanlines: [
+    { key: 'fxScanPeriod', label: 'Line spacing', min: 2, max: 8, step: 1, format: (v) => `${v}px` },
+    { key: 'fxScanIntensity', label: 'Darkness', min: 0, max: 100, step: 1, format: pct },
+    { key: 'fxScanCurve', label: 'Curvature', min: 0, max: 100, step: 1, format: pct },
+  ],
+  vignette: [{ key: 'fxVignetteAmount', label: 'Amount', min: 0, max: 100, step: 1, format: pct }],
+  grain: [
+    { key: 'fxGrainAmount', label: 'Amount', min: 0, max: 100, step: 1, format: pct },
+    { key: 'fxGrainSize', label: 'Size', min: 1, max: 4, step: 1, format: (v) => `${v}px` },
+  ],
+};
+
 export const BOIL_SLIDER: SliderSpec = {
   key: 'boilFps',
   label: 'Speed',
@@ -209,6 +273,17 @@ export const DITHER_KEYS: (keyof Params)[] = [
   'levels',
   'ink',
   'paper',
+];
+
+export const FX_KEYS: (keyof Params)[] = [
+  'fxOrder',
+  'fxGlow',
+  'fxGlitch',
+  'fxChroma',
+  'fxScan',
+  'fxVignette',
+  'fxGrain',
+  ...Object.values(FX_SLIDERS).flatMap((list) => list.map((s) => s.key)),
 ];
 
 export const ASCII_KEYS: (keyof Params)[] = [
@@ -257,9 +332,14 @@ const HEX = /^#[0-9a-f]{6}$/i;
 const STORAGE_KEY = 'dag.params.v1';
 
 const RANGES = new Map(
-  [...ADJUST_SLIDERS, ...Object.values(DITHER_SLIDERS), ...Object.values(ASCII_SLIDERS), ...Object.values(EXPORT_SLIDERS), BOIL_SLIDER].map(
-    (s) => [s.key, s] as const,
-  ),
+  [
+    ...ADJUST_SLIDERS,
+    ...Object.values(DITHER_SLIDERS),
+    ...Object.values(ASCII_SLIDERS),
+    ...Object.values(EXPORT_SLIDERS),
+    ...Object.values(FX_SLIDERS).flat(),
+    BOIL_SLIDER,
+  ].map((s) => [s.key, s] as const),
 );
 
 /**
@@ -277,6 +357,10 @@ export function sanitize(data: unknown): Partial<Params> {
     if (COLOR_KEYS.includes(key) && !HEX.test(v as string)) continue;
     if (key === 'asciiCustom' && (v as string).length > 64) continue;
     if (key === 'asciiInject' && [...(v as string)].length > MAX_INJECT) continue;
+    if (key === 'fxOrder') {
+      out[key] = normalizeOrder(v as string);
+      continue;
+    }
     const range = RANGES.get(key as NumericKey);
     if (range) {
       if (!Number.isFinite(v)) continue;

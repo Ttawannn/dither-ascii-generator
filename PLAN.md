@@ -217,3 +217,12 @@ dither-ascii-generator/
 - **LFO ของ Offset และ Depth** (sine / triangle / saw, ความเร็ว, ความแรง) ใช้กับภาพนิ่งเพื่อ export GIF/วิดีโอได้ด้วย
 - **Preset ใหม่:** Runes, Glyph cycle, Bar chart · Matrix เปลี่ยนไปใช้คาตาคานะ
 - ข้อจำกัดที่ยังอยู่: Depth / Offset / แทรกตัวอักษรใช้กับ Braille ไม่ได้ (Braille ใช้ glyph id ครบ 256 แล้ว)
+
+### สถานะเฟส 8 (2026-10-18): เสร็จแล้ว
+
+- **6 เอฟเฟกต์:** Glow, JPEG glitch, Chromatic aberration, Scanlines / CRT (มีความโค้งจอ), Vignette, Film grain
+- เปิด/ปิดได้ทีละตัว และ **เรียงลำดับได้** ด้วยปุ่ม ↑ ↓ ลำดับมีผลกับภาพจริง
+- ทำงานหลัง Dither หรือ ASCII ทุกโหมด รวม error diffusion ใน worker · ไม่ใช้กับมุมมอง Original
+- Glitch กับ Grain ขยับตาม Boil · export ทุกแบบได้เอฟเฟกต์ด้วย · กู้คืนได้ครบหลัง GPU reset
+- เอฟเฟกต์อยู่ใน preset และลิงก์แชร์ · preset ใหม่: CRT terminal, VHS glitch
+- วิธีทำ: pass สุดท้ายของทุกโหมดวาดลง texture นอกจอ แล้ววนสลับ framebuffer 2 ตัวผ่าน `post.frag` ทีละเอฟเฟกต์ ตัวสุดท้ายวาดลง canvas ถ้าไม่เปิดเอฟเฟกต์เลยจะวาดลง canvas ตรงเหมือนเดิม

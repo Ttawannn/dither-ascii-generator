@@ -76,6 +76,19 @@ Copy the result to the clipboard, or save it as `.txt` or as a standalone colour
 - **Webcam:** a live feed with a **Mirror** toggle (on by default for the camera). The browser asks for camera permission first.
 - **Boil:** turn it on under **Animation** to make the dither pattern or ASCII characters shift over time (1–30 fps), even on a still image.
 
+## Effects
+
+Stack post-effects on top of either mode. Turn each one on or off, and use ↑ ↓ to change the order they're applied in:
+
+- **Glow:** bright areas bloom (radius, intensity, threshold)
+- **JPEG glitch:** sliding rows, crushed blocks and swapped channels (amount, block size)
+- **Chromatic aberration:** red and blue split apart towards the edges
+- **Scanlines / CRT:** dark lines, with optional screen curvature
+- **Vignette:** darkened corners
+- **Film grain:** noise in 1–4 px cells
+
+Glitch and grain move when **Boil** is on. Effects are included in every export, in presets and in share links.
+
 ## Export
 
 | Format | What you get |

@@ -1,4 +1,4 @@
-import { ADJUST_KEYS, ASCII_KEYS, DEFAULTS, DITHER_KEYS, sanitize, type Params } from './state';
+import { ADJUST_KEYS, ASCII_KEYS, DEFAULTS, DITHER_KEYS, FX_KEYS, sanitize, type Params } from './state';
 
 export interface Preset {
   name: string;
@@ -6,7 +6,15 @@ export interface Preset {
 }
 
 /** Keys a preset controls; source options (mirror) and export settings are left alone. */
-export const PRESET_KEYS: (keyof Params)[] = ['mode', ...ADJUST_KEYS, ...DITHER_KEYS, ...ASCII_KEYS, 'animate', 'boilFps'];
+export const PRESET_KEYS: (keyof Params)[] = [
+  'mode',
+  ...ADJUST_KEYS,
+  ...DITHER_KEYS,
+  ...ASCII_KEYS,
+  ...FX_KEYS,
+  'animate',
+  'boilFps',
+];
 
 export const BUILT_IN: Preset[] = [
   {
@@ -56,6 +64,38 @@ export const BUILT_IN: Preset[] = [
       asciiOffsetLfo: 'saw',
       asciiOffsetSpeed: 0.25,
       asciiOffsetAmount: 100,
+    },
+  },
+  {
+    name: 'CRT terminal',
+    params: {
+      mode: 'ascii',
+      asciiCharset: 'standard',
+      asciiFg: '#33ff66',
+      asciiBg: '#001a05',
+      fxGlow: true,
+      fxGlowRadius: 4,
+      fxGlowIntensity: 90,
+      fxGlowThreshold: 40,
+      fxScan: true,
+      fxScanCurve: 35,
+      fxVignette: true,
+    },
+  },
+  {
+    name: 'VHS glitch',
+    params: {
+      algorithm: 'bayer4',
+      palette: 'rgb',
+      levels: 3,
+      pixelSize: 2,
+      fxGlitch: true,
+      fxGlitchAmount: 35,
+      fxChroma: true,
+      fxChromaAmount: 4,
+      fxGrain: true,
+      animate: true,
+      boilFps: 10,
     },
   },
   {

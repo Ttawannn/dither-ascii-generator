@@ -43,10 +43,14 @@ import {
   DITHER_SLIDERS,
   EXPORT_FORMATS,
   EXPORT_SLIDERS,
+  FX_KEYS,
+  FX_SLIDERS,
   isAnimatedFormat,
   Store,
+  type BooleanKey,
   type Params,
 } from './state';
+import { activeEffects, EFFECTS, moveEffect, normalizeOrder } from './pipeline/effects';
 import {
   button,
   colorInput,
@@ -211,6 +215,53 @@ const presets = section(
   button('Copy share link', () => void copyShareLink(), 'btn small share-btn'),
 );
 renderPresets();
+
+// ---------- post-effects ----------
+
+const effectList = el('div', { class: 'effect-list' });
+const effectCards = new Map<string, { card: HTMLElement; up: HTMLButtonElement; down: HTMLButtonElement }>();
+for (const fx of EFFECTS) {
+  const up = button('↑', () => store.set('fxOrder', moveEffect(store.params.fxOrder, fx.id, -1)), 'chip chip-icon');
+  const down = button('↓', () => store.set('fxOrder', moveEffect(store.params.fxOrder, fx.id, 1)), 'chip chip-icon');
+  up.title = 'Apply earlier';
+  down.title = 'Apply later';
+  const body = showWhen(
+    el(
+      'div',
+      { class: 'effect-body' },
+      ...FX_SLIDERS[fx.id].map((s) => slider(s, store)),
+      ...(fx.animated ? [el('div', { class: 'note' }, 'Moves when Boil is on')] : []),
+    ),
+    store,
+    (p) => p[fx.enabled] === true,
+  );
+  const card = el(
+    'div',
+    { class: 'effect-card' },
+    el('div', { class: 'effect-head' }, toggle(fx.enabled as BooleanKey, fx.label, store), up, down),
+    body,
+  );
+  effectCards.set(fx.id, { card, up, down });
+}
+
+function syncEffectOrder(p: Params): void {
+  const ids = normalizeOrder(p.fxOrder).split(',');
+  effectList.replaceChildren(...ids.map((id) => effectCards.get(id)!.card));
+  ids.forEach((id, i) => {
+    const { up, down } = effectCards.get(id)!;
+    up.disabled = i === 0;
+    down.disabled = i === ids.length - 1;
+  });
+}
+store.subscribe((p, changed) => changed === 'fxOrder' && syncEffectOrder(p));
+syncEffectOrder(store.params);
+
+const effectsSection = section(
+  'Effects',
+  el('div', { class: 'note effects-note' }, 'Applied top to bottom, after Dither or ASCII'),
+  effectList,
+);
+effectsSection.head.append(button('Reset', () => store.reset(FX_KEYS), 'link'));
 
 const animation = section(
   'Animation',
@@ -423,6 +474,7 @@ const panel = el(
     adjust.root,
     effect.root,
     animation.root,
+    effectsSection.root,
     exportSection.root,
   ),
   el(
@@ -749,6 +801,8 @@ function draw(): void {
   if (isVideo(current) && current.element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
     renderer.setSource(current.element, current.width, current.height);
   }
+  // The original view is shown untouched; otherwise every output pass runs the effect chain.
+  renderer.setEffects(showOriginal ? [] : activeEffects(p), seed, !(p.mode === 'ascii' && transparentAscii(p)));
   stage.classList.toggle('ascii', p.mode === 'ascii' && !showOriginal);
   stage.classList.toggle('transparent', p.mode === 'ascii' && !showOriginal && transparentAscii(p));
 

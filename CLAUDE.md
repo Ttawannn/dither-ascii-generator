@@ -13,7 +13,7 @@ npx vitest run src/ascii/grid.test.ts   # a single test file
 npx vitest run -t "share links"         # tests whose name matches
 ```
 
-Tests (`src/**/*.test.ts`, Node environment) cover only the pure logic: `sanitize`, presets and share links, palettes, error-diffusion kernels and `diffuse()`, the character library (`rampFor`, `pickLevels`), LFOs, and the ASCII grid and text export. Anything touching WebGL or the DOM has no tests; verify it in a browser. The deploy workflow runs `npm test` before building, so a failing test blocks the deploy. There is no linter. `/?sample` loads the built-in procedural test image on start, and `#s=<base64url>` applies a shared look.
+Tests (`src/**/*.test.ts`, Node environment) cover only the pure logic: `sanitize`, presets and share links, palettes, error-diffusion kernels and `diffuse()`, the character library (`rampFor`, `pickLevels`), LFOs, effect order and parameters, and the ASCII grid and text export. Anything touching WebGL or the DOM has no tests; verify it in a browser. The deploy workflow runs `npm test` before building, so a failing test blocks the deploy. There is no linter. `/?sample` loads the built-in procedural test image on start, and `#s=<base64url>` applies a shared look.
 
 TypeScript is v7 (the native compiler) and Vite is v8.
 
@@ -40,6 +40,8 @@ source texture ─adjust.frag─▶ FBO (adjusted, at output or grid resolution)
   ├─ readPixels ─▶ diffusion.worker ─▶ result tex ─blit─▶ canvas    error diffusion (CPU)
   ├─ readPixels ─▶ ascii/grid.ts (glyph ids) ─ascii.frag + atlas─▶ canvas    ASCII
   └─ blit ─▶ canvas                               "original" view (Space / Original button)
+
+every output pass ─(effects on)─▶ post texture ─post.frag × N (ping-pong)─▶ canvas
 ```
 - **Texture orientation is the main trap.** Only uploaded sources (images and video frames, top row first) are sampled via the flipped `v_uv` from `fullscreen.vert`. FBO and worker-result textures are bottom-up (`readPixels` layout). Passes that read them use `texelFetch(..., ivec2(gl_FragCoord.xy))` or `gl_FragCoord / size`. The CPU code (worker, `buildGrid`) walks rows as `h - 1 - y` to process in visual order.
 - The canvas holds processed pixels at output resolution and is upscaled by CSS (`image-rendering: pixelated`, or smooth in ASCII mode). `src/ui/viewer.ts` zooms and pans it relative to the *source* size.
@@ -53,6 +55,8 @@ source texture ─adjust.frag─▶ FBO (adjusted, at output or grid resolution)
 
   Each kind is implemented twice, in the shader and in the worker. Keep them in sync.
 - Blue noise is generated at startup (void-and-cluster, `bluenoise.ts`) rather than shipped as an asset.
+- Post-effects (`effects.ts`, `post.frag`): every output pass calls `beginOutput()` / `endOutput()`. With effects on, `beginOutput` targets an offscreen texture, and `endOutput` runs the enabled effects in order, ping-ponging two framebuffers, with the last one drawing to the canvas. `main.ts` calls `renderer.setEffects()` at the start of each `draw()`, with an empty list for the original view. A new output pass must use the same begin/end pair. Effects work on premultiplied RGBA and must keep `rgb <= a`.
+- Effect settings are flat params like the rest (`fxGlow`, `fxGlowRadius`, …). The order is the string param `fxOrder` (comma-separated ids), which `sanitize()` repairs with `normalizeOrder()`. To add an effect: an `EFFECTS` entry with a new `u_kind`, its branch in `post.frag`, an enable flag plus `FX_SLIDERS` entries in `state.ts`, and the keys in `FX_KEYS`.
 
 ### ASCII (`src/ascii/`)
 - The adjusted image is rendered at grid resolution: 1 px per cell, or 2×4 per cell for braille. `buildGrid` turns it into glyph ids (ramp, dither, Sobel edge glyphs `- / | \`) plus per-cell colours, packed as RGBA (alpha = glyph id) for `ascii.frag`.
