@@ -1,4 +1,4 @@
-import type { DiffusionJob, DiffusionResult } from './diffusion.worker';
+import type { DiffusionJob, DiffusionResult } from './diffuse';
 
 type JobInput = Omit<DiffusionJob, 'id'>;
 

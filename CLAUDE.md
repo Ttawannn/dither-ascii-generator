@@ -8,9 +8,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev        # Vite dev server (http://localhost:5173)
 npm run build      # tsc --noEmit, then vite build → dist/
 npm run typecheck  # type-check only
+npm test           # Vitest, run once (npm run test:watch to watch)
+npx vitest run src/ascii/grid.test.ts   # a single test file
+npx vitest run -t "share links"         # tests whose name matches
 ```
 
-There is no test suite and no linter. `npm run build` (type-check + bundle) is the gate. Verify behaviour in a browser instead. `/?sample` loads the built-in procedural test image on start, and `#s=<base64url>` applies a shared look.
+Tests (`src/**/*.test.ts`, Node environment) cover only the pure logic: `sanitize`, presets and share links, palettes, error-diffusion kernels and `diffuse()`, and the ASCII grid and text export. Anything touching WebGL or the DOM has no tests; verify it in a browser. The deploy workflow runs `npm test` before building, so a failing test blocks the deploy. There is no linter. `/?sample` loads the built-in procedural test image on start, and `#s=<base64url>` applies a shared look.
 
 TypeScript is v7 (the native compiler) and Vite is v8.
 
@@ -19,6 +22,7 @@ TypeScript is v7 (the native compiler) and Vite is v8.
 - Every push to `main` builds and deploys to GitHub Pages via `.github/workflows/deploy.yml` (https://ttawannn.github.io/dither-ascii-generator/). `vite.config.ts` switches `base` to `/dither-ascii-generator/` only when `GITHUB_ACTIONS` is set.
 - Commits are authored as **Ttawannn** (`133937402+Ttawannn@users.noreply.github.com`), set in the repo-local git config. The repo-local credential helper is `!gh auth git-credential`, so pushes use whichever `gh` account is active. It should be Ttawannn.
 - Commit messages describe the phase or feature in an imperative summary with a bullet body. `PLAN.md` (Thai) is the roadmap and records what was done or deferred.
+- Describe features on their own terms. Do not name, compare with, or credit other products anywhere in the repo: code, comments, docs, commit messages or UI text.
 
 ## Architecture
 
@@ -40,7 +44,8 @@ source texture ─adjust.frag─▶ FBO (adjusted, at output or grid resolution)
 - **Texture orientation is the main trap.** Only uploaded sources (images and video frames, top row first) are sampled via the flipped `v_uv` from `fullscreen.vert`. FBO and worker-result textures are bottom-up (`readPixels` layout). Passes that read them use `texelFetch(..., ivec2(gl_FragCoord.xy))` or `gl_FragCoord / size`. The CPU code (worker, `buildGrid`) walks rows as `h - 1 - y` to process in visual order.
 - The canvas holds processed pixels at output resolution and is upscaled by CSS (`image-rendering: pixelated`, or smooth in ASCII mode). `src/ui/viewer.ts` zooms and pans it relative to the *source* size.
 - `draw()` is synchronous, and `requestRender()` coalesces calls into one rAF.
-- Error diffusion is async. `Diffuser` (`src/pipeline/diffuser.ts`) keeps one job in flight and replaces pending jobs with the latest one. While a job runs, `draw()` leaves the previous frame on screen. `diffuser.idle()` resolves once the newest result has been drawn.
+- The WebGL context can be lost (mobile tab in the background, GPU reset). `Renderer.createResources()` builds every GPU object, and `main.ts` calls `renderer.restore()` plus `setSource()` on `webglcontextrestored`. Any new texture, program or framebuffer must be created there, or it will be dead after a restore.
+- Error diffusion is async. `Diffuser` (`src/pipeline/diffuser.ts`) keeps one job in flight and replaces pending jobs with the latest one. The algorithm itself is the pure `diffuse()` in `diffuse.ts`; `diffusion.worker.ts` only wraps it, so tests can import it. While a job runs, `draw()` leaves the previous frame on screen. `diffuser.idle()` resolves once the newest result has been drawn.
 - Algorithms (`algorithms.ts`) map to a `u_algo` index in `dither.frag`; diffusion entries have no `shader` index and use `KERNELS`. Palettes (`palettes.ts`) come in three kinds:
   - `ramp`: picked by luminance index
   - `set`: nearest colour
