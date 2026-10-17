@@ -11,7 +11,7 @@ A browser-based generator that turns images, videos and your webcam into **dithe
 - Real-time preview of every setting, including on video and webcam
 - 17 dither algorithms, from ordered Bayer and blue noise to classic error diffusion
 - 7 palette options: retro systems, duotone colour picks, or colours extracted from your image
-- ASCII mode with braille, block and edge-aware glyphs, 4 fonts and full-colour output
+- ASCII mode with 48 character sets, depth and offset controls, palette colours and transparent backgrounds
 - A "boil" animation that brings still images to life
 - Export to PNG, SVG, GIF, WebM or MP4, or copy the ASCII as text
 - Presets you can save and share as a link
@@ -48,20 +48,25 @@ Ordered and pattern dithers run on the GPU. Error diffusion runs in a Web Worker
 
 ## ASCII mode
 
-- **Character sets:**
-  - Standard: ` .:-=+*#%@`
-  - Detailed: 70 characters
-  - Blocks: `░▒▓█`
-  - Braille: 2×4 dots per character, for much finer detail
-  - Binary
-  - Your own custom ramp
+- **48 character sets in 11 groups:**
+  - Classic ASCII, numbers, symbols, blocks, lines & boxes, braille, geometric shapes
+  - Languages: Katakana, Greek, Cyrillic, Runic, Hebrew
+  - Cards & games, assorted Unicode, and your own custom ramp
+
+  Every set is measured and sorted from sparse to dense automatically. A live preview shows the characters in use.
+- **Depth:** how many brightness levels to use, from 2 up to every glyph in the set
+- **Offset:** shifts which character each brightness gets, wrapping around the set
+- **Add characters:** mix up to 10 of your own into any set. **Include space** controls the blank glyph.
 - **Edge glyphs:** draws `- / | \` along edges for a hand-drawn look
 - **Dither:** ordered dither applied before choosing characters
 - **Layout:** column count, font (JetBrains Mono, IBM Plex Mono, VT323, Courier), font size and line height
+- **Animate:** LFOs (sine, triangle, saw) on Offset and Depth, with speed and amount controls
 - **Colour:**
   - Mono, with text and background colours and a swap button
   - Image colour per character
+  - Palette colours (PICO-8, C64, CGA, Game Boy, or 8 colours taken from the image)
   - Image colour as the cell background
+  - **Transparent background**, kept in PNG, GIF and WebM exports
 
 Copy the result to the clipboard, or save it as `.txt` or as a standalone coloured `.html` page.
 
@@ -77,8 +82,8 @@ Copy the result to the clipboard, or save it as `.txt` or as a standalone colour
 |---|---|
 | PNG | The current frame, scaled 1–8× with crisp pixels |
 | SVG | A vector version of low-colour dither output (up to 32 colours) |
-| GIF | An animation from a video, the webcam, or a still image with Boil on |
-| WebM / MP4 | The same as GIF, encoded as video (needs WebCodecs, see below) |
+| GIF | An animation from a video, the webcam, or a still image with Boil or an ASCII LFO on |
+| WebM / MP4 | The same as GIF, encoded as video (needs WebCodecs, see below). WebM keeps a transparent background; MP4 fills it with the background colour |
 | Copy / .txt / .html | ASCII mode only: the characters as text |
 
 For animated formats, set the **duration** (up to 30 s) and **frame rate** (5–30 fps). Video files export from the current playhead, one frame at a time, so the result is smooth even when live preview is slow. Press the button again to cancel.

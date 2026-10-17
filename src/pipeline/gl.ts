@@ -85,7 +85,8 @@ export class Renderer {
   private static noiseData: Uint8Array | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement) {
-    const gl = canvas.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true, alpha: false });
+    // alpha: true only matters for ASCII with a transparent background; every other pass writes alpha 1.
+    const gl = canvas.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true, alpha: true });
     if (!gl) throw new Error('WebGL2 is not available in this browser.');
     this.gl = gl;
     this.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
@@ -243,7 +244,7 @@ export class Renderer {
   }
 
   /** ASCII pass: glyph grid + atlas → canvas at cols×cellW by rows×cellH. */
-  renderAscii(grid: AsciiGrid, atlas: Atlas, mode: string, fg: string, bg: string): void {
+  renderAscii(grid: AsciiGrid, atlas: Atlas, mode: string, fg: string, bg: string, transparent = false): void {
     const gl = this.gl;
     if (this.atlasKey !== atlas.key) {
       gl.bindTexture(gl.TEXTURE_2D, this.atlasTex);
@@ -265,7 +266,9 @@ export class Renderer {
     gl.uniform1i(u('u_atlas'), 1);
     gl.uniform2i(u('u_cell'), atlas.cellW, atlas.cellH);
     gl.uniform1i(u('u_rows'), grid.rows);
-    gl.uniform1i(u('u_colorMode'), mode === 'color' ? 1 : mode === 'colorBg' ? 2 : 0);
+    // Palette mode is image colour with the cell colours already snapped to the palette in buildGrid.
+    gl.uniform1i(u('u_colorMode'), mode === 'color' || mode === 'palette' ? 1 : mode === 'colorBg' ? 2 : 0);
+    gl.uniform1i(u('u_transparent'), transparent && mode !== 'colorBg' ? 1 : 0);
     gl.uniform3fv(u('u_fg'), hexToRgb(fg));
     gl.uniform3fv(u('u_bg'), hexToRgb(bg));
     gl.drawArrays(gl.TRIANGLES, 0, 3);

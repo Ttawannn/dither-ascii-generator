@@ -25,6 +25,12 @@ export interface ExportJob {
   frames: FrameSequence;
   onProgress: (done: number, total: number) => void;
   isCancelled: () => boolean;
+  /** The canvas has a transparent background that should be kept where the format allows. */
+  transparent: boolean;
+  /** Colour to fill transparent areas with when the format cannot store alpha. */
+  matte: string;
+  /** Tells the user about a fallback (e.g. transparency dropped). */
+  onNote: (message: string) => void;
 }
 
 export class ExportCancelled extends Error {}
@@ -35,8 +41,11 @@ const PREFERRED: Record<'webm' | 'mp4', VideoCodec[]> = {
   mp4: ['avc', 'hevc', 'av1', 'vp9'],
 };
 
-/** Upscales each frame with nearest-neighbour into a 2D canvas the encoders can read. */
-function frameCanvas(source: HTMLCanvasElement, scale: number, even: boolean) {
+/**
+ * Upscales each frame with nearest-neighbour into a 2D canvas the encoders can read.
+ * With `matte`, transparent areas are filled with that colour; otherwise they stay transparent.
+ */
+function frameCanvas(source: HTMLCanvasElement, scale: number, even: boolean, matte: string | null) {
   let w = source.width * scale;
   let h = source.height * scale;
   if (even) {
@@ -49,19 +58,39 @@ function frameCanvas(source: HTMLCanvasElement, scale: number, even: boolean) {
   canvas.height = Math.max(2, h);
   const g = canvas.getContext('2d', { willReadFrequently: !even })!;
   g.imageSmoothingEnabled = false;
-  const copy = () => g.drawImage(source, 0, 0, source.width * scale, source.height * scale);
+  const copy = () => {
+    if (matte) {
+      g.fillStyle = matte;
+      g.fillRect(0, 0, canvas.width, canvas.height);
+    } else {
+      g.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    g.drawImage(source, 0, 0, source.width * scale, source.height * scale);
+  };
   return { canvas, g, copy };
 }
 
 export async function exportAnimation(job: ExportJob): Promise<Blob> {
   const { frames } = job;
   await frames.render(0); // size is known once the first frame is drawn
-  return job.format === 'gif' ? encodeGif(job) : encodeVideo(job, job.format);
+  if (job.format === 'gif') return encodeGif(job);
+  if (job.format === 'webm' && job.transparent) {
+    try {
+      return await encodeVideo(job, 'webm', true);
+    } catch (err) {
+      if (err instanceof ExportCancelled) throw err;
+      console.warn('Transparent WebM failed, retrying opaque', err);
+      job.onNote('This browser can’t encode transparent WebM — saved with the background colour');
+      await frames.render(0);
+      return encodeVideo(job, 'webm', false);
+    }
+  }
+  return encodeVideo(job, job.format, false);
 }
 
 async function encodeGif(job: ExportJob): Promise<Blob> {
   const { frames } = job;
-  const { canvas, g, copy } = frameCanvas(job.source, job.scale, false);
+  const { canvas, g, copy } = frameCanvas(job.source, job.scale, false, null);
   const gif = GIFEncoder();
   const delay = Math.round(1000 / frames.fps);
 
@@ -70,17 +99,31 @@ async function encodeGif(job: ExportJob): Promise<Blob> {
     if (i > 0) await frames.render(i);
     copy();
     const { data } = g.getImageData(0, 0, canvas.width, canvas.height);
-    const palette = quantize(data, 256);
-    gif.writeFrame(applyPalette(data, palette), canvas.width, canvas.height, { palette, delay });
+    if (job.transparent) {
+      // GIF transparency is on/off per pixel: quantize with 1-bit alpha and mark the clear entry.
+      const palette = quantize(data, 256, { format: 'rgba4444', oneBitAlpha: true });
+      const index = applyPalette(data, palette, 'rgba4444');
+      const clear = palette.findIndex((c) => c[3] === 0);
+      gif.writeFrame(index, canvas.width, canvas.height, {
+        palette,
+        delay,
+        transparent: clear >= 0,
+        transparentIndex: Math.max(0, clear),
+        dispose: 2, // clear each frame, or earlier frames would show through the transparent pixels
+      });
+    } else {
+      const palette = quantize(data, 256);
+      gif.writeFrame(applyPalette(data, palette), canvas.width, canvas.height, { palette, delay });
+    }
     job.onProgress(i + 1, frames.count);
   }
   gif.finish();
   return new Blob([gif.bytes() as Uint8Array<ArrayBuffer>], { type: 'image/gif' });
 }
 
-async function encodeVideo(job: ExportJob, kind: 'webm' | 'mp4'): Promise<Blob> {
+async function encodeVideo(job: ExportJob, kind: 'webm' | 'mp4', keepAlpha: boolean): Promise<Blob> {
   const { frames } = job;
-  const { canvas, copy } = frameCanvas(job.source, job.scale, true);
+  const { canvas, copy } = frameCanvas(job.source, job.scale, true, keepAlpha ? null : job.matte);
   const { width, height } = canvas;
   if (width > MAX_VIDEO_SIDE || height > MAX_VIDEO_SIDE) {
     throw new Error(`${width}×${height} is too large for video — lower the scale`);
@@ -97,7 +140,7 @@ async function encodeVideo(job: ExportJob, kind: 'webm' | 'mp4'): Promise<Blob> 
   if (!codec) throw new Error(`This browser cannot encode ${kind.toUpperCase()} (needs WebCodecs)`);
 
   const output = new Output({ format, target: new BufferTarget() });
-  const video = new CanvasSource(canvas, { codec, bitrate });
+  const video = new CanvasSource(canvas, { codec, bitrate, alpha: keepAlpha ? 'keep' : 'discard' });
   output.addVideoTrack(video, { frameRate: frames.fps });
   await output.start();
 

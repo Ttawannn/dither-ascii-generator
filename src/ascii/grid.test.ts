@@ -13,7 +13,17 @@ function image(w: number, h: number, value: (x: number, y: number) => number): U
   return data;
 }
 
-const opts: GridOptions = { rampSize: 10, edges: false, edgeThreshold: 0.5, dither: false, lightOnDark: true, seed: 0 };
+const opts: GridOptions = {
+  levels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+  edgeBase: 10,
+  offset: 0,
+  palette: null,
+  edges: false,
+  edgeThreshold: 0.5,
+  dither: false,
+  lightOnDark: true,
+  seed: 0,
+};
 const ramp = [...' .:-=+*#%@', '-', '/', '|', '\\'];
 
 describe('buildGrid', () => {
@@ -44,8 +54,30 @@ describe('buildGrid', () => {
     expect(edgeCol.every((g) => g === '|')).toBe(true);
   });
 
+  it('uses only the chosen levels, mapping to their atlas ids', () => {
+    const ids = [...buildGrid(gradient, cols, 1, { ...opts, levels: [2, 5, 9] }).glyphIds];
+    expect(new Set(ids)).toEqual(new Set([2, 5, 9]));
+    expect(ids[0]).toBe(2);
+    expect(ids[cols - 1]).toBe(9);
+  });
+
+  it('shifts levels by the offset and wraps around', () => {
+    const shifted = [...buildGrid(gradient, cols, 1, { ...opts, offset: 0.2 }).glyphIds];
+    expect(shifted).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 0, 1]);
+    const back = [...buildGrid(gradient, cols, 1, { ...opts, offset: -0.1 }).glyphIds];
+    expect(back[0]).toBe(9);
+  });
+
+  it('snaps cell colours to the palette', () => {
+    const palette = new Float32Array([1, 0, 0, 0, 0, 1]); // red, blue
+    const reddish = image(1, 1, () => 0);
+    reddish.set([220, 40, 60, 255]);
+    const grid = buildGrid(reddish, 1, 1, { ...opts, palette });
+    expect([...grid.cells.slice(0, 3)]).toEqual([255, 0, 0]);
+  });
+
   it('turns all eight braille dots on for white and off for black', () => {
-    const braille = { ...opts, rampSize: 0 };
+    const braille = { ...opts, levels: null };
     expect(buildGrid(image(2, 4, () => 255), 1, 1, braille).glyphIds[0]).toBe(0xff);
     expect(buildGrid(image(2, 4, () => 0), 1, 1, braille).glyphIds[0]).toBe(0);
   });

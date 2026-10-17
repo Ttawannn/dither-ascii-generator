@@ -1,4 +1,5 @@
-import { CHARSETS, COLOR_MODES, FONTS } from './ascii/charsets';
+import { ASCII_PALETTES, CHARSETS, COLOR_MODES, FONTS, MAX_INJECT } from './ascii/charsets';
+import { LFO_SHAPES } from './ascii/lfo';
 import { ALGORITHMS } from './pipeline/algorithms';
 import { PALETTES } from './pipeline/palettes';
 
@@ -43,6 +44,18 @@ export interface Params {
   asciiEdges: boolean;
   asciiEdgeThreshold: number;
   asciiDither: boolean;
+  asciiInject: string;
+  asciiSpace: boolean;
+  asciiDepth: number;
+  asciiOffset: number;
+  asciiOffsetLfo: string;
+  asciiOffsetSpeed: number;
+  asciiOffsetAmount: number;
+  asciiDepthLfo: string;
+  asciiDepthSpeed: number;
+  asciiDepthAmount: number;
+  asciiPalette: string;
+  asciiTransparent: boolean;
   // export
   exportFormat: string;
   exportScale: number;
@@ -85,6 +98,18 @@ export const DEFAULTS: Params = {
   asciiEdges: false,
   asciiEdgeThreshold: 50,
   asciiDither: false,
+  asciiInject: '',
+  asciiSpace: true,
+  asciiDepth: 64,
+  asciiOffset: 0,
+  asciiOffsetLfo: 'off',
+  asciiOffsetSpeed: 0.5,
+  asciiOffsetAmount: 50,
+  asciiDepthLfo: 'off',
+  asciiDepthSpeed: 0.5,
+  asciiDepthAmount: 50,
+  asciiPalette: 'pico8',
+  asciiTransparent: false,
   exportFormat: 'png',
   exportScale: 2,
   exportDuration: 4,
@@ -154,6 +179,12 @@ export const ASCII_SLIDERS: Record<string, SliderSpec> = {
     format: (v) => `${v.toFixed(2)}×`,
   },
   edgeThreshold: { key: 'asciiEdgeThreshold', label: 'Edge threshold', min: 0, max: 100, step: 1, format: pct },
+  depth: { key: 'asciiDepth', label: 'Depth', min: 2, max: 64, step: 1, format: (v) => (v >= 64 ? 'All' : `${v}`) },
+  offset: { key: 'asciiOffset', label: 'Offset', min: -100, max: 100, step: 1, format: (v) => `${signed(v)}%` },
+  offsetSpeed: { key: 'asciiOffsetSpeed', label: 'Speed', min: 0.05, max: 4, step: 0.05, format: (v) => `${v.toFixed(2)} Hz` },
+  offsetAmount: { key: 'asciiOffsetAmount', label: 'Amount', min: 0, max: 100, step: 1, format: pct },
+  depthSpeed: { key: 'asciiDepthSpeed', label: 'Speed', min: 0.05, max: 4, step: 0.05, format: (v) => `${v.toFixed(2)} Hz` },
+  depthAmount: { key: 'asciiDepthAmount', label: 'Amount', min: 0, max: 100, step: 1, format: pct },
 };
 
 export const BOIL_SLIDER: SliderSpec = {
@@ -193,6 +224,18 @@ export const ASCII_KEYS: (keyof Params)[] = [
   'asciiEdges',
   'asciiEdgeThreshold',
   'asciiDither',
+  'asciiInject',
+  'asciiSpace',
+  'asciiDepth',
+  'asciiOffset',
+  'asciiOffsetLfo',
+  'asciiOffsetSpeed',
+  'asciiOffsetAmount',
+  'asciiDepthLfo',
+  'asciiDepthSpeed',
+  'asciiDepthAmount',
+  'asciiPalette',
+  'asciiTransparent',
 ];
 
 /** Allowed values for string params that come from a fixed list. */
@@ -203,6 +246,9 @@ const ENUMS: Partial<Record<keyof Params, string[]>> = {
   asciiCharset: CHARSETS.map((c) => c.id),
   asciiFont: FONTS.map((f) => f.id),
   asciiColor: COLOR_MODES.map((c) => c.id),
+  asciiOffsetLfo: LFO_SHAPES.map((s) => s.id),
+  asciiDepthLfo: LFO_SHAPES.map((s) => s.id),
+  asciiPalette: ASCII_PALETTES,
   exportFormat: EXPORT_FORMATS.map((f) => f.id),
 };
 const COLOR_KEYS: (keyof Params)[] = ['ink', 'paper', 'asciiFg', 'asciiBg'];
@@ -230,6 +276,7 @@ export function sanitize(data: unknown): Partial<Params> {
     if (ENUMS[key] && !ENUMS[key]!.includes(v as string)) continue;
     if (COLOR_KEYS.includes(key) && !HEX.test(v as string)) continue;
     if (key === 'asciiCustom' && (v as string).length > 64) continue;
+    if (key === 'asciiInject' && [...(v as string)].length > MAX_INJECT) continue;
     const range = RANGES.get(key as NumericKey);
     if (range) {
       if (!Number.isFinite(v)) continue;

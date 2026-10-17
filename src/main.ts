@@ -1,6 +1,16 @@
 import './styles.css';
 import { atlasKey, buildAtlas, type Atlas } from './ascii/atlas';
-import { CHARSETS, COLOR_MODES, FONTS, rampFor } from './ascii/charsets';
+import {
+  ASCII_PALETTES,
+  CHARSET_GROUPS,
+  CHARSETS,
+  COLOR_MODES,
+  FONTS,
+  MAX_INJECT,
+  pickLevels,
+  rampFor,
+} from './ascii/charsets';
+import { LFO_SHAPES, modulatedDepth, modulatedOffset } from './ascii/lfo';
 import { buildGrid, gridToHtml, gridToText, type AsciiGrid } from './ascii/grid';
 import type { AnimationFormat, FrameSequence } from './export/animation';
 import { download, exportPng } from './export/png';
@@ -287,6 +297,31 @@ asciiPresets.append(
   ),
 );
 
+const notBraille = (p: Params) => p.asciiCharset !== 'braille';
+const groupLabel = (id: string) => CHARSET_GROUPS.find((g) => g.id === id)?.label ?? id;
+
+// Sorted glyphs of the current set, as they will be used (updated when the atlas is built).
+const glyphPreview = el('div', { class: 'glyph-preview', 'aria-label': 'Characters in use, sparse to dense' });
+const glyphInfo = el('div', { class: 'note glyph-info' });
+
+const lfoControls = (title: string, shape: 'asciiOffsetLfo' | 'asciiDepthLfo', speed: string, amount: string) =>
+  showWhen(
+    el(
+      'div',
+      {},
+      select(
+        shape,
+        title,
+        LFO_SHAPES.map((l) => ({ value: l.id, label: l.label })),
+        store,
+      ),
+      asciiSlider(speed as keyof typeof ASCII_SLIDERS, (p) => p[shape] !== 'off'),
+      asciiSlider(amount as keyof typeof ASCII_SLIDERS, (p) => p[shape] !== 'off'),
+    ),
+    store,
+    notBraille,
+  );
+
 const asciiControls = showWhen(
   el(
     'div',
@@ -294,10 +329,16 @@ const asciiControls = showWhen(
     select(
       'asciiCharset',
       'Characters',
-      CHARSETS.map((c) => ({ value: c.id, label: c.label })),
+      CHARSETS.map((c) => ({ value: c.id, label: c.label, group: groupLabel(c.group) })),
       store,
     ),
-    showWhen(textInput('asciiCustom', 'Custom ramp (sparse → dense)', store), store, (p) => p.asciiCharset === 'custom'),
+    glyphPreview,
+    glyphInfo,
+    showWhen(textInput('asciiCustom', 'Custom ramp', store), store, (p) => p.asciiCharset === 'custom'),
+    showWhen(textInput('asciiInject', `Add characters (up to ${MAX_INJECT})`, store, MAX_INJECT), store, notBraille),
+    showWhen(toggle('asciiSpace', 'Include space', store), store, notBraille),
+    asciiSlider('depth', notBraille),
+    asciiSlider('offset', notBraille),
     asciiSlider('columns'),
     select(
       'asciiFont',
@@ -308,8 +349,11 @@ const asciiControls = showWhen(
     asciiSlider('fontSize'),
     asciiSlider('lineHeight'),
     toggle('asciiDither', 'Dither', store),
-    showWhen(toggle('asciiEdges', 'Edge glyphs', store), store, (p) => p.asciiCharset !== 'braille'),
-    asciiSlider('edgeThreshold', (p) => p.asciiEdges && p.asciiCharset !== 'braille'),
+    showWhen(toggle('asciiEdges', 'Edge glyphs', store), store, notBraille),
+    asciiSlider('edgeThreshold', (p) => p.asciiEdges && notBraille(p)),
+    showWhen(el('div', { class: 'subhead' }, 'Animate'), store, notBraille),
+    lfoControls('Offset LFO', 'asciiOffsetLfo', 'offsetSpeed', 'offsetAmount'),
+    lfoControls('Depth LFO', 'asciiDepthLfo', 'depthSpeed', 'depthAmount'),
     el('div', { class: 'subhead' }, 'Colour'),
     select(
       'asciiColor',
@@ -317,13 +361,24 @@ const asciiControls = showWhen(
       COLOR_MODES.map((c) => ({ value: c.id, label: c.label })),
       store,
     ),
+    showWhen(
+      select(
+        'asciiPalette',
+        'Colour palette',
+        ASCII_PALETTES.map((id) => ({ value: id, label: getPaletteDef(id).label })),
+        store,
+      ),
+      store,
+      (p) => p.asciiColor === 'palette',
+    ),
     el(
       'div',
       { class: 'color-row' },
-      showWhen(colorInput('asciiFg', 'Text', store), store, (p) => p.asciiColor !== 'color'),
+      showWhen(colorInput('asciiFg', 'Text', store), store, (p) => p.asciiColor === 'mono' || p.asciiColor === 'colorBg'),
       showWhen(colorInput('asciiBg', 'Background', store), store, (p) => p.asciiColor !== 'colorBg'),
     ),
     asciiPresets,
+    showWhen(toggle('asciiTransparent', 'Transparent background', store), store, (p) => p.asciiColor !== 'colorBg'),
   ),
   store,
   (p) => p.mode === 'ascii',
@@ -528,6 +583,68 @@ function watchVideo(src: Source & { element: HTMLVideoElement }): void {
 
 let atlas: Atlas | null = null;
 let atlasLoading = '';
+
+/** Animation clock in seconds: real time, or the frame time while exporting. */
+let clockOverride: number | null = null;
+const clock = () => clockOverride ?? performance.now() / 1000;
+
+const lfoActive = (p: Params) =>
+  p.mode === 'ascii' && notBraille(p) && (p.asciiOffsetLfo !== 'off' || p.asciiDepthLfo !== 'off');
+
+// LFOs need a redraw every frame while they run.
+let lfoFrame = 0;
+function syncLfoLoop(): void {
+  cancelAnimationFrame(lfoFrame);
+  if (!lfoActive(store.params)) return;
+  const tick = () => {
+    if (!exporting) requestRender();
+    lfoFrame = requestAnimationFrame(tick);
+  };
+  lfoFrame = requestAnimationFrame(tick);
+}
+const LFO_KEYS: (keyof Params)[] = ['mode', 'asciiCharset', 'asciiOffsetLfo', 'asciiDepthLfo'];
+store.subscribe((_, changed) => LFO_KEYS.includes(changed) && syncLfoLoop());
+
+/** Effective depth and offset (fraction of the ramp) at the current clock. */
+function asciiModulation(p: Params): { depth: number; offset: number } {
+  const t = clock();
+  return {
+    depth: modulatedDepth(p.asciiDepth, p.asciiDepthLfo, t, p.asciiDepthSpeed, p.asciiDepthAmount / 100),
+    offset: modulatedOffset(p.asciiOffset / 100, p.asciiOffsetLfo, t, p.asciiOffsetSpeed, p.asciiOffsetAmount / 100),
+  };
+}
+
+// Palette for palette-coloured characters; "From image" extracts 8 colours once per source.
+let asciiExtracted: { source: Source; colors: RGB[] } | null = null;
+function asciiPaletteColors(p: Params): Float32Array | null {
+  if (p.asciiColor !== 'palette') return null;
+  if (p.asciiPalette === 'image' && current && asciiExtracted?.source !== current) {
+    asciiExtracted = { source: current, colors: extractPalette(current.element, current.width, current.height, 8) };
+  }
+  const pal = resolvePalette(p.asciiPalette, {
+    levels: 8,
+    ink: p.asciiBg,
+    paper: p.asciiFg,
+    extracted: p.asciiPalette === 'image' ? (asciiExtracted?.colors ?? null) : null,
+  });
+  return new Float32Array(pal.colors.flat());
+}
+
+function syncGlyphPreview(p: Params): void {
+  if (!atlas || p.mode !== 'ascii') return;
+  glyphPreview.style.fontFamily = atlas.fontCss.replace(/^\S+\s/, '');
+  if (atlas.rampSize === 0) {
+    glyphPreview.textContent = '⠁⠃⠇⡇⣇⣧⣷⣿';
+    glyphInfo.textContent = '256 dot patterns · 2×4 pixels per character';
+    return;
+  }
+  const ramp = atlas.glyphs.slice(0, atlas.rampSize);
+  const used = pickLevels(ramp.length, p.asciiDepth).map((i) => ramp[i]);
+  glyphPreview.textContent = used.join('');
+  const missing = atlas.missing.length ? ` · ${atlas.missing.length} skipped (can’t be drawn at this size or font)` : '';
+  glyphInfo.textContent = `${used.length} of ${ramp.length} glyphs, sparse → dense${missing}`;
+}
+store.subscribe((p, changed) => (changed === 'asciiDepth' || changed === 'mode') && syncGlyphPreview(p));
 // The grid is paired with the atlas it was built for, so exports never mix glyph sets.
 let lastAscii: { grid: AsciiGrid; atlas: Atlas } | null = null;
 
@@ -538,7 +655,7 @@ const luma = (hex: string) => {
 
 /** The glyph atlas for the current settings, or null while it is being built (a render follows). */
 function currentAtlas(p: Params): Atlas | null {
-  const ramp = rampFor(p.asciiCharset, p.asciiCustom);
+  const ramp = rampFor(p.asciiCharset, p.asciiCustom, p.asciiInject, p.asciiSpace);
   const key = atlasKey(ramp, p.asciiFont, p.asciiFontSize, p.asciiLineHeight);
   if (atlas?.key === key) return atlas;
   if (atlasLoading !== key) {
@@ -547,6 +664,7 @@ function currentAtlas(p: Params): Atlas | null {
       if (atlasLoading !== a.key) return; // settings moved on while fonts loaded
       atlas = a;
       atlasLoading = '';
+      syncGlyphPreview(store.params);
       requestRender();
     });
   }
@@ -564,13 +682,17 @@ function drawAscii(p: Params): void {
 
   // Dense glyphs go where the image is closest to the glyph colour.
   const lightOnDark =
-    p.asciiColor === 'color'
+    p.asciiColor === 'color' || p.asciiColor === 'palette'
       ? luma(p.asciiBg) < 0.5
       : p.asciiColor === 'colorBg'
         ? luma(p.asciiFg) >= 0.5
         : luma(p.asciiFg) > luma(p.asciiBg);
+  const { depth, offset } = asciiModulation(p);
   const grid = buildGrid(renderer.readAdjusted(), cols, rows, {
-    rampSize: a.rampSize,
+    levels: braille ? null : pickLevels(a.rampSize, depth),
+    edgeBase: a.rampSize,
+    offset,
+    palette: asciiPaletteColors(p),
     edges: p.asciiEdges,
     edgeThreshold: p.asciiEdgeThreshold / 100,
     dither: p.asciiDither,
@@ -578,7 +700,7 @@ function drawAscii(p: Params): void {
     seed,
   });
   lastAscii = { grid, atlas: a };
-  renderer.renderAscii(grid, a, p.asciiColor, p.asciiFg, p.asciiBg);
+  renderer.renderAscii(grid, a, p.asciiColor, p.asciiFg, p.asciiBg, p.asciiTransparent);
   info.out.textContent = `${cols}×${rows} chars`;
 }
 
@@ -612,10 +734,12 @@ function exportHtml(): void {
     lineHeight: p.asciiLineHeight,
     mode: p.asciiColor,
     fg: p.asciiFg,
-    bg: p.asciiBg,
+    bg: p.asciiTransparent && p.asciiColor !== 'colorBg' ? 'transparent' : p.asciiBg,
   });
   download(new Blob([html], { type: 'text/html;charset=utf-8' }), `${current.name}-ascii.html`);
 }
+
+const transparentAscii = (p: Params) => p.asciiTransparent && p.asciiColor !== 'colorBg';
 
 // ---------- draw ----------
 
@@ -626,6 +750,7 @@ function draw(): void {
     renderer.setSource(current.element, current.width, current.height);
   }
   stage.classList.toggle('ascii', p.mode === 'ascii' && !showOriginal);
+  stage.classList.toggle('transparent', p.mode === 'ascii' && !showOriginal && transparentAscii(p));
 
   if (showOriginal) {
     renderer.renderAdjust(p, true);
@@ -764,10 +889,25 @@ function syncExportInfo(): void {
     return;
   }
   const plan = animationLength();
+  const alphaNote =
+    p.mode === 'ascii' && transparentAscii(p) && p.exportFormat === 'mp4'
+      ? ' · MP4 can’t keep transparency: the background colour is used'
+      : '';
   exportInfo.textContent =
-    typeof plan === 'string' ? plan : `→ ${size} · ${plan.count} frames · ${(plan.count / plan.fps).toFixed(1)} s`;
+    typeof plan === 'string'
+      ? plan
+      : `→ ${size} · ${plan.count} frames · ${(plan.count / plan.fps).toFixed(1)} s${alphaNote}`;
 }
-const EXPORT_KEYS: (keyof Params)[] = ['exportFormat', 'exportScale', 'exportDuration', 'exportFps', 'animate'];
+const EXPORT_KEYS: (keyof Params)[] = [
+  'exportFormat',
+  'exportScale',
+  'exportDuration',
+  'exportFps',
+  'animate',
+  'asciiTransparent',
+  'asciiOffsetLfo',
+  'asciiDepthLfo',
+];
 store.subscribe((_, changed) => EXPORT_KEYS.includes(changed) && syncExportInfo());
 syncExportInfo();
 
@@ -776,7 +916,9 @@ function animationLength(): { count: number; fps: number } | string {
   const p = store.params;
   const fps = p.exportFps;
   if (!current) return 'Load a source first';
-  if (current.kind === 'image' && !p.animate) return 'Static image — turn on Boil or load a video';
+  if (current.kind === 'image' && !p.animate && !lfoActive(p)) {
+    return 'Static image — turn on Boil or an ASCII LFO, or load a video';
+  }
   let seconds = p.exportDuration;
   if (current.kind === 'video') {
     const v = current.element as HTMLVideoElement;
@@ -823,6 +965,7 @@ function frameSequence(): FrameSequence | string {
       render: async (i) => {
         await seek(v, start + i / fps);
         seed = boilSeed(i);
+        clockOverride = i / fps;
         await renderNow();
       },
     };
@@ -836,6 +979,7 @@ function frameSequence(): FrameSequence | string {
         const wait = t0 + (i * 1000) / fps - performance.now();
         if (wait > 0) await sleep(wait);
         seed = boilSeed(i);
+        clockOverride = i / fps;
         await renderNow();
       },
     };
@@ -845,6 +989,7 @@ function frameSequence(): FrameSequence | string {
     fps,
     render: async (i) => {
       seed = boilSeed(i);
+      clockOverride = i / fps;
       await renderNow();
     },
   };
@@ -896,6 +1041,9 @@ async function onExportClick(): Promise<void> {
       frames,
       onProgress: (done, total) => (exportBtn.textContent = `Cancel · ${done}/${total}`),
       isCancelled: () => job.cancelled,
+      transparent: p.mode === 'ascii' && transparentAscii(p),
+      matte: p.asciiBg,
+      onNote: flash,
     });
     download(blob, `${name}.${p.exportFormat}`);
     flash(`Saved ${(blob.size / 1e6).toFixed(1)} MB`);
@@ -907,6 +1055,7 @@ async function onExportClick(): Promise<void> {
     }
   } finally {
     exporting = null;
+    clockOverride = null;
     syncBoil();
     if (video) video.currentTime = resumeAt;
     if (wasPlaying) void video!.play().catch(() => undefined);
@@ -1013,4 +1162,5 @@ function applyShareLink(): void {
 }
 window.addEventListener('hashchange', applyShareLink);
 applyShareLink();
+syncLfoLoop();
 if (new URLSearchParams(location.search).has('sample')) void openSample();

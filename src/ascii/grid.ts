@@ -1,8 +1,14 @@
 import { BRAILLE_DOTS } from './atlas';
 
 export interface GridOptions {
-  /** Ramp size; 0 means braille. Edge glyphs live at rampSize .. rampSize+3. */
-  rampSize: number;
+  /** Atlas glyph ids used as brightness levels, sparse → dense (see pickLevels). null means braille. */
+  levels: number[] | null;
+  /** Atlas id of the first edge glyph; the four edge glyphs follow it. */
+  edgeBase: number;
+  /** Shift every cell's level along the ramp by this fraction (-1..1), wrapping around. */
+  offset: number;
+  /** Flat RGB (0..1) palette to snap cell colours to, or null to keep image colours. */
+  palette: Float32Array | null;
   edges: boolean;
   /** 0..1 */
   edgeThreshold: number;
@@ -30,7 +36,9 @@ const bayer = (x: number, y: number) => BAYER4[(y & 3) * 4 + (x & 3)];
  * Ramp mode expects one pixel per cell; braille expects 2×4 pixels per cell.
  */
 export function buildGrid(data: Uint8Array, cols: number, rows: number, opts: GridOptions): AsciiGrid {
-  const braille = opts.rampSize === 0;
+  const braille = opts.levels === null;
+  const levels = opts.levels ?? [];
+  const shift = Math.round(opts.offset * levels.length);
   const gw = braille ? cols * 2 : cols;
   const gh = braille ? rows * 4 : rows;
 
@@ -80,16 +88,20 @@ export function buildGrid(data: Uint8Array, cols: number, rows: number, opts: Gr
         r = data[p];
         g = data[p + 1];
         b = data[p + 2];
-        const n = opts.rampSize;
+        const n = levels.length;
         let d = density(luma[c]);
         if (opts.dither) d += (bayer(col + ox, row + oy) - 0.5) / (n - 1);
         d += (shake(col, row) * 0.7) / (n - 1);
-        glyph = Math.min(n - 1, Math.max(0, Math.round(d * (n - 1))));
+        let k = Math.min(n - 1, Math.max(0, Math.round(d * (n - 1))));
+        if (shift) k = (((k + shift) % n) + n) % n;
+        glyph = levels[k];
         if (opts.edges) {
           const edge = edgeGlyph(luma, cols, rows, col, row, opts.edgeThreshold);
-          if (edge >= 0) glyph = n + edge;
+          if (edge >= 0) glyph = opts.edgeBase + edge;
         }
       }
+
+      if (opts.palette) [r, g, b] = nearest(opts.palette, r / 255, g / 255, b / 255);
 
       glyphIds[c] = glyph;
       cells[c * 4] = r;
@@ -99,6 +111,23 @@ export function buildGrid(data: Uint8Array, cols: number, rows: number, opts: Gr
     }
   }
   return { cols, rows, cells, glyphIds };
+}
+
+/** Nearest palette colour (same weighting as the dither shader), as 0..255 RGB. */
+function nearest(pal: Float32Array, r: number, g: number, b: number): [number, number, number] {
+  let best = Infinity;
+  let at = 0;
+  for (let i = 0; i < pal.length; i += 3) {
+    const dr = r - pal[i];
+    const dg = g - pal[i + 1];
+    const db = b - pal[i + 2];
+    const e = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+    if (e < best) {
+      best = e;
+      at = i;
+    }
+  }
+  return [pal[at] * 255 + 0.5, pal[at + 1] * 255 + 0.5, pal[at + 2] * 255 + 0.5];
 }
 
 /** Sobel edge direction at a cell: 0 '-', 1 '/', 2 '|', 3 '\', or -1 for no edge. */
@@ -148,7 +177,7 @@ export function gridToHtml(
     for (let col = 0; col < grid.cols; col++) {
       const c = row * grid.cols + col;
       const color = hex(grid.cells[c * 4], grid.cells[c * 4 + 1], grid.cells[c * 4 + 2]);
-      const style = opts.mode === 'color' ? `color:${color}` : opts.mode === 'colorBg' ? `background:${color}` : '';
+      const style = opts.mode === 'color' || opts.mode === 'palette' ? `color:${color}` : opts.mode === 'colorBg' ? `background:${color}` : '';
       if (style !== runStyle) {
         flush();
         runStyle = style;

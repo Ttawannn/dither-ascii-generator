@@ -31,9 +31,37 @@ export const BUILT_IN: Preset[] = [
   { name: 'Braille', params: { mode: 'ascii', asciiCharset: 'braille', asciiDither: true, asciiColumns: 100 } },
   {
     name: 'Matrix',
-    params: { mode: 'ascii', asciiCharset: 'binary', asciiFg: '#00ff41', asciiBg: '#000000', animate: true, boilFps: 12 },
+    params: {
+      mode: 'ascii',
+      asciiCharset: 'katakana',
+      asciiFg: '#00ff41',
+      asciiBg: '#000000',
+      asciiDepth: 12,
+      animate: true,
+      boilFps: 12,
+    },
   },
   { name: 'Colour ASCII', params: { mode: 'ascii', asciiCharset: 'detailed', asciiColor: 'color', asciiColumns: 160 } },
+  {
+    name: 'Runes',
+    params: { mode: 'ascii', asciiCharset: 'runic', asciiFg: '#2b1d0e', asciiBg: '#e8dcc0', asciiColumns: 110, contrast: 20 },
+  },
+  {
+    name: 'Glyph cycle',
+    params: {
+      mode: 'ascii',
+      asciiCharset: 'shapes',
+      asciiColor: 'palette',
+      asciiPalette: 'pico8',
+      asciiOffsetLfo: 'saw',
+      asciiOffsetSpeed: 0.25,
+      asciiOffsetAmount: 100,
+    },
+  },
+  {
+    name: 'Bar chart',
+    params: { mode: 'ascii', asciiCharset: 'bars-v', asciiSpace: true, asciiFg: '#ffb000', asciiBg: '#120800', asciiColumns: 140 },
+  },
   {
     name: 'Woodcut',
     params: { mode: 'ascii', asciiCharset: 'standard', asciiEdges: true, asciiEdgeThreshold: 35, asciiFg: '#1a1a1a', asciiBg: '#e8e4d8', contrast: 25 },

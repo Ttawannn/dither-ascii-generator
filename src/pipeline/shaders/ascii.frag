@@ -9,6 +9,7 @@ uniform int u_rows;
 uniform int u_colorMode;    // 0 mono, 1 image colour, 2 image colour background
 uniform vec3 u_fg;
 uniform vec3 u_bg;
+uniform bool u_transparent; // glyphs only; the canvas is premultiplied-alpha
 
 out vec4 outColor;
 
@@ -24,5 +25,5 @@ void main() {
 
   vec3 fg = u_colorMode == 1 ? g.rgb : u_fg;
   vec3 bg = u_colorMode == 2 ? g.rgb : u_bg;
-  outColor = vec4(mix(bg, fg, cov), 1.0);
+  outColor = u_transparent ? vec4(fg * cov, cov) : vec4(mix(bg, fg, cov), 1.0);
 }

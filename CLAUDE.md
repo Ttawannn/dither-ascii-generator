@@ -13,7 +13,7 @@ npx vitest run src/ascii/grid.test.ts   # a single test file
 npx vitest run -t "share links"         # tests whose name matches
 ```
 
-Tests (`src/**/*.test.ts`, Node environment) cover only the pure logic: `sanitize`, presets and share links, palettes, error-diffusion kernels and `diffuse()`, and the ASCII grid and text export. Anything touching WebGL or the DOM has no tests; verify it in a browser. The deploy workflow runs `npm test` before building, so a failing test blocks the deploy. There is no linter. `/?sample` loads the built-in procedural test image on start, and `#s=<base64url>` applies a shared look.
+Tests (`src/**/*.test.ts`, Node environment) cover only the pure logic: `sanitize`, presets and share links, palettes, error-diffusion kernels and `diffuse()`, the character library (`rampFor`, `pickLevels`), LFOs, and the ASCII grid and text export. Anything touching WebGL or the DOM has no tests; verify it in a browser. The deploy workflow runs `npm test` before building, so a failing test blocks the deploy. There is no linter. `/?sample` loads the built-in procedural test image on start, and `#s=<base64url>` applies a shared look.
 
 TypeScript is v7 (the native compiler) and Vite is v8.
 
@@ -56,7 +56,10 @@ source texture ─adjust.frag─▶ FBO (adjusted, at output or grid resolution)
 
 ### ASCII (`src/ascii/`)
 - The adjusted image is rendered at grid resolution: 1 px per cell, or 2×4 per cell for braille. `buildGrid` turns it into glyph ids (ramp, dither, Sobel edge glyphs `- / | \`) plus per-cell colours, packed as RGBA (alpha = glyph id) for `ascii.frag`.
-- Glyph atlases (`atlas.ts`) are built asynchronously because fonts load async. `currentAtlas()` returns null and triggers a re-render once the atlas is ready. Shade blocks and braille dots are drawn procedurally, not from the font.
+- Character sets live in `charsets.ts` (48 sets in 11 groups). Set order doesn't matter: `atlas.ts` measures each glyph's ink, drops glyphs that render as the font's missing-glyph box, and sorts the ramp sparse → dense. Atlas glyph ids: sorted ramp first (`rampSize`), then the 4 edge glyphs. Ids are 8-bit, so a ramp is capped at `MAX_RAMP` (252).
+- Glyph atlases are built asynchronously because fonts load async (non-Latin glyphs come from Noto fallbacks in `FALLBACK_FONTS`, fetched per Unicode range on demand). `currentAtlas()` returns null and triggers a re-render once the atlas is ready. Shade blocks and braille dots are drawn procedurally, not from the font.
+- Depth and Offset don't rebuild the atlas: `pickLevels()` chooses which sorted glyphs act as brightness levels, and `buildGrid` shifts the level (wrapping) by the offset. Both can be driven by LFOs (`lfo.ts`) that read `clock()` in `main.ts`; during export the clock is the frame time, so animated exports are deterministic.
+- Palette colour mode snaps cell colours to a palette in `buildGrid`; the shader then treats it as image colour. A transparent background makes `ascii.frag` output premultiplied alpha. The WebGL context is created with `alpha: true` for this, and every other pass must keep writing alpha 1.
 - Text and HTML exports use `lastAscii`, which pairs a grid with the atlas it was built against. Keep that pairing: glyph ids index into that atlas's glyph list.
 
 ### Sources and animation
@@ -71,7 +74,7 @@ source texture ─adjust.frag─▶ FBO (adjusted, at output or grid resolution)
 
   Each frame runs `renderNow()`, which waits for the atlas and the diffuser before capturing.
 - `animation.ts` is loaded with a dynamic `import()` so the initial bundle stays small. Don't import it statically from `main.ts`. In dev, the first dynamic import of new deps makes Vite reload the page once.
-- Video exports force even dimensions and cap each side at 4096.
+- Video exports force even dimensions and cap each side at 4096. With a transparent ASCII background, GIF uses 1-bit transparency, WebM tries VP9 with alpha and falls back to filling the background colour (`matte`), and MP4 always uses the matte.
 
 ## Verifying in the Claude browser pane
 
