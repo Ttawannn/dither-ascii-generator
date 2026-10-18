@@ -20,6 +20,10 @@ export interface GridOptions {
   lightOnDark: boolean;
   /** Non-zero while boiling: shifts the dither pattern and jitters glyph choice per frame. */
   seed: number;
+  /** Boil jitter strength (1 = the original amount). */
+  boilAmount?: number;
+  /** 64×64 blue-noise tile to take the boil jitter from instead of a hash. */
+  noiseTile?: Uint8Array | null;
 }
 
 export interface AsciiGrid {
@@ -58,8 +62,17 @@ export function buildGrid(data: Uint8Array, cols: number, rows: number, opts: Gr
   const density = (v: number) => (opts.lightOnDark ? v : 1 - v);
   const ox = (opts.seed * 29) & 3;
   const oy = (opts.seed * 47) & 3;
-  const shake = (x: number, y: number) =>
-    opts.seed ? ((Math.imul(x * 73856093 ^ y * 19349663, opts.seed * 83492791 + 1) >>> 0) / 4294967296 - 0.5) : 0;
+  const amount = opts.boilAmount ?? 1;
+  const tile = opts.noiseTile;
+  const tx = (opts.seed * 29) & 63;
+  const ty = (opts.seed * 47) & 63;
+  const shake = (x: number, y: number) => {
+    if (!opts.seed) return 0;
+    const v = tile
+      ? tile[((y + ty) & 63) * 64 + ((x + tx) & 63)] / 255
+      : (Math.imul(x * 73856093 ^ y * 19349663, opts.seed * 83492791 + 1) >>> 0) / 4294967296;
+    return (v - 0.5) * amount;
+  };
   const pixel = (x: number, y: number) => (gh - 1 - y) * gw * 4 + x * 4;
 
   const cells = new Uint8Array(cols * rows * 4);

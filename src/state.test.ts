@@ -42,6 +42,11 @@ describe('sanitize', () => {
     expect(sanitize({ fxTintMode: 'dodge', fxTintColor: 'green' })).toEqual({});
   });
 
+  it('checks the boil pattern and accepts wide glows', () => {
+    expect(sanitize({ boilPattern: 'blue', fxGlowRadius: 180 })).toEqual({ boilPattern: 'blue', fxGlowRadius: 180 });
+    expect(sanitize({ boilPattern: 'pink', fxGlowRadius: 999 })).toEqual({ fxGlowRadius: 200 });
+  });
+
   it('ignores non-objects', () => {
     expect(sanitize(null)).toEqual({});
     expect(sanitize('{"mode":"ascii"}')).toEqual({});

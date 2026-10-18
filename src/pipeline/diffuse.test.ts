@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ALGORITHMS, KERNELS } from './algorithms';
+import { blueNoiseTile } from './bluenoise';
 import { diffuse, type DiffusionJob } from './diffuse';
 
 const SIZE = 64;
@@ -89,6 +90,15 @@ describe('diffuse', () => {
     const lab = diffuse(job({ kind: 'set', colors, levels: 3, data, strength: 0, perceptual: true }));
     expect(rgb[0]).toBe(0);
     expect(lab[0]).toBe(128);
+  });
+
+  it('takes boil jitter from a blue-noise tile when given one', () => {
+    const tile = blueNoiseTile();
+    expect(blueNoiseTile()).toBe(tile);
+    const blue = diffuse(job({ noise: 0.06, seed: 3, noiseTile: tile }));
+    expect(diffuse(job({ noise: 0.06, seed: 3, noiseTile: tile }))).toEqual(blue);
+    expect(diffuse(job({ noise: 0.06, seed: 4, noiseTile: tile }))).not.toEqual(blue);
+    expect(diffuse(job({ noise: 0.06, seed: 3 }))).not.toEqual(blue);
   });
 
   it('is deterministic for a given boil seed and changes with it', () => {

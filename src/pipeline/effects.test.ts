@@ -43,6 +43,51 @@ describe('activeEffects', () => {
   });
 });
 
+describe('defaults keep the earlier look', () => {
+  it('glitch runs block shift, colour crush and channel swap at full share, the new modes off', () => {
+    const [fx] = activeEffects({ ...DEFAULTS, fxGlitch: true });
+    expect(fx.params).toEqual([DEFAULTS.fxGlitchAmount / 100, DEFAULTS.fxGlitchBlock, 1, 1]);
+    expect(fx.extra).toEqual([1, 0, 0, 0]);
+  });
+
+  it('chromatic pushes red out and blue in, green stays', () => {
+    expect(activeEffects({ ...DEFAULTS, fxChroma: true })[0].params).toEqual([DEFAULTS.fxChromaAmount, 1, 0, -1]);
+  });
+
+  it('glow is round, hard-edged, unturned and falls off as 1/ring', () => {
+    const [fx] = activeEffects({ ...DEFAULTS, fxGlow: true });
+    expect(fx.params[3]).toBe(0);
+    expect(fx.extra).toEqual([1, 0, 1, 0]);
+  });
+});
+
+describe('glow and finish', () => {
+  it('only glow asks for the bright pass', () => {
+    const all = activeEffects({ ...DEFAULTS, fxGlow: true, fxGrain: true, fxFinish: true });
+    expect(all.filter((f) => f.bright).map((f) => f.kind)).toEqual([0]);
+  });
+
+  it('sends glow angle and finish hue in radians', () => {
+    const [glow, finish] = activeEffects({
+      ...DEFAULTS,
+      fxOrder: 'glow,finish',
+      fxGlow: true,
+      fxGlowAngle: 90,
+      fxGlowAspect: 2,
+      fxFinish: true,
+      fxFinishBlur: 3,
+      fxFinishSharpen: 40,
+      fxFinishHue: -180,
+    });
+    expect(glow.extra[0]).toBe(2);
+    expect(glow.extra[1]).toBeCloseTo(Math.PI / 2);
+    expect(finish.kind).toBe(7);
+    expect(finish.params[0]).toBe(3);
+    expect(finish.params[1]).toBeCloseTo(0.4);
+    expect(finish.params[2]).toBeCloseTo(-Math.PI);
+  });
+});
+
 describe('tint', () => {
   it('sends the colour and opacity, and the blend mode index as extra parameters', () => {
     const p: Params = { ...DEFAULTS, fxTint: true, fxTintColor: '#ff0000', fxTintOpacity: 50, fxTintMode: 'screen' };

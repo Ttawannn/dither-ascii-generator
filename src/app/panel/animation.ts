@@ -7,12 +7,14 @@ import {
   ANIM_KEYS,
   animatableSpec,
   ASCII_SLIDERS,
+  BOIL_AMOUNT_SLIDER,
+  BOIL_PATTERNS,
   BOIL_SLIDER,
   DITHER_SLIDERS,
   FX_SLIDERS,
   type Params,
 } from '../../state';
-import { button, el, freeSelect, freeSlider, section, showWhen, slider, toggle } from '../../ui/controls';
+import { button, el, freeSelect, freeSlider, section, select, showWhen, slider, toggle } from '../../ui/controls';
 import { lanesOf, store } from '../core';
 
 /** Settings a lane can drive, labelled with enough context to tell them apart. */
@@ -142,7 +144,18 @@ const hasKeyLanes = (p: Params) => lanesOf(p).some((l) => l.mode === 'keys');
 export const animationSection = section(
   'Animation',
   toggle('animate', 'Boil', store),
-  showWhen(slider(BOIL_SLIDER, store), store, (p) => p.animate),
+  showWhen(
+    el(
+      'div',
+      {},
+      slider(BOIL_SLIDER, store),
+      select('boilPattern', 'Pattern', BOIL_PATTERNS.map((b) => ({ value: b.id, label: b.label })), store),
+      slider(BOIL_AMOUNT_SLIDER, store),
+      el('div', { class: 'note' }, 'Pattern and amount shape the jitter in error diffusion and ASCII'),
+    ),
+    store,
+    (p) => p.animate,
+  ),
   el('div', { class: 'subhead' }, 'Animate settings'),
   el('div', { class: 'lane-add' }, el('div', { class: 'select' }, laneTarget), addLaneBtn),
   laneList,
