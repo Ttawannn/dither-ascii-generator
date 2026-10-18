@@ -1,3 +1,4 @@
+import { blueNoiseTile } from '../pipeline/bluenoise';
 import { extractPalette, resolvePalette, rgbToHex, type Palette, type RGB } from '../pipeline/palettes';
 import type { Source } from '../source/source';
 import type { Params } from '../state';
@@ -57,7 +58,8 @@ export function drawDither(p: Params): void {
       colors: new Float32Array(pal.colors.flat()),
       levels: pal.levels,
       perceptual: p.perceptual,
-      noise: rt.seed ? 0.06 : 0,
+      noise: rt.seed ? 0.12 * (p.boilAmount / 100) : 0,
+      noiseTile: p.boilPattern === 'blue' ? blueNoiseTile() : null,
       seed: rt.seed,
     });
   } else {

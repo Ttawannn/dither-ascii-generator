@@ -31,6 +31,10 @@ export interface Params {
   // animation
   animate: boolean;
   boilFps: number;
+  /** Boil jitter for error diffusion and ASCII: 'random' (white noise) or 'blue' (blue noise). */
+  boilPattern: string;
+  /** Boil jitter strength, 0..100 (50 = the original amount). */
+  boilAmount: number;
   /** JSON list of animation lanes (see anim.ts). */
   animLanes: string;
   /** Timeline length in seconds for keyframe lanes. */
@@ -84,11 +88,24 @@ export interface Params {
   fxGlowRadius: number;
   fxGlowIntensity: number;
   fxGlowThreshold: number;
+  fxGlowSoftness: number;
+  fxGlowAspect: number;
+  fxGlowAngle: number;
+  fxGlowFalloff: number;
   fxGlitch: boolean;
   fxGlitchAmount: number;
   fxGlitchBlock: number;
+  fxGlitchShift: number;
+  fxGlitchCrush: number;
+  fxGlitchSwap: number;
+  fxGlitchScan: number;
+  fxGlitchScramble: number;
+  fxGlitchInterlace: number;
   fxChroma: boolean;
   fxChromaAmount: number;
+  fxChromaR: number;
+  fxChromaG: number;
+  fxChromaB: number;
   fxScan: boolean;
   fxScanPeriod: number;
   fxScanIntensity: number;
@@ -102,6 +119,10 @@ export interface Params {
   fxTintColor: string;
   fxTintMode: string;
   fxTintOpacity: number;
+  fxFinish: boolean;
+  fxFinishBlur: number;
+  fxFinishSharpen: number;
+  fxFinishHue: number;
   // export
   exportFormat: string;
   exportScale: number;
@@ -127,6 +148,8 @@ export const DEFAULTS: Params = {
   mirror: false,
   animate: false,
   boilFps: 8,
+  boilPattern: 'random',
+  boilAmount: 50,
   animLanes: '[]',
   animDuration: 4,
   algorithm: 'atkinson',
@@ -172,11 +195,24 @@ export const DEFAULTS: Params = {
   fxGlowRadius: 6,
   fxGlowIntensity: 80,
   fxGlowThreshold: 55,
+  fxGlowSoftness: 0,
+  fxGlowAspect: 1,
+  fxGlowAngle: 0,
+  fxGlowFalloff: 1,
   fxGlitch: false,
   fxGlitchAmount: 30,
   fxGlitchBlock: 16,
+  fxGlitchShift: 100,
+  fxGlitchCrush: 100,
+  fxGlitchSwap: 100,
+  fxGlitchScan: 0,
+  fxGlitchScramble: 0,
+  fxGlitchInterlace: 0,
   fxChroma: false,
   fxChromaAmount: 3,
+  fxChromaR: 100,
+  fxChromaG: 0,
+  fxChromaB: -100,
   fxScan: false,
   fxScanPeriod: 3,
   fxScanIntensity: 40,
@@ -190,6 +226,10 @@ export const DEFAULTS: Params = {
   fxTintColor: '#ff7a3d',
   fxTintMode: 'overlay',
   fxTintOpacity: 60,
+  fxFinish: false,
+  fxFinishBlur: 0,
+  fxFinishSharpen: 0,
+  fxFinishHue: 0,
   exportFormat: 'png',
   exportScale: 2,
   exportDuration: 4,
@@ -276,15 +316,30 @@ export const ASCII_SLIDERS: Record<string, SliderSpec> = {
 /** Sliders per post-effect id (see pipeline/effects.ts). */
 export const FX_SLIDERS: Record<string, SliderSpec[]> = {
   glow: [
-    { key: 'fxGlowRadius', label: 'Radius', min: 1, max: 32, step: 1, format: (v) => `${v}px` },
+    { key: 'fxGlowRadius', label: 'Radius', min: 1, max: 200, step: 1, format: (v) => `${v}px` },
     { key: 'fxGlowIntensity', label: 'Intensity', min: 0, max: 200, step: 1, format: pct },
     { key: 'fxGlowThreshold', label: 'Threshold', min: 0, max: 100, step: 1, format: pct },
+    { key: 'fxGlowSoftness', label: 'Softness', min: 0, max: 100, step: 1, format: pct },
+    { key: 'fxGlowAspect', label: 'Stretch', min: 0.25, max: 4, step: 0.05, format: (v) => `${v.toFixed(2)}×` },
+    { key: 'fxGlowAngle', label: 'Angle', min: 0, max: 180, step: 1, format: (v) => `${v}°` },
+    { key: 'fxGlowFalloff', label: 'Falloff', min: 0, max: 3, step: 0.1, format: (v) => v.toFixed(1) },
   ],
   glitch: [
     { key: 'fxGlitchAmount', label: 'Amount', min: 0, max: 100, step: 1, format: pct },
     { key: 'fxGlitchBlock', label: 'Block size', min: 4, max: 64, step: 1, format: (v) => `${v}px` },
+    { key: 'fxGlitchShift', label: 'Block shift', min: 0, max: 100, step: 1, format: pct },
+    { key: 'fxGlitchCrush', label: 'Colour crush', min: 0, max: 100, step: 1, format: pct },
+    { key: 'fxGlitchSwap', label: 'Channel swap', min: 0, max: 100, step: 1, format: pct },
+    { key: 'fxGlitchScan', label: 'Scanline offset', min: 0, max: 100, step: 1, format: pct },
+    { key: 'fxGlitchScramble', label: 'Block scramble', min: 0, max: 100, step: 1, format: pct },
+    { key: 'fxGlitchInterlace', label: 'Interlace', min: 0, max: 100, step: 1, format: pct },
   ],
-  chroma: [{ key: 'fxChromaAmount', label: 'Shift', min: 0, max: 20, step: 0.5, format: (v) => `${v}px` }],
+  chroma: [
+    { key: 'fxChromaAmount', label: 'Max shift', min: 0, max: 40, step: 0.5, format: (v) => `${v}px` },
+    { key: 'fxChromaR', label: 'Red', min: -100, max: 100, step: 1, format: (v) => `${signed(v)}%` },
+    { key: 'fxChromaG', label: 'Green', min: -100, max: 100, step: 1, format: (v) => `${signed(v)}%` },
+    { key: 'fxChromaB', label: 'Blue', min: -100, max: 100, step: 1, format: (v) => `${signed(v)}%` },
+  ],
   scanlines: [
     { key: 'fxScanPeriod', label: 'Line spacing', min: 2, max: 8, step: 1, format: (v) => `${v}px` },
     { key: 'fxScanIntensity', label: 'Darkness', min: 0, max: 100, step: 1, format: pct },
@@ -296,6 +351,25 @@ export const FX_SLIDERS: Record<string, SliderSpec[]> = {
     { key: 'fxGrainSize', label: 'Size', min: 1, max: 4, step: 1, format: (v) => `${v}px` },
   ],
   tint: [{ key: 'fxTintOpacity', label: 'Opacity', min: 0, max: 100, step: 1, format: pct }],
+  finish: [
+    { key: 'fxFinishBlur', label: 'Soften', min: 0, max: 10, step: 0.5, format: (v) => `${v}px` },
+    { key: 'fxFinishSharpen', label: 'Sharpen', min: 0, max: 100, step: 1, format: pct },
+    { key: 'fxFinishHue', label: 'Hue', min: -180, max: 180, step: 1, format: (v) => `${signed(v)}°` },
+  ],
+};
+
+export const BOIL_PATTERNS = [
+  { id: 'random', label: 'Random' },
+  { id: 'blue', label: 'Blue noise' },
+];
+
+export const BOIL_AMOUNT_SLIDER: SliderSpec = {
+  key: 'boilAmount',
+  label: 'Amount',
+  min: 0,
+  max: 100,
+  step: 1,
+  format: pct,
 };
 
 export const BOIL_SLIDER: SliderSpec = {
@@ -334,7 +408,7 @@ export const ANIM_DURATION_SLIDER: SliderSpec = {
   format: (v) => `${v} s`,
 };
 
-export const ANIM_KEYS: (keyof Params)[] = ['animate', 'boilFps', 'animLanes', 'animDuration'];
+export const ANIM_KEYS: (keyof Params)[] = ['animate', 'boilFps', 'boilPattern', 'boilAmount', 'animLanes', 'animDuration'];
 
 export const FX_KEYS: (keyof Params)[] = [
   'fxOrder',
@@ -347,6 +421,7 @@ export const FX_KEYS: (keyof Params)[] = [
   'fxTint',
   'fxTintColor',
   'fxTintMode',
+  'fxFinish',
   ...Object.values(FX_SLIDERS).flatMap((list) => list.map((s) => s.key)),
 ];
 
@@ -390,6 +465,7 @@ const ENUMS: Partial<Record<keyof Params, string[]>> = {
   asciiPalette: ASCII_PALETTES,
   exportFormat: EXPORT_FORMATS.map((f) => f.id),
   fxTintMode: TINT_MODES.map((m) => m.id),
+  boilPattern: BOIL_PATTERNS.map((b) => b.id),
 };
 const COLOR_KEYS: (keyof Params)[] = ['ink', 'paper', 'asciiFg', 'asciiBg', 'fxTintColor'];
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -404,6 +480,7 @@ const RANGES = new Map(
     ...Object.values(EXPORT_SLIDERS),
     ...Object.values(FX_SLIDERS).flat(),
     BOIL_SLIDER,
+    BOIL_AMOUNT_SLIDER,
     ANIM_DURATION_SLIDER,
   ].map((s) => [s.key, s] as const),
 );

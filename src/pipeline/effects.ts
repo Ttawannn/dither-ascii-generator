@@ -9,6 +9,8 @@ export interface PostEffect {
   params: [number, number, number, number];
   /** More parameters for effects that need them (`u_q`). */
   extra: [number, number, number, number];
+  /** Run the bright pass first and pass its mipmapped result as `u_glow` (glow). */
+  bright: boolean;
 }
 
 export interface EffectDef {
@@ -21,7 +23,10 @@ export interface EffectDef {
   animated?: boolean;
   uniforms: (p: Params) => [number, number, number, number];
   extra?: (p: Params) => [number, number, number, number];
+  bright?: boolean;
 }
+
+const rad = (deg: number) => (deg * Math.PI) / 180;
 
 /** Blend modes for the Tint effect, in `u_q.x` order. */
 export const TINT_MODES = [
@@ -39,7 +44,9 @@ export const EFFECTS: EffectDef[] = [
     label: 'Glow',
     enabled: 'fxGlow',
     kind: 0,
-    uniforms: (p) => [p.fxGlowRadius, p.fxGlowIntensity / 100, p.fxGlowThreshold / 100, 0],
+    bright: true,
+    uniforms: (p) => [p.fxGlowRadius, p.fxGlowIntensity / 100, p.fxGlowThreshold / 100, p.fxGlowSoftness / 100],
+    extra: (p) => [p.fxGlowAspect, rad(p.fxGlowAngle), p.fxGlowFalloff, 0],
   },
   {
     id: 'glitch',
@@ -47,14 +54,15 @@ export const EFFECTS: EffectDef[] = [
     enabled: 'fxGlitch',
     kind: 3,
     animated: true,
-    uniforms: (p) => [p.fxGlitchAmount / 100, p.fxGlitchBlock, 0, 0],
+    uniforms: (p) => [p.fxGlitchAmount / 100, p.fxGlitchBlock, p.fxGlitchShift / 100, p.fxGlitchCrush / 100],
+    extra: (p) => [p.fxGlitchSwap / 100, p.fxGlitchScan / 100, p.fxGlitchScramble / 100, p.fxGlitchInterlace / 100],
   },
   {
     id: 'chroma',
     label: 'Chromatic aberration',
     enabled: 'fxChroma',
     kind: 1,
-    uniforms: (p) => [p.fxChromaAmount, 0, 0, 0],
+    uniforms: (p) => [p.fxChromaAmount, p.fxChromaR / 100, p.fxChromaG / 100, p.fxChromaB / 100],
   },
   {
     id: 'scanlines',
@@ -85,6 +93,13 @@ export const EFFECTS: EffectDef[] = [
     kind: 6,
     uniforms: (p) => [...hexToRgb(p.fxTintColor), p.fxTintOpacity / 100],
     extra: (p) => [Math.max(0, TINT_MODES.findIndex((m) => m.id === p.fxTintMode)), 0, 0, 0],
+  },
+  {
+    id: 'finish',
+    label: 'Finish',
+    enabled: 'fxFinish',
+    kind: 7,
+    uniforms: (p) => [p.fxFinishBlur, p.fxFinishSharpen / 100, rad(p.fxFinishHue), 0],
   },
 ];
 
@@ -123,5 +138,5 @@ export function activeEffects(p: Params): PostEffect[] {
     .split(',')
     .map(getEffect)
     .filter((e) => p[e.enabled] === true)
-    .map((e) => ({ kind: e.kind, params: e.uniforms(p), extra: e.extra?.(p) ?? [0, 0, 0, 0] }));
+    .map((e) => ({ kind: e.kind, params: e.uniforms(p), extra: e.extra?.(p) ?? [0, 0, 0, 0], bright: !!e.bright }));
 }

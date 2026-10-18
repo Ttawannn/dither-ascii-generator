@@ -18,6 +18,8 @@ export interface DiffusionJob {
   perceptual?: boolean;
   /** Per-pixel input jitter amplitude (0 = none); used for the boil animation. */
   noise: number;
+  /** 64×64 blue-noise tile to take the jitter from instead of white noise. */
+  noiseTile?: Uint8Array | null;
   seed: number;
 }
 
@@ -44,7 +46,11 @@ export function diffuse(job: DiffusionJob): Uint8Array {
   const buf = new Float32Array(n * ch);
 
   let rng = (job.seed * 2654435761) >>> 0 || 1;
-  const jitter = () => {
+  const tile = job.noiseTile;
+  const tx = (job.seed * 29) & 63;
+  const ty = (job.seed * 47) & 63;
+  const jitter = (i: number) => {
+    if (tile) return (tile[((((i / w) | 0) + ty) & 63) * 64 + (((i % w) + tx) & 63)] / 255 - 0.5) * job.noise;
     rng ^= rng << 13;
     rng ^= rng >>> 17;
     rng ^= rng << 5;
@@ -52,7 +58,7 @@ export function diffuse(job: DiffusionJob): Uint8Array {
   };
 
   for (let i = 0; i < n; i++) {
-    const j = job.noise ? jitter() : 0;
+    const j = job.noise ? jitter(i) : 0;
     const r = data[i * 4] / 255 + j;
     const g = data[i * 4 + 1] / 255 + j;
     const b = data[i * 4 + 2] / 255 + j;

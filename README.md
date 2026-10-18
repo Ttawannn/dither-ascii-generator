@@ -76,20 +76,21 @@ Copy the result to the clipboard, or save it as `.txt` or as a standalone colour
 
 - **Video files:** play/pause (`K`), scrub, loop and sound in the bottom bar. Every frame is processed live.
 - **Webcam:** a live feed with a **Mirror** toggle (on by default for the camera). The browser asks for camera permission first.
-- **Boil:** turn it on under **Animation** to make the dither pattern or ASCII characters shift over time (1–30 fps), even on a still image.
+- **Boil:** turn it on under **Animation** to make the dither pattern or ASCII characters shift over time (1–30 fps), even on a still image. For error diffusion and ASCII you can pick the jitter pattern (random or blue noise, which is more even) and its amount.
 - **Animate settings:** pick almost any slider and press **+ Animate**. Each lane is either an **LFO** (shape, speed, swing around the slider value) or **Keys**, going from one value to another with easing and repeat / ping-pong / once looping over a timeline of 1–30 s. Up to 8 lanes run at once, and still images with lanes export as GIF or video.
 
 ## Effects
 
 Stack post-effects on top of either mode. Turn each one on or off, and use ↑ ↓ to change the order they're applied in:
 
-- **Glow:** bright areas bloom (radius, intensity, threshold)
-- **JPEG glitch:** sliding rows, crushed blocks and swapped channels (amount, block size)
-- **Chromatic aberration:** red and blue split apart towards the edges
+- **Glow:** bright areas bloom, up to 200 px wide (radius, intensity, threshold, softness, stretch, angle, falloff)
+- **JPEG glitch:** an overall amount and block size, plus a share for each kind: block shift, colour crush, channel swap, scanline offset, block scramble, interlace
+- **Chromatic aberration:** red, green and blue each pushed outwards or inwards by their own share of the max shift
 - **Scanlines / CRT:** dark lines, with optional screen curvature
 - **Vignette:** darkened corners
 - **Film grain:** noise in 1–4 px cells
 - **Tint:** a colour blended over the image (multiply, screen, overlay, soft light, colour, colour burn) with opacity
+- **Finish:** soften, sharpen and hue-shift the final image
 
 Glitch and grain move when **Boil** is on. Effects are included in every export, in presets and in share links.
 

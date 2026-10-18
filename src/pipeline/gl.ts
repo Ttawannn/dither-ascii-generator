@@ -3,7 +3,7 @@ import type { AsciiGrid } from '../ascii/grid';
 import { hexToRgb } from './palettes';
 import type { Params } from '../state';
 import { getAlgorithm } from './algorithms';
-import { blueNoise } from './bluenoise';
+import { blueNoiseTile } from './bluenoise';
 import { paletteLab } from './oklab';
 import { baseSpread, MAX_PALETTE, type Palette } from './palettes';
 import fullscreenVert from './shaders/fullscreen.vert?raw';
@@ -67,6 +67,7 @@ function texture(gl: WebGL2RenderingContext, filter: number, wrap: number = gl.C
  *
  * With post-effects on, "canvas" above is really an offscreen texture; endOutput() then runs
  * each effect, ping-ponging between two framebuffers, and the last one draws to the canvas.
+ * Glow first renders a bright pass into its own mipmapped texture and samples that.
  */
 export class Renderer {
   readonly gl: WebGL2RenderingContext;
@@ -84,6 +85,8 @@ export class Renderer {
   private tmpH = 0;
   private postTex: WebGLTexture[] = [];
   private postFbo: WebGLFramebuffer[] = [];
+  private glowTex!: WebGLTexture;
+  private glowFbo!: WebGLFramebuffer;
   private postW = 0;
   private postH = 0;
   private effects: PostEffect[] = [];
@@ -103,7 +106,6 @@ export class Renderer {
   private adjH = 0;
   private hasResult = false;
   private palBuf = new Float32Array(MAX_PALETTE * 3);
-  private static noiseData: Uint8Array | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement) {
     // alpha: true only matters for ASCII with a transparent background; every other pass writes alpha 1.
@@ -142,14 +144,15 @@ export class Renderer {
     this.atlasTex = texture(gl, gl.NEAREST);
     this.noiseTex = texture(gl, gl.NEAREST, gl.REPEAT);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    Renderer.noiseData ??= blueNoise(64);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 64, 64, 0, gl.RED, gl.UNSIGNED_BYTE, Renderer.noiseData);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 64, 64, 0, gl.RED, gl.UNSIGNED_BYTE, blueNoiseTile());
 
     this.fbo = gl.createFramebuffer()!;
     this.tmpTex = texture(gl, gl.NEAREST);
     this.tmpFbo = gl.createFramebuffer()!;
     this.postTex = [texture(gl, gl.LINEAR), texture(gl, gl.LINEAR)];
     this.postFbo = [gl.createFramebuffer()!, gl.createFramebuffer()!];
+    this.glowTex = texture(gl, gl.LINEAR_MIPMAP_LINEAR);
+    this.glowFbo = gl.createFramebuffer()!;
     // Cached sizes and uploads referred to the previous objects.
     this.adjW = this.adjH = 0;
     this.tmpW = this.tmpH = 0;
@@ -383,6 +386,11 @@ export class Renderer {
           gl.bindFramebuffer(gl.FRAMEBUFFER, this.postFbo[i]);
           gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.postTex[i], 0);
         }
+        gl.bindTexture(gl.TEXTURE_2D, this.glowTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.glowFbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.glowTex, 0);
         this.postW = w;
         this.postH = h;
       }
@@ -402,16 +410,32 @@ export class Renderer {
     gl.useProgram(prog);
     gl.activeTexture(gl.TEXTURE0);
     gl.uniform1i(u('u_tex'), 0);
+    gl.uniform1i(u('u_glow'), 1);
     gl.uniform2f(u('u_size'), this.postW, this.postH);
     gl.uniform1f(u('u_seed'), this.effectSeed);
     gl.uniform1i(u('u_opaque'), this.opaque ? 1 : 0);
     let src = 0;
     this.effects.forEach((fx, i) => {
+      gl.uniform4fv(u('u_p'), fx.params);
+      gl.uniform4fv(u('u_q'), fx.extra);
+      if (fx.bright) {
+        // Bright pass into the glow texture, then mipmaps so wide glows can read coarse levels.
+        // Unit 1 must not hold the glow texture while rendering into it (feedback loop).
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.glowFbo);
+        gl.bindTexture(gl.TEXTURE_2D, this.postTex[src]);
+        gl.uniform1i(u('u_kind'), 100);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.glowTex);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.activeTexture(gl.TEXTURE0);
+      }
       gl.bindFramebuffer(gl.FRAMEBUFFER, i === n - 1 ? null : this.postFbo[1 - src]);
       gl.bindTexture(gl.TEXTURE_2D, this.postTex[src]);
       gl.uniform1i(u('u_kind'), fx.kind);
-      gl.uniform4fv(u('u_p'), fx.params);
-      gl.uniform4fv(u('u_q'), fx.extra);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       src = 1 - src;
     });

@@ -94,3 +94,7 @@ export function blueNoise(size = 64, sigma = 1.5): Uint8Array {
   for (let i = 0; i < n; i++) out[i] = Math.floor(((rank[i] + 0.5) / n) * 256);
   return out;
 }
+
+let tile: Uint8Array | null = null;
+/** The shared 64×64 tile (dither shader, boil jitter), generated on first use. */
+export const blueNoiseTile = (): Uint8Array => (tile ??= blueNoise(64));

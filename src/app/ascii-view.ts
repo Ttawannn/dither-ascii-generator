@@ -2,6 +2,7 @@ import { atlasKey, buildAtlas, type Atlas } from '../ascii/atlas';
 import { pickLevels, rampFor } from '../ascii/charsets';
 import { buildGrid, gridToHtml, gridToText, type AsciiGrid } from '../ascii/grid';
 import { modulatedDepth, modulatedOffset } from '../ascii/lfo';
+import { blueNoiseTile } from '../pipeline/bluenoise';
 import { download } from '../export/png';
 import { extractPalette, hexToRgb, resolvePalette, type RGB } from '../pipeline/palettes';
 import type { Source } from '../source/source';
@@ -112,6 +113,8 @@ export function drawAscii(p: Params): void {
     dither: p.asciiDither,
     lightOnDark,
     seed: rt.seed,
+    boilAmount: p.boilAmount / 50,
+    noiseTile: p.boilPattern === 'blue' ? blueNoiseTile() : null,
   });
   lastAscii = { grid, atlas: a };
   renderer.renderAscii(grid, a, p.asciiColor, p.asciiFg, p.asciiBg, p.asciiTransparent);
