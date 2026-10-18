@@ -47,6 +47,26 @@ export interface Params {
   angle: number;
   diffusion: number;
   serpentine: boolean;
+  /** Wave diffusion: threshold sine strength 0..100, wavelength in px, tilt −100..100. */
+  waveStrength: number;
+  waveLength: number;
+  waveBias: number;
+  /** Honeycomb: concentric rings inside each cell, 0..100. */
+  hexRings: number;
+  /** Orbs: radius px, how many, how strongly they shift the threshold, size variation, smear axis. */
+  orbSize: number;
+  orbCount: number;
+  orbIntensity: number;
+  orbRandom: number;
+  orbVertical: boolean;
+  /** Halftone CMYK: screen angle per ink, dot gain, grey component replacement, samples per side. */
+  cmykAngleC: number;
+  cmykAngleM: number;
+  cmykAngleY: number;
+  cmykAngleK: number;
+  cmykDotGain: number;
+  cmykGcr: number;
+  cmykSupersample: number;
   palette: string;
   levels: number;
   ink: string;
@@ -159,6 +179,22 @@ export const DEFAULTS: Params = {
   angle: 45,
   diffusion: 100,
   serpentine: true,
+  waveStrength: 0,
+  waveLength: 12,
+  waveBias: 0,
+  hexRings: 0,
+  orbSize: 40,
+  orbCount: 16,
+  orbIntensity: 60,
+  orbRandom: 50,
+  orbVertical: false,
+  cmykAngleC: 15,
+  cmykAngleM: 75,
+  cmykAngleY: 0,
+  cmykAngleK: 45,
+  cmykDotGain: 20,
+  cmykGcr: 100,
+  cmykSupersample: 2,
   palette: 'mono',
   levels: 2,
   ink: '#000000',
@@ -291,6 +327,21 @@ export const DITHER_SLIDERS: Record<string, SliderSpec> = {
   angle: { key: 'angle', label: 'Angle', min: 0, max: 90, step: 1, format: (v) => `${v}°` },
   diffusion: { key: 'diffusion', label: 'Diffusion', min: 0, max: 100, step: 1, format: pct },
   levels: { key: 'levels', label: 'Levels', min: 2, max: 16, step: 1 },
+  waveStrength: { key: 'waveStrength', label: 'Wave', min: 0, max: 100, step: 1, format: pct },
+  waveLength: { key: 'waveLength', label: 'Wavelength', min: 2, max: 64, step: 1, format: (v) => `${v}px` },
+  waveBias: { key: 'waveBias', label: 'Tilt', min: -100, max: 100, step: 1, format: (v) => `${signed(v)}%` },
+  hexRings: { key: 'hexRings', label: 'Rings', min: 0, max: 100, step: 1, format: pct },
+  orbSize: { key: 'orbSize', label: 'Orb size', min: 2, max: 200, step: 1, format: (v) => `${v}px` },
+  orbCount: { key: 'orbCount', label: 'Count', min: 1, max: 64, step: 1 },
+  orbIntensity: { key: 'orbIntensity', label: 'Intensity', min: 0, max: 100, step: 1, format: pct },
+  orbRandom: { key: 'orbRandom', label: 'Size variation', min: 0, max: 100, step: 1, format: pct },
+  cmykAngleC: { key: 'cmykAngleC', label: 'Cyan angle', min: 0, max: 90, step: 1, format: (v) => `${v}°` },
+  cmykAngleM: { key: 'cmykAngleM', label: 'Magenta angle', min: 0, max: 90, step: 1, format: (v) => `${v}°` },
+  cmykAngleY: { key: 'cmykAngleY', label: 'Yellow angle', min: 0, max: 90, step: 1, format: (v) => `${v}°` },
+  cmykAngleK: { key: 'cmykAngleK', label: 'Black angle', min: 0, max: 90, step: 1, format: (v) => `${v}°` },
+  cmykDotGain: { key: 'cmykDotGain', label: 'Dot gain', min: 0, max: 100, step: 1, format: pct },
+  cmykGcr: { key: 'cmykGcr', label: 'Black replacement', min: 0, max: 100, step: 1, format: pct },
+  cmykSupersample: { key: 'cmykSupersample', label: 'Smoothing', min: 1, max: 4, step: 1, format: (v) => `${v}×${v}` },
 };
 
 export const ASCII_SLIDERS: Record<string, SliderSpec> = {
@@ -390,6 +441,22 @@ export const DITHER_KEYS: (keyof Params)[] = [
   'angle',
   'diffusion',
   'serpentine',
+  'waveStrength',
+  'waveLength',
+  'waveBias',
+  'hexRings',
+  'orbSize',
+  'orbCount',
+  'orbIntensity',
+  'orbRandom',
+  'orbVertical',
+  'cmykAngleC',
+  'cmykAngleM',
+  'cmykAngleY',
+  'cmykAngleK',
+  'cmykDotGain',
+  'cmykGcr',
+  'cmykSupersample',
   'palette',
   'levels',
   'ink',

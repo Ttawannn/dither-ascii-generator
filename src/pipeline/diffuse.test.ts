@@ -35,6 +35,13 @@ const whiteFraction = (out: Uint8Array) => {
   return white / (out.length / 4);
 };
 
+describe('algorithm table', () => {
+  it('gives every GPU algorithm its own shader index', () => {
+    const gpu = ALGORITHMS.filter((a) => a.shader !== undefined).map((a) => a.shader);
+    expect(new Set(gpu).size).toBe(gpu.length);
+  });
+});
+
 describe('error-diffusion kernels', () => {
   it('exist for every diffusion algorithm', () => {
     for (const a of ALGORITHMS.filter((a) => a.group === 'diffusion')) expect(KERNELS[a.id], a.id).toBeDefined();
@@ -99,6 +106,39 @@ describe('diffuse', () => {
     expect(diffuse(job({ noise: 0.06, seed: 3, noiseTile: tile }))).toEqual(blue);
     expect(diffuse(job({ noise: 0.06, seed: 4, noiseTile: tile }))).not.toEqual(blue);
     expect(diffuse(job({ noise: 0.06, seed: 3 }))).not.toEqual(blue);
+  });
+
+  it('wave diffusion: zero strength changes nothing, otherwise draws lines but keeps the tone', () => {
+    const plain = diffuse(job());
+    expect(diffuse(job({ wave: [0, 12, 0] }))).toEqual(plain);
+
+    const waved = diffuse(job({ wave: [1, 12, 0] }));
+    expect(waved).not.toEqual(plain);
+    const white = (d: Uint8Array) => {
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i] === 255) n++;
+      return n / (d.length / 4);
+    };
+    expect(white(waved)).toBeCloseTo(white(plain), 1);
+
+    // Horizontal waves: row coverage swings with the sine, so rows differ far more than with no wave.
+    const rowSpread = (d: Uint8Array) => {
+      const rows = Array.from({ length: SIZE }, (_, y) => {
+        let n = 0;
+        for (let x = 0; x < SIZE; x++) if (d[(y * SIZE + x) * 4] === 255) n++;
+        return n / SIZE;
+      });
+      const m = rows.reduce((a, b) => a + b) / SIZE;
+      return rows.reduce((a, b) => a + (b - m) ** 2, 0) / SIZE;
+    };
+    expect(rowSpread(waved)).toBeGreaterThan(rowSpread(plain) * 4);
+  });
+
+  it('wave diffusion moves with the boil seed and tilts with the bias', () => {
+    const a = diffuse(job({ wave: [1, 12, 0], seed: 1 }));
+    expect(diffuse(job({ wave: [1, 12, 0], seed: 1 }))).toEqual(a);
+    expect(diffuse(job({ wave: [1, 12, 0], seed: 2 }))).not.toEqual(a);
+    expect(diffuse(job({ wave: [1, 12, 0.5], seed: 1 }))).not.toEqual(a);
   });
 
   it('is deterministic for a given boil seed and changes with it', () => {

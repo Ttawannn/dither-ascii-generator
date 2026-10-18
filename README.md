@@ -32,8 +32,10 @@ New to it? Start from one of the **Presets** (Mac 1-bit, Game Boy, Newsprint, Te
 | Group | Algorithms | Extra controls |
 |---|---|---|
 | Ordered | Bayer 2×2, 4×4, 8×8, blue noise | Strength |
-| Pattern | Halftone dot, halftone line, crosshatch | Strength, cell size, angle |
-| Error diffusion | Floyd–Steinberg, Atkinson, Jarvis–Judice–Ninke, Stucki, Burkes, Sierra, Sierra two-row, Sierra Lite | Diffusion amount, serpentine scan |
+| Pattern | Halftone dot, halftone line, crosshatch, honeycomb | Strength, cell size, angle; rings for honeycomb |
+| Pattern | Orbs: soft circles smeared into streaks over a Bayer pattern, drifting with Boil | Strength, orb size, count, intensity, size variation, vertical |
+| Pattern | Halftone CMYK: four ink screens printed over white (ignores the palette) | Cell size, angle per ink, dot gain, black replacement, smoothing |
+| Error diffusion | Floyd–Steinberg, Atkinson, Jarvis–Judice–Ninke, Stucki, Burkes, Sierra, Sierra two-row, Sierra Lite | Diffusion amount, serpentine scan, wave (lines through the threshold, with wavelength and tilt) |
 | Other | Random noise, threshold | Strength / threshold |
 
 **Palettes:**
