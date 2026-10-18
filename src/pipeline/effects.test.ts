@@ -43,6 +43,19 @@ describe('activeEffects', () => {
   });
 });
 
+describe('tint', () => {
+  it('sends the colour and opacity, and the blend mode index as extra parameters', () => {
+    const p: Params = { ...DEFAULTS, fxTint: true, fxTintColor: '#ff0000', fxTintOpacity: 50, fxTintMode: 'screen' };
+    const [fx] = activeEffects(p);
+    expect(fx.params).toEqual([1, 0, 0, 0.5]);
+    expect(fx.extra).toEqual([1, 0, 0, 0]);
+  });
+
+  it('gives other effects zero extra parameters', () => {
+    expect(activeEffects({ ...DEFAULTS, fxGrain: true })[0].extra).toEqual([0, 0, 0, 0]);
+  });
+});
+
 describe('effect definitions', () => {
   it('have unique ids and shader kinds, and sliders for each', () => {
     expect(new Set(EFFECT_IDS).size).toBe(EFFECTS.length);

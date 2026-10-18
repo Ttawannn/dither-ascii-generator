@@ -608,6 +608,10 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
   margin-top: 12px;
 }
 
+.color-row.single {
+  grid-template-columns: 1fr;
+}
+
 .color-input {
   display: grid;
   grid-template-columns: 22px 1fr;

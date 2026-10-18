@@ -37,6 +37,11 @@ describe('sanitize', () => {
     expect(sanitize({ customPalette: Array(40).fill('#123456').join(' ') }).customPalette?.split(' ')).toHaveLength(32);
   });
 
+  it('checks the tint blend mode and colour', () => {
+    expect(sanitize({ fxTintMode: 'screen', fxTintColor: '#00FF00' })).toEqual({ fxTintMode: 'screen', fxTintColor: '#00FF00' });
+    expect(sanitize({ fxTintMode: 'dodge', fxTintColor: 'green' })).toEqual({});
+  });
+
   it('ignores non-objects', () => {
     expect(sanitize(null)).toEqual({});
     expect(sanitize('{"mode":"ascii"}')).toEqual({});

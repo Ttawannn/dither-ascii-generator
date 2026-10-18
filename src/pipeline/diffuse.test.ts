@@ -82,6 +82,15 @@ describe('diffuse', () => {
     expect(red / (SIZE * SIZE)).toBeGreaterThan(0.8);
   });
 
+  it('matches set palettes by perceived lightness when perceptual', () => {
+    const colors = new Float32Array([0, 0, 0, 0.5, 0.5, 0.5, 1, 1, 1]);
+    const data = grey(56); // ≈ 0.22: nearer black in RGB, nearer mid grey in OKLab
+    const rgb = diffuse(job({ kind: 'set', colors, levels: 3, data, strength: 0 }));
+    const lab = diffuse(job({ kind: 'set', colors, levels: 3, data, strength: 0, perceptual: true }));
+    expect(rgb[0]).toBe(0);
+    expect(lab[0]).toBe(128);
+  });
+
   it('is deterministic for a given boil seed and changes with it', () => {
     const a = diffuse(job({ noise: 0.06, seed: 3 }));
     expect(diffuse(job({ noise: 0.06, seed: 3 }))).toEqual(a);

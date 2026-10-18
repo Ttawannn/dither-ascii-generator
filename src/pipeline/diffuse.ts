@@ -1,4 +1,5 @@
 import { KERNELS } from './algorithms';
+import { nearestIndex, paletteLab } from './oklab';
 import type { PaletteKind } from './palettes';
 
 export interface DiffusionJob {
@@ -13,6 +14,8 @@ export interface DiffusionJob {
   kind: PaletteKind;
   colors: Float32Array; // flat RGB 0..1
   levels: number;
+  /** Nearest colour in OKLab instead of weighted RGB (`set` palettes only). */
+  perceptual?: boolean;
   /** Per-pixel input jitter amplitude (0 = none); used for the boil animation. */
   noise: number;
   seed: number;
@@ -62,6 +65,7 @@ export function diffuse(job: DiffusionJob): Uint8Array {
   }
 
   const palSize = colors.length / 3;
+  const lab = kind === 'set' && job.perceptual ? paletteLab(colors) : null;
   const steps = job.levels - 1;
   const q = [0, 0, 0];
   const err = [0, 0, 0];
@@ -88,17 +92,7 @@ export function diffuse(job: DiffusionJob): Uint8Array {
           q[1] = Math.round(g * steps) / steps;
           q[2] = Math.round(b * steps) / steps;
         } else {
-          let best = Infinity;
-          for (let p = 0; p < palSize; p++) {
-            const dr = r - colors[p * 3];
-            const dg = g - colors[p * 3 + 1];
-            const db = b - colors[p * 3 + 2];
-            const e = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
-            if (e < best) {
-              best = e;
-              ci = p;
-            }
-          }
+          ci = nearestIndex(colors, lab, r, g, b);
           q[0] = colors[ci * 3];
           q[1] = colors[ci * 3 + 1];
           q[2] = colors[ci * 3 + 2];

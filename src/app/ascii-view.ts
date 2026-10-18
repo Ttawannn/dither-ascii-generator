@@ -106,6 +106,7 @@ export function drawAscii(p: Params): void {
     edgeBase: a.rampSize,
     offset,
     palette: asciiPaletteColors(p),
+    perceptual: p.perceptual,
     edges: p.asciiEdges,
     edgeThreshold: p.asciiEdgeThreshold / 100,
     dither: p.asciiDither,

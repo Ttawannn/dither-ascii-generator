@@ -1,7 +1,7 @@
 import { ASCII_PALETTES, CHARSETS, COLOR_MODES, FONTS, MAX_INJECT } from './ascii/charsets';
 import { LFO_SHAPES } from './ascii/lfo';
 import { ALGORITHMS } from './pipeline/algorithms';
-import { DEFAULT_ORDER, normalizeOrder } from './pipeline/effects';
+import { DEFAULT_ORDER, normalizeOrder, TINT_MODES } from './pipeline/effects';
 import { parseLanes, serializeLanes } from './anim';
 import { PALETTES, parseColorList, serializeColorList } from './pipeline/palettes';
 
@@ -14,8 +14,18 @@ export interface Params {
   brightness: number;
   contrast: number;
   gamma: number;
+  /** Tone curve bands, -100..100 (0 = unchanged). */
+  shadows: number;
+  midtones: number;
+  highlights: number;
   saturation: number;
+  /** Hue rotation in degrees. */
+  hue: number;
   sharpen: number;
+  /** Blur radius as 0..100 (100 = 3% of the longer side), applied before dithering. */
+  blur: number;
+  /** Edge-preserving smoothing strength, 0..100. */
+  denoise: number;
   invert: boolean;
   mirror: boolean;
   // animation
@@ -41,6 +51,8 @@ export interface Params {
   customPalette: string;
   /** Pick custom palette colours by brightness (dark → light) instead of nearest colour. */
   customRamp: boolean;
+  /** Match nearest palette colours in OKLab instead of weighted RGB. */
+  perceptual: boolean;
   // ascii
   asciiCharset: string;
   asciiCustom: string;
@@ -86,6 +98,10 @@ export interface Params {
   fxGrain: boolean;
   fxGrainAmount: number;
   fxGrainSize: number;
+  fxTint: boolean;
+  fxTintColor: string;
+  fxTintMode: string;
+  fxTintOpacity: number;
   // export
   exportFormat: string;
   exportScale: number;
@@ -99,8 +115,14 @@ export const DEFAULTS: Params = {
   brightness: 0,
   contrast: 0,
   gamma: 1,
+  shadows: 0,
+  midtones: 0,
+  highlights: 0,
   saturation: 100,
+  hue: 0,
   sharpen: 0,
+  blur: 0,
+  denoise: 0,
   invert: false,
   mirror: false,
   animate: false,
@@ -120,6 +142,7 @@ export const DEFAULTS: Params = {
   paper: '#ffffff',
   customPalette: '#0d0b14 #3b2a5c #b0305c #f0a04b #f4ecd8',
   customRamp: false,
+  perceptual: false,
   asciiCharset: 'standard',
   asciiCustom: ' .oO@',
   asciiColumns: 120,
@@ -163,6 +186,10 @@ export const DEFAULTS: Params = {
   fxGrain: false,
   fxGrainAmount: 25,
   fxGrainSize: 1,
+  fxTint: false,
+  fxTintColor: '#ff7a3d',
+  fxTintMode: 'overlay',
+  fxTintOpacity: 60,
   exportFormat: 'png',
   exportScale: 2,
   exportDuration: 4,
@@ -207,8 +234,14 @@ export const ADJUST_SLIDERS: SliderSpec[] = [
   { key: 'brightness', label: 'Brightness', min: -100, max: 100, step: 1, format: signed },
   { key: 'contrast', label: 'Contrast', min: -100, max: 100, step: 1, format: signed },
   { key: 'gamma', label: 'Gamma', min: 0.2, max: 3, step: 0.01, format: (v) => v.toFixed(2) },
+  { key: 'shadows', label: 'Shadows', min: -100, max: 100, step: 1, format: signed },
+  { key: 'midtones', label: 'Midtones', min: -100, max: 100, step: 1, format: signed },
+  { key: 'highlights', label: 'Highlights', min: -100, max: 100, step: 1, format: signed },
   { key: 'saturation', label: 'Saturation', min: 0, max: 200, step: 1, format: pct },
+  { key: 'hue', label: 'Hue', min: -180, max: 180, step: 1, format: (v) => `${signed(v)}°` },
   { key: 'sharpen', label: 'Sharpen', min: 0, max: 100, step: 1 },
+  { key: 'blur', label: 'Blur', min: 0, max: 100, step: 1 },
+  { key: 'denoise', label: 'Denoise', min: 0, max: 100, step: 1 },
 ];
 
 export const DITHER_SLIDERS: Record<string, SliderSpec> = {
@@ -262,6 +295,7 @@ export const FX_SLIDERS: Record<string, SliderSpec[]> = {
     { key: 'fxGrainAmount', label: 'Amount', min: 0, max: 100, step: 1, format: pct },
     { key: 'fxGrainSize', label: 'Size', min: 1, max: 4, step: 1, format: (v) => `${v}px` },
   ],
+  tint: [{ key: 'fxTintOpacity', label: 'Opacity', min: 0, max: 100, step: 1, format: pct }],
 };
 
 export const BOIL_SLIDER: SliderSpec = {
@@ -288,6 +322,7 @@ export const DITHER_KEYS: (keyof Params)[] = [
   'paper',
   'customPalette',
   'customRamp',
+  'perceptual',
 ];
 
 export const ANIM_DURATION_SLIDER: SliderSpec = {
@@ -309,6 +344,9 @@ export const FX_KEYS: (keyof Params)[] = [
   'fxScan',
   'fxVignette',
   'fxGrain',
+  'fxTint',
+  'fxTintColor',
+  'fxTintMode',
   ...Object.values(FX_SLIDERS).flatMap((list) => list.map((s) => s.key)),
 ];
 
@@ -351,8 +389,9 @@ const ENUMS: Partial<Record<keyof Params, string[]>> = {
   asciiDepthLfo: LFO_SHAPES.map((s) => s.id),
   asciiPalette: ASCII_PALETTES,
   exportFormat: EXPORT_FORMATS.map((f) => f.id),
+  fxTintMode: TINT_MODES.map((m) => m.id),
 };
-const COLOR_KEYS: (keyof Params)[] = ['ink', 'paper', 'asciiFg', 'asciiBg'];
+const COLOR_KEYS: (keyof Params)[] = ['ink', 'paper', 'asciiFg', 'asciiBg', 'fxTintColor'];
 const HEX = /^#[0-9a-f]{6}$/i;
 
 const STORAGE_KEY = 'dag.params.v1';

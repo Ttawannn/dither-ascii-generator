@@ -22,7 +22,7 @@ Your files never leave your device. All processing happens in the browser.
 
 1. **Load a source.** Drag an image or video onto the page, paste an image with `Ctrl+V`, click **Upload**, or start the **Webcam**. **Sample** loads a built-in test image.
 2. **Pick a mode.** Use the **Dither** or **ASCII** tabs at the top, or press `D` / `A`.
-3. **Tune it.** Use **Adjust** for brightness, contrast, gamma, saturation, sharpen and invert, then **Effect** for the mode-specific settings. Hold `Space` (or the **Original** button) to compare with the source.
+3. **Tune it.** Use **Adjust** for brightness, contrast, gamma, a shadows / midtones / highlights tone curve, saturation, hue, sharpen, blur, denoise and invert, then **Effect** for the mode-specific settings. Hold `Space` (or the **Original** button) to compare with the source.
 4. **Export.** Choose a format in the **Export** section and press **Export**.
 
 New to it? Start from one of the **Presets** (Mac 1-bit, Game Boy, Newsprint, Terminal, Braille, Matrix…) and tweak from there.
@@ -40,6 +40,7 @@ New to it? Start from one of the **Presets** (Mac 1-bit, Game Boy, Newsprint, Te
 - Mono / Duotone: any two colours, 2–16 levels, with quick colour presets
 - Retro systems: Game Boy, CGA, PICO-8, Commodore 64
 - Custom: 2–32 colours you pick, paste as hex, or import from a palette file (JSON, .hex, GIMP .gpl), matched by nearest colour or by brightness
+- **Perceptual match** (for palettes picked by nearest colour): compares colours in OKLab, so lightness is kept closer to the original
 - RGB levels: per-channel colour steps
 - From image: median-cut extraction of 2–16 colours
 
@@ -88,6 +89,7 @@ Stack post-effects on top of either mode. Turn each one on or off, and use ↑ �
 - **Scanlines / CRT:** dark lines, with optional screen curvature
 - **Vignette:** darkened corners
 - **Film grain:** noise in 1–4 px cells
+- **Tint:** a colour blended over the image (multiply, screen, overlay, soft light, colour, colour burn) with opacity
 
 Glitch and grain move when **Boil** is on. Effects are included in every export, in presets and in share links.
 

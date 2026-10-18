@@ -4,6 +4,7 @@ import { hexToRgb } from './palettes';
 import type { Params } from '../state';
 import { getAlgorithm } from './algorithms';
 import { blueNoise } from './bluenoise';
+import { paletteLab } from './oklab';
 import { baseSpread, MAX_PALETTE, type Palette } from './palettes';
 import fullscreenVert from './shaders/fullscreen.vert?raw';
 import adjustFrag from './shaders/adjust.frag?raw';
@@ -11,6 +12,7 @@ import ditherFrag from './shaders/dither.frag?raw';
 import blitFrag from './shaders/blit.frag?raw';
 import asciiFrag from './shaders/ascii.frag?raw';
 import postFrag from './shaders/post.frag?raw';
+import filterFrag from './shaders/filter.frag?raw';
 import type { PostEffect } from './effects';
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
@@ -57,6 +59,7 @@ function texture(gl: WebGL2RenderingContext, filter: number, wrap: number = gl.C
 /**
  * Passes:
  *   source texture ──adjust──▶ adjusted FBO (output resolution)
+ *   adjusted ──filter H──▶ temp ──filter V──▶ adjusted   (denoise, then blur; only when on)
  *   adjusted ──dither──▶ canvas            (ordered / pattern / threshold, GPU)
  *   adjusted ──readPixels──▶ worker ──▶ result texture ──blit──▶ canvas   (error diffusion, CPU)
  *   adjusted ──blit──▶ canvas              (original view)
@@ -74,6 +77,11 @@ export class Renderer {
   private blit!: Program;
   private ascii!: Program;
   private post!: Program;
+  private filter!: Program;
+  private tmpTex!: WebGLTexture;
+  private tmpFbo!: WebGLFramebuffer;
+  private tmpW = 0;
+  private tmpH = 0;
   private postTex: WebGLTexture[] = [];
   private postFbo: WebGLFramebuffer[] = [];
   private postW = 0;
@@ -124,6 +132,7 @@ export class Renderer {
     this.blit = program(gl, fullscreenVert, blitFrag);
     this.ascii = program(gl, fullscreenVert, asciiFrag);
     this.post = program(gl, fullscreenVert, postFrag);
+    this.filter = program(gl, fullscreenVert, filterFrag);
 
     // Mipmaps give a clean box-filtered downsample when pixel size > 1.
     this.srcTex = texture(gl, gl.LINEAR_MIPMAP_LINEAR);
@@ -137,10 +146,13 @@ export class Renderer {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 64, 64, 0, gl.RED, gl.UNSIGNED_BYTE, Renderer.noiseData);
 
     this.fbo = gl.createFramebuffer()!;
+    this.tmpTex = texture(gl, gl.NEAREST);
+    this.tmpFbo = gl.createFramebuffer()!;
     this.postTex = [texture(gl, gl.LINEAR), texture(gl, gl.LINEAR)];
     this.postFbo = [gl.createFramebuffer()!, gl.createFramebuffer()!];
     // Cached sizes and uploads referred to the previous objects.
     this.adjW = this.adjH = 0;
+    this.tmpW = this.tmpH = 0;
     this.postW = this.postH = 0;
     this.atlasKey = '';
     this.hasResult = false;
@@ -196,10 +208,50 @@ export class Renderer {
     gl.uniform1f(u('u_gamma'), p.gamma);
     gl.uniform1f(u('u_saturation'), p.saturation / 100);
     gl.uniform1f(u('u_sharpen'), p.sharpen / 100);
+    gl.uniform3f(u('u_tone'), p.shadows / 100, p.midtones / 100, p.highlights / 100);
+    gl.uniform1f(u('u_hue'), (p.hue * Math.PI) / 180);
     gl.uniform1i(u('u_invert'), p.invert ? 1 : 0);
     gl.uniform1i(u('u_bypass'), bypass ? 1 : 0);
     gl.uniform1i(u('u_mirror'), p.mirror ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    if (bypass) return;
+    const amount = p.denoise / 100;
+    if (amount > 0) this.filterAdjusted(1, 1 + 3 * amount, 0.02 + 0.18 * amount);
+    const radius = (p.blur / 100) * 0.03 * Math.max(w, h);
+    if (radius >= 0.5) this.filterAdjusted(0, radius, 0);
+  }
+
+  /** Separable filter on the adjusted image: horizontal into the temp target, vertical back. */
+  private filterAdjusted(mode: number, radius: number, range: number): void {
+    const gl = this.gl;
+    const [w, h] = [this.adjW, this.adjH];
+    if (w !== this.tmpW || h !== this.tmpH) {
+      gl.bindTexture(gl.TEXTURE_2D, this.tmpTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.tmpFbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.tmpTex, 0);
+      this.tmpW = w;
+      this.tmpH = h;
+    }
+    const { prog, u } = this.filter;
+    gl.useProgram(prog);
+    gl.viewport(0, 0, w, h);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1i(u('u_tex'), 0);
+    gl.uniform1i(u('u_mode'), mode);
+    gl.uniform1f(u('u_radius'), radius);
+    gl.uniform1f(u('u_range'), range);
+    const passes: [WebGLTexture, WebGLFramebuffer, number, number][] = [
+      [this.adjTex, this.tmpFbo, 1, 0],
+      [this.tmpTex, this.fbo, 0, 1],
+    ];
+    for (const [src, dst, dx, dy] of passes) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, dst);
+      gl.bindTexture(gl.TEXTURE_2D, src);
+      gl.uniform2i(u('u_dir'), dx, dy);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
   }
 
   /** Pixels of the adjusted image (RGBA, bottom row first). */
@@ -250,7 +302,7 @@ export class Renderer {
     gl.uniform1f(u('u_angle'), (p.angle * Math.PI) / 180);
     gl.uniform1ui(u('u_seed'), seed + 1);
     gl.uniform2f(u('u_offset'), (seed * 29) % 64, (seed * 47) % 64);
-    this.setPalette(u, palette);
+    this.setPalette(u, palette, p.perceptual);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.endOutput();
   }
@@ -359,12 +411,13 @@ export class Renderer {
       gl.bindTexture(gl.TEXTURE_2D, this.postTex[src]);
       gl.uniform1i(u('u_kind'), fx.kind);
       gl.uniform4fv(u('u_p'), fx.params);
+      gl.uniform4fv(u('u_q'), fx.extra);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       src = 1 - src;
     });
   }
 
-  private setPalette(u: Program['u'], p: Palette): void {
+  private setPalette(u: Program['u'], p: Palette, perceptual: boolean): void {
     const gl = this.gl;
     const kind = p.kind === 'ramp' ? 0 : p.kind === 'set' ? 1 : 2;
     const count = Math.min(p.colors.length, MAX_PALETTE);
@@ -372,6 +425,9 @@ export class Renderer {
     for (let i = 0; i < count; i++) this.palBuf.set(p.colors[i], i * 3);
     gl.uniform1i(u('u_kind'), kind);
     gl.uniform3fv(u('u_pal'), this.palBuf);
+    const lab = perceptual && kind === 1;
+    gl.uniform1i(u('u_perceptual'), lab ? 1 : 0);
+    if (lab) gl.uniform3fv(u('u_palLab'), paletteLab(this.palBuf));
     gl.uniform1i(u('u_palSize'), count);
     gl.uniform1f(u('u_levels'), p.levels);
   }
