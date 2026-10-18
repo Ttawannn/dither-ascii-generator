@@ -37,6 +37,8 @@ import {
   ADJUST_KEYS,
   ADJUST_SLIDERS,
   ASCII_KEYS,
+  ANIM_DURATION_SLIDER,
+  ANIM_KEYS,
   ASCII_SLIDERS,
   BOIL_SLIDER,
   DITHER_KEYS,
@@ -47,15 +49,19 @@ import {
   FX_SLIDERS,
   isAnimatedFormat,
   Store,
+  animatableSpec,
   type BooleanKey,
   type Params,
 } from './state';
 import { activeEffects, EFFECTS, moveEffect, normalizeOrder } from './pipeline/effects';
+import { applyAnimation, EASES, LOOPS, MAX_LANES, newLane, parseLanes, serializeLanes, type Lane } from './anim';
 import {
   button,
   colorInput,
   colorPresets,
   el,
+  freeSelect,
+  freeSlider,
   section,
   segmented,
   select,
@@ -72,6 +78,13 @@ const MAX_SOURCE_SIZE = 4096;
 const MAX_SWATCHES = 32;
 
 const store = new Store();
+
+// Parsed animation lanes, cached per stored string.
+let lanesCache: { json: string; lanes: Lane[] } = { json: '', lanes: [] };
+function lanesOf(p: Params): Lane[] {
+  if (lanesCache.json !== p.animLanes) lanesCache = { json: p.animLanes, lanes: parseLanes(p.animLanes, animatableSpec) };
+  return lanesCache.lanes;
+}
 const group = (p: Params) => getAlgorithm(p.algorithm).group;
 
 // ---------- DOM ----------
@@ -113,6 +126,7 @@ const header = el(
     store,
   ),
   el('div', { class: 'hint' }, 'Hold Space — original'),
+  themeButton(),
   button('?', () => toggleHelp(), 'btn small help-btn'),
 );
 
@@ -263,11 +277,147 @@ const effectsSection = section(
 );
 effectsSection.head.append(button('Reset', () => store.reset(FX_KEYS), 'link'));
 
+// ---------- animation lanes ----------
+
+/** Settings a lane can drive, labelled with enough context to tell them apart. */
+const LANE_TARGETS = [
+  ...ADJUST_SLIDERS.map((s) => ({ group: 'Adjust', key: s.key, label: s.label })),
+  ...Object.values(DITHER_SLIDERS).map((s) => ({ group: 'Dither', key: s.key, label: s.label })),
+  ...Object.entries(ASCII_SLIDERS).map(([name, s]) => ({
+    group: 'ASCII',
+    key: s.key,
+    label: /^offset./.test(name) ? `Offset LFO · ${s.label}` : /^depth./.test(name) ? `Depth LFO · ${s.label}` : s.label,
+  })),
+  ...EFFECTS.flatMap((fx) => FX_SLIDERS[fx.id].map((s) => ({ group: 'Effects', key: s.key, label: `${fx.label} · ${s.label}` }))),
+].filter((t) => animatableSpec(t.key));
+const targetLabel = (key: string) => LANE_TARGETS.find((t) => t.key === key)?.label ?? key;
+
+const laneTarget = el('select', { 'aria-label': 'Setting to animate' });
+for (const group of [...new Set(LANE_TARGETS.map((t) => t.group))]) {
+  const og = el('optgroup', { label: group });
+  for (const t of LANE_TARGETS.filter((x) => x.group === group)) og.append(el('option', { value: t.key }, t.label));
+  laneTarget.append(og);
+}
+laneTarget.value = 'contrast';
+const addLaneBtn = button('+ Animate', () => addLane(), 'btn small');
+const laneList = el('div', { class: 'lane-list' });
+
+// Edits from a lane's own sliders must not rebuild the cards (that would drop the slider being dragged).
+let editingLanes = false;
+function setLanes(lanes: Lane[], rebuild: boolean): void {
+  editingLanes = !rebuild;
+  store.set('animLanes', serializeLanes(lanes));
+  editingLanes = false;
+}
+const updateLane = (id: number, patch: Partial<Lane>, rebuild = false) =>
+  setLanes(
+    lanesOf(store.params).map((l) => (l.id === id ? { ...l, ...patch } : l)),
+    rebuild,
+  );
+
+function addLane(): void {
+  const key = laneTarget.value as Lane['key'];
+  const spec = animatableSpec(key);
+  const lanes = lanesOf(store.params);
+  if (!spec || lanes.length >= MAX_LANES || lanes.some((l) => l.key === key)) return;
+  const id = lanes.reduce((m, l) => Math.max(m, l.id), 0) + 1;
+  setLanes([...lanes, newLane(id, key, spec, store.params[key])], true);
+}
+
+function laneCard(lane: Lane): HTMLElement {
+  const spec = animatableSpec(lane.key)!;
+  const modeBtn = (mode: Lane['mode'], label: string) => {
+    const b = button(label, () => updateLane(lane.id, { mode }, true), lane.mode === mode ? 'chip active' : 'chip');
+    b.setAttribute('aria-pressed', `${lane.mode === mode}`);
+    return b;
+  };
+  const remove = button('×', () => setLanes(lanesOf(store.params).filter((l) => l.id !== lane.id), true), 'chip chip-icon');
+  remove.title = 'Stop animating';
+  const useCurrent = (field: 'from' | 'to') => {
+    const b = button('Use current', () => updateLane(lane.id, { [field]: store.params[lane.key] }, true), 'link');
+    b.title = 'Set to the slider’s current value';
+    return b;
+  };
+  const range = { min: spec.min, max: spec.max, step: spec.step, format: spec.format };
+
+  const body =
+    lane.mode === 'lfo'
+      ? [
+          freeSelect(
+            'Shape',
+            LFO_SHAPES.filter((l) => l.id !== 'off').map((l) => ({ value: l.id, label: l.label })),
+            lane.shape,
+            (v) => updateLane(lane.id, { shape: v }),
+          ),
+          freeSlider(
+            { label: 'Speed', min: 0.05, max: 4, step: 0.05, format: (v) => `${v.toFixed(2)} Hz` },
+            lane.hz,
+            (v) => updateLane(lane.id, { hz: v }),
+          ),
+          freeSlider(
+            { label: 'Swing', min: 0, max: 100, step: 1, format: (v) => `±${v / 2}%` },
+            Math.round(lane.amount * 100),
+            (v) => updateLane(lane.id, { amount: v / 100 }),
+          ),
+        ]
+      : [
+          el('div', { class: 'lane-key' }, freeSlider({ ...range, label: 'From' }, lane.from, (v) => updateLane(lane.id, { from: v })), useCurrent('from')),
+          el('div', { class: 'lane-key' }, freeSlider({ ...range, label: 'To' }, lane.to, (v) => updateLane(lane.id, { to: v })), useCurrent('to')),
+          freeSelect(
+            'Easing',
+            EASES.map((e) => ({ value: e.id, label: e.label })),
+            lane.ease,
+            (v) => updateLane(lane.id, { ease: v as Lane['ease'] }),
+          ),
+          freeSelect(
+            'Loop',
+            LOOPS.map((l) => ({ value: l.id, label: l.label })),
+            lane.loop,
+            (v) => updateLane(lane.id, { loop: v as Lane['loop'] }),
+          ),
+        ];
+
+  return el(
+    'div',
+    { class: 'lane-card' },
+    el(
+      'div',
+      { class: 'lane-head' },
+      el('span', { class: 'lane-title' }, targetLabel(lane.key)),
+      modeBtn('lfo', 'LFO'),
+      modeBtn('keys', 'Keys'),
+      remove,
+    ),
+    el('div', { class: 'lane-body' }, ...body),
+  );
+}
+
+function renderLanes(): void {
+  const lanes = lanesOf(store.params);
+  laneList.replaceChildren(...lanes.map(laneCard));
+  for (const opt of laneTarget.querySelectorAll('option')) opt.disabled = lanes.some((l) => l.key === opt.value);
+  addLaneBtn.disabled = lanes.length >= MAX_LANES;
+}
+store.subscribe((_, changed) => changed === 'animLanes' && !editingLanes && renderLanes());
+renderLanes();
+
+const hasKeyLanes = (p: Params) => lanesOf(p).some((l) => l.mode === 'keys');
+
 const animation = section(
   'Animation',
   toggle('animate', 'Boil', store),
   showWhen(slider(BOIL_SLIDER, store), store, (p) => p.animate),
+  el('div', { class: 'subhead' }, 'Animate settings'),
+  el('div', { class: 'lane-add' }, el('div', { class: 'select' }, laneTarget), addLaneBtn),
+  laneList,
+  showWhen(slider(ANIM_DURATION_SLIDER, store), store, hasKeyLanes),
+  showWhen(
+    el('div', { class: 'note lane-tip' }, 'Export the same duration as the timeline for a seamless loop.'),
+    store,
+    hasKeyLanes,
+  ),
 );
+animation.head.append(button('Reset', () => store.reset(ANIM_KEYS), 'link'));
 
 const adjust = section(
   'Adjust',
@@ -493,6 +643,7 @@ const SHORTCUTS: [string, string][] = [
   ['D · A', 'Dither · ASCII mode'],
   ['K', 'Play / pause video'],
   ['B', 'Toggle boil'],
+  ['T', 'Dark / parchment theme'],
   ['O', 'Open file'],
   ['E', 'Export'],
   ['Ctrl+V', 'Paste image'],
@@ -563,8 +714,7 @@ let frame = 0;
 // Median-cut palette for "From image", cached per source + colour count (first frame for videos).
 let extracted: { source: Source; count: number; colors: RGB[] } | null = null;
 
-function currentPalette(): Palette {
-  const p = store.params;
+function currentPalette(p: Params = store.params): Palette {
   if (p.palette === 'image' && current && (extracted?.source !== current || extracted.count !== p.levels)) {
     const { element, width, height } = current;
     extracted = { source: current, count: p.levels, colors: extractPalette(element, width, height, p.levels) };
@@ -640,6 +790,9 @@ let atlasLoading = '';
 let clockOverride: number | null = null;
 const clock = () => clockOverride ?? performance.now() / 1000;
 
+/** The params to render with: slider values, with animated settings at the current clock. */
+const animatedParams = (p: Params) => applyAnimation(p, lanesOf(p), clock(), animatableSpec);
+
 const lfoActive = (p: Params) =>
   p.mode === 'ascii' && notBraille(p) && (p.asciiOffsetLfo !== 'off' || p.asciiDepthLfo !== 'off');
 
@@ -647,14 +800,14 @@ const lfoActive = (p: Params) =>
 let lfoFrame = 0;
 function syncLfoLoop(): void {
   cancelAnimationFrame(lfoFrame);
-  if (!lfoActive(store.params)) return;
+  if (!lfoActive(store.params) && !lanesOf(store.params).length) return;
   const tick = () => {
     if (!exporting) requestRender();
     lfoFrame = requestAnimationFrame(tick);
   };
   lfoFrame = requestAnimationFrame(tick);
 }
-const LFO_KEYS: (keyof Params)[] = ['mode', 'asciiCharset', 'asciiOffsetLfo', 'asciiDepthLfo'];
+const LFO_KEYS: (keyof Params)[] = ['mode', 'asciiCharset', 'asciiOffsetLfo', 'asciiDepthLfo', 'animLanes'];
 store.subscribe((_, changed) => LFO_KEYS.includes(changed) && syncLfoLoop());
 
 /** Effective depth and offset (fraction of the ramp) at the current clock. */
@@ -797,7 +950,7 @@ const transparentAscii = (p: Params) => p.asciiTransparent && p.asciiColor !== '
 
 function draw(): void {
   if (!renderer.hasSource || !current || renderer.contextLost) return;
-  const p = store.params;
+  const p = animatedParams(store.params);
   if (isVideo(current) && current.element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
     renderer.setSource(current.element, current.width, current.height);
   }
@@ -831,7 +984,7 @@ function drawDither(p: Params): void {
   if (group(p) === 'diffusion') {
     // Keep the previous frame on screen while the worker runs; only redraw now if a resize would blank it.
     if (!renderer.canvasMatches) renderer.renderResult();
-    const pal = currentPalette();
+    const pal = currentPalette(p);
     diffuser.request({
       width: ow,
       height: oh,
@@ -846,7 +999,7 @@ function drawDither(p: Params): void {
       seed,
     });
   } else {
-    renderer.renderDither(p, currentPalette(), seed);
+    renderer.renderDither(p, currentPalette(p), seed);
     info.status.textContent = '';
   }
 }
@@ -953,6 +1106,8 @@ function syncExportInfo(): void {
       : `→ ${size} · ${plan.count} frames · ${(plan.count / plan.fps).toFixed(1)} s${alphaNote}`;
 }
 const EXPORT_KEYS: (keyof Params)[] = [
+  'animLanes',
+  'animDuration',
   'exportFormat',
   'exportScale',
   'exportDuration',
@@ -970,8 +1125,8 @@ function animationLength(): { count: number; fps: number } | string {
   const p = store.params;
   const fps = p.exportFps;
   if (!current) return 'Load a source first';
-  if (current.kind === 'image' && !p.animate && !lfoActive(p)) {
-    return 'Static image — turn on Boil or an ASCII LFO, or load a video';
+  if (current.kind === 'image' && !p.animate && !lfoActive(p) && !lanesOf(p).length) {
+    return 'Static image — animate a setting, turn on Boil, or load a video';
   }
   let seconds = p.exportDuration;
   if (current.kind === 'video') {
@@ -1146,6 +1301,38 @@ window.addEventListener('paste', (e) => {
   if (file) void openFile(file);
 });
 
+// ---------- theme ----------
+
+const THEMES = ['dark', 'parchment'] as const;
+type Theme = (typeof THEMES)[number];
+const THEME_COLOR: Record<Theme, string> = { dark: '#0a0a0a', parchment: '#efe6d2' };
+
+function currentTheme(): Theme {
+  return document.documentElement.dataset.theme === 'parchment' ? 'parchment' : 'dark';
+}
+
+/** Switch the UI theme without reloading; remembered per browser (it is not part of a look or share link). */
+function setTheme(theme: Theme): void {
+  if (theme === 'dark') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme]);
+  try {
+    localStorage.setItem('dag.theme', theme);
+  } catch {
+    // Storage blocked: the theme just won't be remembered.
+  }
+}
+
+function themeButton(): HTMLButtonElement {
+  const b = button('◐', () => {
+    setTheme(currentTheme() === 'dark' ? 'parchment' : 'dark');
+    sync();
+  }, 'btn small theme-btn');
+  const sync = () => (b.title = currentTheme() === 'dark' ? 'Switch to the parchment theme (T)' : 'Switch to the dark theme (T)');
+  sync();
+  return b;
+}
+
 /** Press-and-hold comparison for touch screens (Space does the same on a keyboard). */
 function holdOriginalButton(): HTMLButtonElement {
   const b = button('Original', () => {}, 'btn small hold');
@@ -1191,6 +1378,8 @@ window.addEventListener('keydown', (e) => {
     fileInput.click();
   } else if (e.key === 'e') {
     void onExportClick();
+  } else if (e.key === 't') {
+    setTheme(currentTheme() === 'dark' ? 'parchment' : 'dark');
   } else if (e.key === '?') {
     toggleHelp();
   } else if (e.key === 'Escape') {
@@ -1206,6 +1395,8 @@ window.addEventListener('keyup', (e) => {
 window.addEventListener('blur', () => setOriginal(false));
 
 // ---------- startup ----------
+
+document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[currentTheme()]);
 
 function applyShareLink(): void {
   const shared = decodeShare(location.hash);

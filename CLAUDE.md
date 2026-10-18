@@ -13,7 +13,7 @@ npx vitest run src/ascii/grid.test.ts   # a single test file
 npx vitest run -t "share links"         # tests whose name matches
 ```
 
-Tests (`src/**/*.test.ts`, Node environment) cover only the pure logic: `sanitize`, presets and share links, palettes, error-diffusion kernels and `diffuse()`, the character library (`rampFor`, `pickLevels`), LFOs, effect order and parameters, and the ASCII grid and text export. Anything touching WebGL or the DOM has no tests; verify it in a browser. The deploy workflow runs `npm test` before building, so a failing test blocks the deploy. There is no linter. `/?sample` loads the built-in procedural test image on start, and `#s=<base64url>` applies a shared look.
+Tests (`src/**/*.test.ts`, Node environment) cover only the pure logic: `sanitize`, presets and share links, palettes, error-diffusion kernels and `diffuse()`, the character library (`rampFor`, `pickLevels`), LFOs, effect order and parameters, animation lanes, and the ASCII grid and text export. Anything touching WebGL or the DOM has no tests; verify it in a browser. The deploy workflow runs `npm test` before building, so a failing test blocks the deploy. There is no linter. `/?sample` loads the built-in procedural test image on start, and `#s=<base64url>` applies a shared look.
 
 TypeScript is v7 (the native compiler) and Vite is v8.
 
@@ -69,6 +69,11 @@ every output pass ─(effects on)─▶ post texture ─post.frag × N (ping-pon
 ### Sources and animation
 - `src/source/` exposes one `Source` shape for images (`ImageBitmap`), video files and webcam (`HTMLVideoElement`). Video elements are attached to the DOM (invisible) so browsers keep decoding. `draw()` re-uploads the current video frame each time, and `requestVideoFrameCallback` drives re-renders.
 - "Boil" is a global `seed` in `main.ts` (0 = static) advanced by a timer. It shifts the ordered-dither pattern (`u_offset`), jitters error-diffusion input (worker `noise`), and jitters ASCII glyph choice.
+- Animation lanes (`anim.ts`) drive any setting in `ANIMATABLE` (`state.ts`) with an LFO or two keyframes. They are stored as JSON in the string param `animLanes`, which `sanitize()` repairs with `parseLanes()`. `draw()` never renders `store.params` directly: it renders `animatedParams(store.params)`, where the animated values are computed at `clock()`. Code on the render path must use the `p` it is given, not `store.params`, or animation won't reach it. Sliders keep showing their own (unanimated) value.
+- Lane cards edit the JSON without rebuilding themselves (`editingLanes`), so a slider being dragged keeps its pointer; any outside change (preset, share link, Reset) rebuilds them.
+
+### UI theme
+- Colours are CSS custom properties on `:root`; the parchment theme overrides them under `:root[data-theme='parchment']` and swaps `--display` (logo and section titles) to Grenze Gotisch. Use the tokens (`--dot`, `--overlay`, `--scrim`, `--checker-*`…) rather than hard-coded colours. The theme is a per-browser preference in `localStorage['dag.theme']`, applied by an inline script in `index.html` before first paint. It is deliberately not a `Params` key, so presets and share links don't carry it.
 
 ### Export (`src/export/`)
 - PNG and SVG come from the canvas. Animated formats (`animation.ts`: GIF via gifenc, WebM/MP4 via mediabunny + WebCodecs) render frames deterministically through a `FrameSequence`:

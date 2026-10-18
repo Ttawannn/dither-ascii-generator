@@ -211,3 +211,56 @@ export function colorPresets(
     }),
   );
 }
+
+/** A range slider that isn't bound to a store key (for values held elsewhere, e.g. animation lanes). */
+export function freeSlider(
+  spec: Omit<SliderSpec, 'key'>,
+  value: number,
+  onInput: (v: number) => void,
+): HTMLElement {
+  const fmt = spec.format ?? ((v: number) => `${v}`);
+  const out = el('span', { class: 'control-value' });
+  const input = el('input', {
+    type: 'range',
+    min: `${spec.min}`,
+    max: `${spec.max}`,
+    step: `${spec.step}`,
+    'aria-label': spec.label,
+  });
+  const show = (v: number) => {
+    input.value = `${v}`;
+    out.textContent = fmt(v);
+    input.style.setProperty('--fill', `${((v - spec.min) / (spec.max - spec.min)) * 100}%`);
+  };
+  input.addEventListener('input', () => {
+    const v = Number(input.value);
+    show(v);
+    onInput(v);
+  });
+  show(value);
+  return el(
+    'div',
+    { class: 'control' },
+    el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, spec.label), out),
+    input,
+  );
+}
+
+/** A <select> that isn't bound to a store key. */
+export function freeSelect(
+  label: string,
+  options: SelectOption[],
+  value: string,
+  onChange: (v: string) => void,
+): HTMLElement {
+  const input = el('select', { 'aria-label': label });
+  for (const opt of options) input.append(el('option', { value: opt.value }, opt.label));
+  input.value = value;
+  input.addEventListener('change', () => onChange(input.value));
+  return el(
+    'label',
+    { class: 'control' },
+    el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, label)),
+    el('div', { class: 'select' }, input),
+  );
+}

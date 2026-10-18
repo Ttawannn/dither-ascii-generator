@@ -2,6 +2,7 @@ import { ASCII_PALETTES, CHARSETS, COLOR_MODES, FONTS, MAX_INJECT } from './asci
 import { LFO_SHAPES } from './ascii/lfo';
 import { ALGORITHMS } from './pipeline/algorithms';
 import { DEFAULT_ORDER, normalizeOrder } from './pipeline/effects';
+import { parseLanes, serializeLanes } from './anim';
 import { PALETTES } from './pipeline/palettes';
 
 export type Mode = 'dither' | 'ascii';
@@ -20,6 +21,10 @@ export interface Params {
   // animation
   animate: boolean;
   boilFps: number;
+  /** JSON list of animation lanes (see anim.ts). */
+  animLanes: string;
+  /** Timeline length in seconds for keyframe lanes. */
+  animDuration: number;
   // dither
   algorithm: string;
   strength: number;
@@ -96,6 +101,8 @@ export const DEFAULTS: Params = {
   mirror: false,
   animate: false,
   boilFps: 8,
+  animLanes: '[]',
+  animDuration: 4,
   algorithm: 'atkinson',
   strength: 100,
   threshold: 50,
@@ -275,6 +282,17 @@ export const DITHER_KEYS: (keyof Params)[] = [
   'paper',
 ];
 
+export const ANIM_DURATION_SLIDER: SliderSpec = {
+  key: 'animDuration',
+  label: 'Timeline length',
+  min: 1,
+  max: 30,
+  step: 0.5,
+  format: (v) => `${v} s`,
+};
+
+export const ANIM_KEYS: (keyof Params)[] = ['animate', 'boilFps', 'animLanes', 'animDuration'];
+
 export const FX_KEYS: (keyof Params)[] = [
   'fxOrder',
   'fxGlow',
@@ -339,6 +357,7 @@ const RANGES = new Map(
     ...Object.values(EXPORT_SLIDERS),
     ...Object.values(FX_SLIDERS).flat(),
     BOIL_SLIDER,
+    ANIM_DURATION_SLIDER,
   ].map((s) => [s.key, s] as const),
 );
 
@@ -346,6 +365,19 @@ const RANGES = new Map(
  * Keep only known keys with valid values. Used for localStorage, saved presets and share links,
  * which may all be stale or hand-edited.
  */
+/**
+ * Settings that animation lanes may drive. Font size and line height are left out because
+ * every change rebuilds the glyph atlas.
+ */
+export const ANIMATABLE: SliderSpec[] = [
+  ...ADJUST_SLIDERS,
+  ...Object.values(DITHER_SLIDERS),
+  ...Object.values(ASCII_SLIDERS).filter((s) => s.key !== 'asciiFontSize' && s.key !== 'asciiLineHeight'),
+  ...Object.values(FX_SLIDERS).flat(),
+];
+const ANIMATABLE_BY_KEY = new Map(ANIMATABLE.map((s) => [s.key as string, s]));
+export const animatableSpec = (key: string) => ANIMATABLE_BY_KEY.get(key);
+
 export function sanitize(data: unknown): Partial<Params> {
   if (!data || typeof data !== 'object') return {};
   const src = data as Record<string, unknown>;
@@ -357,6 +389,10 @@ export function sanitize(data: unknown): Partial<Params> {
     if (COLOR_KEYS.includes(key) && !HEX.test(v as string)) continue;
     if (key === 'asciiCustom' && (v as string).length > 64) continue;
     if (key === 'asciiInject' && [...(v as string)].length > MAX_INJECT) continue;
+    if (key === 'animLanes') {
+      out[key] = serializeLanes(parseLanes(v as string, animatableSpec));
+      continue;
+    }
     if (key === 'fxOrder') {
       out[key] = normalizeOrder(v as string);
       continue;

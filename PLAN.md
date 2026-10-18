@@ -226,3 +226,13 @@ dither-ascii-generator/
 - Glitch กับ Grain ขยับตาม Boil · export ทุกแบบได้เอฟเฟกต์ด้วย · กู้คืนได้ครบหลัง GPU reset
 - เอฟเฟกต์อยู่ใน preset และลิงก์แชร์ · preset ใหม่: CRT terminal, VHS glitch
 - วิธีทำ: pass สุดท้ายของทุกโหมดวาดลง texture นอกจอ แล้ววนสลับ framebuffer 2 ตัวผ่าน `post.frag` ทีละเอฟเฟกต์ ตัวสุดท้ายวาดลง canvas ถ้าไม่เปิดเอฟเฟกต์เลยจะวาดลง canvas ตรงเหมือนเดิม
+
+### สถานะเฟส 9 (2026-10-18): เสร็จแล้ว — ครบทุกเฟสในแผน
+
+- **Animate ค่าใดก็ได้** (32 ค่าจาก Adjust, Dither, ASCII และ Effects) สูงสุด 8 ช่องพร้อมกัน แต่ละช่องเลือกได้ 2 แบบ:
+  - **LFO:** รูปคลื่น ความเร็ว และระยะแกว่งรอบค่าของ slider
+  - **Keyframes:** ค่าเริ่ม (From) → ค่าจบ (To) มีปุ่ม "Use current" · easing แบบ Linear / Ease in-out / Hold, then jump · loop แบบ Repeat / Ping-pong / Once · ตั้งความยาว timeline ได้ 1–30 วินาที
+- ไม่รวม Font size กับ Line height เพราะเปลี่ยนแล้วต้องสร้าง glyph atlas ใหม่ทุกเฟรม
+- ภาพนิ่งที่มีการ animate export เป็น GIF / WebM / MP4 ได้ · ตรวจแล้ว: ตั้ง keyframe Brightness −80 → 80 แล้ว export 4 วินาที ความสว่างเฉลี่ยไล่จาก 2 → 136 → 251
+- การ animate อยู่ใน preset และลิงก์แชร์ (เก็บเป็น JSON ใน param `animLanes` ผ่าน `sanitize()`)
+- **ธีม Parchment:** ปุ่ม ◐ ที่หัวหน้า หรือกด `T` สลับได้ทันทีโดยไม่โหลดหน้าใหม่ และจำไว้ในเบราว์เซอร์ (ไม่อยู่ใน preset หรือลิงก์แชร์) ใช้ฟอนต์ blackletter "Grenze Gotisch" เฉพาะโลโก้และหัวข้อ ธีมดำยังเป็นค่าเริ่มต้น

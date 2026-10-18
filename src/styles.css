@@ -7,6 +7,14 @@
   --muted: #777;
   --faint: #444;
   --accent: #fff;
+  --dot: #1a1a1a;
+  --overlay: rgba(10, 10, 10, 0.85);
+  --scrim: rgba(0, 0, 0, 0.7);
+  --swatch-edge: rgba(255, 255, 255, 0.08);
+  --live: #ff4d4d;
+  --checker-a: #1c1c1c;
+  --checker-b: #2a2a2a;
+  --display: var(--font);
   --font: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --panel-w: 300px;
   color-scheme: dark;
@@ -111,7 +119,7 @@ select {
   cursor: grab;
   touch-action: none;
   background-color: var(--bg);
-  background-image: radial-gradient(#1a1a1a 1px, transparent 1px);
+  background-image: radial-gradient(var(--dot) 1px, transparent 1px);
   background-size: 16px 16px;
 }
 
@@ -169,7 +177,7 @@ select {
   display: none;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 10, 10, 0.85);
+  background: var(--overlay);
   letter-spacing: 0.2em;
   font-size: 11px;
   pointer-events: none;
@@ -583,7 +591,7 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
 .swatch {
   width: 14px;
   height: 14px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px var(--swatch-edge);
 }
 
 .swatch-extra {
@@ -762,7 +770,7 @@ input[type='text']:focus {
 }
 
 .live {
-  color: #ff4d4d;
+  color: var(--live);
   font-size: 10px;
   letter-spacing: 0.14em;
 }
@@ -862,7 +870,7 @@ input[type='text']:focus {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--scrim);
 }
 
 .help-card {
@@ -941,8 +949,8 @@ input[type='text']:focus {
 
 /* Checkerboard behind a transparent ASCII render so the cut-out is visible. */
 .stage.transparent canvas {
-  background-color: #1c1c1c;
-  background-image: repeating-conic-gradient(#2a2a2a 0 25%, transparent 0 50%);
+  background-color: var(--checker-a);
+  background-image: repeating-conic-gradient(var(--checker-b) 0 25%, transparent 0 50%);
   background-size: 16px 16px;
 }
 
@@ -996,4 +1004,139 @@ input[type='text']:focus {
 .effect-body .note {
   margin-top: 8px;
   font-size: 10px;
+}
+
+/* ---------- phase 9: animation lanes ---------- */
+
+.lane-add {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+}
+
+.lane-add .btn {
+  height: 28px;
+}
+
+.lane-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.lane-list:empty {
+  display: none;
+}
+
+.lane-card {
+  border: 1px solid var(--line);
+  padding: 8px 10px 10px;
+}
+
+.lane-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lane-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.chip.active {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+.lane-body {
+  margin-top: 10px;
+}
+
+.lane-key {
+  display: grid;
+}
+
+.lane-key .link {
+  justify-self: end;
+  margin-top: 4px;
+  font-size: 9px;
+}
+
+.lane-body > * + * {
+  margin-top: 12px;
+}
+
+.lane-tip {
+  margin-top: 8px;
+  font-size: 10px;
+}
+
+/* ---------- phase 9: themes ---------- */
+
+.logo,
+.section-title,
+.help .section-title {
+  font-family: var(--display);
+}
+
+.theme-btn {
+  width: 22px;
+  padding: 0;
+}
+
+:root[data-theme='parchment'] {
+  --bg: #efe6d2;
+  --panel: #e8dcc2;
+  --line: #cdbd99;
+  --line-strong: #b09d76;
+  --text: #2b2117;
+  --muted: #6b5a42;
+  --faint: #9a8766;
+  --accent: #120c06;
+  --dot: #d9cba9;
+  --overlay: rgba(239, 230, 210, 0.9);
+  --scrim: rgba(43, 33, 23, 0.45);
+  --swatch-edge: rgba(43, 33, 23, 0.15);
+  --live: #a3261c;
+  --checker-a: #e2d6bb;
+  --checker-b: #d2c3a1;
+  --display: 'Grenze Gotisch', var(--font);
+  color-scheme: light;
+}
+
+/* Paper grain: two soft noise layers under the flat colour. */
+:root[data-theme='parchment'] body {
+  background:
+    radial-gradient(circle at 20% 15%, rgba(255, 250, 235, 0.55), transparent 55%),
+    radial-gradient(circle at 85% 90%, rgba(150, 120, 70, 0.12), transparent 50%),
+    var(--bg);
+}
+
+:root[data-theme='parchment'] .panel {
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+}
+
+:root[data-theme='parchment'] .logo {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+:root[data-theme='parchment'] .logo span {
+  color: var(--faint);
+}
+
+:root[data-theme='parchment'] .section-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: none;
+  color: var(--text);
 }

@@ -75,6 +75,7 @@ Copy the result to the clipboard, or save it as `.txt` or as a standalone colour
 - **Video files:** play/pause (`K`), scrub, loop and sound in the bottom bar. Every frame is processed live.
 - **Webcam:** a live feed with a **Mirror** toggle (on by default for the camera). The browser asks for camera permission first.
 - **Boil:** turn it on under **Animation** to make the dither pattern or ASCII characters shift over time (1–30 fps), even on a still image.
+- **Animate settings:** pick almost any slider and press **+ Animate**. Each lane is either an **LFO** (shape, speed, swing around the slider value) or **Keys**, going from one value to another with easing and repeat / ping-pong / once looping over a timeline of 1–30 s. Up to 8 lanes run at once, and still images with lanes export as GIF or video.
 
 ## Effects
 
@@ -118,6 +119,7 @@ For animated formats, set the **duration** (up to 30 s) and **frame rate** (5–
 | `D` / `A` | Dither / ASCII mode |
 | `K` | Play / pause video |
 | `B` | Toggle boil |
+| `T` | Dark / parchment theme |
 | `O` | Open file |
 | `E` | Export |
 | `?` | Show all shortcuts |
