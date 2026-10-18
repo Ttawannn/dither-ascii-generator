@@ -2,9 +2,10 @@ import { isImageFile } from '../source/image';
 import { actions, store } from './core';
 import { renderer, viewer } from './gpu';
 import { importPaletteFile, isPaletteFile } from './panel/custom-palette';
+import { importPresetFile } from './panel/presets';
 import { setOriginal } from './render';
 import { openFile } from './sources';
-import { fileInput, stage, toggleHelp, toggleTheme, transport } from './shell';
+import { fileInput, flash, stage, toggleHelp, toggleTheme, transport } from './shell';
 
 // File picker, drag and drop, paste, and keyboard shortcuts.
 
@@ -26,9 +27,17 @@ window.addEventListener('drop', (e) => {
   if (!hasFiles(e)) return;
   e.preventDefault();
   stage.classList.remove('dragover');
-  const file = e.dataTransfer?.files[0];
-  void (file && isPaletteFile(file) ? importPaletteFile(file) : openFile(file));
+  void openDropped(e.dataTransfer?.files[0]);
 });
+
+/** Presets (.preset, or .json shaped like one), palette files, otherwise an image or video. */
+async function openDropped(file: File | undefined): Promise<void> {
+  if (!file) return;
+  if (/\.(preset|json)$/i.test(file.name) && (await importPresetFile(file))) return;
+  if (/\.preset$/i.test(file.name)) return flash(`${file.name} is not a preset file`);
+  if (isPaletteFile(file)) return importPaletteFile(file);
+  return openFile(file);
+}
 
 window.addEventListener('paste', (e) => {
   const file = [...(e.clipboardData?.files ?? [])].find(isImageFile);

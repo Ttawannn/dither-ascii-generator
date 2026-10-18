@@ -1,3 +1,4 @@
+import { importPreset } from '../../preset-import';
 import { BUILT_IN, decodeShare, encodeShare, loadSaved, resolvePreset, snapshot, storeSaved, type Preset } from '../../presets';
 import { button, el, section } from '../../ui/controls';
 import { store } from '../core';
@@ -39,6 +40,46 @@ function savePreset(): void {
 }
 presetName.addEventListener('keydown', (e) => e.key === 'Enter' && savePreset());
 
+// ---------- import ----------
+
+const importReport = el('div', { class: 'note import-report', hidden: '' });
+const presetPicker = el('input', { type: 'file', accept: '.preset,.json,application/json', hidden: '' });
+
+/**
+ * Apply a preset file as a complete look and keep it under Saved. Returns false when the file isn't
+ * a preset (so a dropped .json can be tried as a palette instead).
+ */
+export async function importPresetFile(file: File): Promise<boolean> {
+  let result;
+  try {
+    result = importPreset(JSON.parse(await file.text()));
+  } catch {
+    result = null;
+  }
+  if (!result) return false;
+  store.apply(resolvePreset({ name: result.name, params: result.params }));
+  saved = [...saved.filter((s) => s.name !== result.name), { name: result.name, params: snapshot(store.params) }];
+  if (!storeSaved(saved)) flash('Could not save — browser storage is blocked');
+  renderPresets();
+
+  const lines = [`Imported “${result.name}” and saved it below.`];
+  if (result.approximated.length) lines.push(`Approximated: ${result.approximated.join(', ')}.`);
+  if (result.skipped.length) lines.push(`Not available here: ${result.skipped.join(', ')}.`);
+  importReport.replaceChildren(
+    ...lines.map((l) => el('div', {}, l)),
+    button('Dismiss', () => (importReport.hidden = true), 'link'),
+  );
+  importReport.hidden = false;
+  flash(`Imported “${result.name}”`);
+  return true;
+}
+
+presetPicker.addEventListener('change', () => {
+  const file = presetPicker.files?.[0];
+  presetPicker.value = '';
+  if (file) void importPresetFile(file).then((ok) => ok || flash(`${file.name} is not a preset file`));
+});
+
 async function copyShareLink(): Promise<void> {
   const hash = `#s=${encodeShare(store.params)}`;
   history.replaceState(null, '', hash);
@@ -65,6 +106,13 @@ export const presetsSection = section(
   savedHead,
   savedGrid,
   el('div', { class: 'save-row' }, presetName, button('Save', savePreset, 'btn small')),
-  button('Copy share link', () => void copyShareLink(), 'btn small share-btn'),
+  el(
+    'div',
+    { class: 'btn-row' },
+    button('Copy share link', () => void copyShareLink(), 'btn small share-btn'),
+    button('Import preset…', () => presetPicker.click(), 'btn small share-btn'),
+  ),
+  importReport,
+  presetPicker,
 );
 renderPresets();

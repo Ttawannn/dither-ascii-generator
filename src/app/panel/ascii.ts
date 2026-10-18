@@ -74,6 +74,7 @@ export const asciiControls = showWhen(
       FONTS.map((f) => ({ value: f.id, label: f.label })),
       store,
     ),
+    toggle('asciiBold', 'Bold', store),
     asciiSlider('fontSize'),
     asciiSlider('lineHeight'),
     toggle('asciiDither', 'Dither', store),

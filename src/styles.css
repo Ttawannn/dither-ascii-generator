@@ -857,6 +857,31 @@ input[type='text']:focus {
   margin-top: 6px;
 }
 
+.btn-row .share-btn {
+  margin-top: 0;
+}
+
+.btn-row:has(.share-btn) {
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.import-report {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--line-strong);
+}
+
+.import-report[hidden] {
+  display: none;
+}
+
+.import-report .link {
+  justify-self: start;
+}
+
 .help-btn {
   width: 22px;
   padding: 0;

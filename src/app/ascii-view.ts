@@ -47,7 +47,9 @@ function asciiPaletteColors(p: Params): Float32Array | null {
 
 function syncGlyphPreview(p: Params): void {
   if (!atlas || p.mode !== 'ascii') return;
-  glyphPreview.style.fontFamily = atlas.fontCss.replace(/^\S+\s/, '');
+  const [, weight, family] = /^(bold )?\S+\s(.*)$/.exec(atlas.fontCss) ?? [];
+  glyphPreview.style.fontFamily = family ?? '';
+  glyphPreview.style.fontWeight = weight ? 'bold' : '';
   if (atlas.rampSize === 0) {
     glyphPreview.textContent = '⠁⠃⠇⡇⣇⣧⣷⣿';
     glyphInfo.textContent = '256 dot patterns · 2×4 pixels per character';
@@ -69,11 +71,11 @@ const luma = (hex: string) => {
 /** The glyph atlas for the current settings, or null while it is being built (a render follows). */
 export function currentAtlas(p: Params): Atlas | null {
   const ramp = rampFor(p.asciiCharset, p.asciiCustom, p.asciiInject, p.asciiSpace);
-  const key = atlasKey(ramp, p.asciiFont, p.asciiFontSize, p.asciiLineHeight);
+  const key = atlasKey(ramp, p.asciiFont, p.asciiFontSize, p.asciiLineHeight, p.asciiBold);
   if (atlas?.key === key) return atlas;
   if (atlasLoading !== key) {
     atlasLoading = key;
-    void buildAtlas(ramp, p.asciiFont, p.asciiFontSize, p.asciiLineHeight).then((a) => {
+    void buildAtlas(ramp, p.asciiFont, p.asciiFontSize, p.asciiLineHeight, p.asciiBold).then((a) => {
       if (atlasLoading !== a.key) return; // settings moved on while fonts loaded
       atlas = a;
       atlasLoading = '';

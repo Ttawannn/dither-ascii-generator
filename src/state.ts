@@ -82,6 +82,7 @@ export interface Params {
   asciiCustom: string;
   asciiColumns: number;
   asciiFont: string;
+  asciiBold: boolean;
   asciiFontSize: number;
   asciiLineHeight: number;
   asciiColor: string;
@@ -206,6 +207,7 @@ export const DEFAULTS: Params = {
   asciiCustom: ' .oO@',
   asciiColumns: 120,
   asciiFont: 'jetbrains',
+  asciiBold: false,
   asciiFontSize: 12,
   asciiLineHeight: 1,
   asciiColor: 'mono',
@@ -497,6 +499,7 @@ export const ASCII_KEYS: (keyof Params)[] = [
   'asciiCustom',
   'asciiColumns',
   'asciiFont',
+  'asciiBold',
   'asciiFontSize',
   'asciiLineHeight',
   'asciiColor',
