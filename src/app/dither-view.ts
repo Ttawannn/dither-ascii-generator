@@ -4,7 +4,7 @@ import type { Params } from '../state';
 import { group, rt, store } from './core';
 import { diffuser, renderer } from './gpu';
 import { paletteSwatches } from './panel/dither';
-import { info } from './shell';
+import { info, setStatus } from './shell';
 
 const MAX_SWATCHES = 32;
 
@@ -21,6 +21,8 @@ export function currentPalette(p: Params = store.params): Palette {
     ink: p.ink,
     paper: p.paper,
     extracted: p.palette === 'image' ? (extracted?.colors ?? null) : null,
+    custom: p.customPalette,
+    customRamp: p.customRamp,
   });
 }
 
@@ -30,7 +32,7 @@ export function syncSwatches(): void {
   const more = pal.colors.length - shown.length;
   paletteSwatches.update(shown, more > 0 ? `+${more}` : `${pal.colors.length}`);
 }
-const PALETTE_KEYS: (keyof Params)[] = ['palette', 'levels', 'ink', 'paper'];
+const PALETTE_KEYS: (keyof Params)[] = ['palette', 'levels', 'ink', 'paper', 'customPalette', 'customRamp'];
 store.subscribe((_, changed) => PALETTE_KEYS.includes(changed) && syncSwatches());
 syncSwatches();
 
@@ -59,6 +61,6 @@ export function drawDither(p: Params): void {
     });
   } else {
     renderer.renderDither(p, currentPalette(p), rt.seed);
-    info.status.textContent = '';
+    setStatus('');
   }
 }

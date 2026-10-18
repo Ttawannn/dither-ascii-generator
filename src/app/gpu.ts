@@ -3,7 +3,7 @@ import { Renderer } from '../pipeline/gl';
 import { el } from '../ui/controls';
 import { Viewer } from '../ui/viewer';
 import { actions, group, requestRender, rt, store } from './core';
-import { canvas, flash, info, stage } from './shell';
+import { canvas, flash, info, setStatus, stage } from './shell';
 
 function createRenderer(): Renderer {
   try {
@@ -43,5 +43,5 @@ export const diffuser = new Diffuser((result) => {
   const p = store.params;
   if (rt.showOriginal || p.mode !== 'dither' || group(p) !== 'diffusion') return;
   renderer.renderResult(result);
-  info.status.textContent = `${Math.round(result.ms)} ms`;
+  setStatus(`${Math.round(result.ms)} ms`);
 });

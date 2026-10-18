@@ -1,6 +1,7 @@
 import { isImageFile } from '../source/image';
 import { actions, store } from './core';
 import { renderer, viewer } from './gpu';
+import { importPaletteFile, isPaletteFile } from './panel/custom-palette';
 import { setOriginal } from './render';
 import { openFile } from './sources';
 import { fileInput, stage, toggleHelp, toggleTheme, transport } from './shell';
@@ -25,7 +26,8 @@ window.addEventListener('drop', (e) => {
   if (!hasFiles(e)) return;
   e.preventDefault();
   stage.classList.remove('dragover');
-  void openFile(e.dataTransfer?.files[0]);
+  const file = e.dataTransfer?.files[0];
+  void (file && isPaletteFile(file) ? importPaletteFile(file) : openFile(file));
 });
 
 window.addEventListener('paste', (e) => {

@@ -1140,3 +1140,112 @@ input[type='text']:focus {
   text-transform: none;
   color: var(--text);
 }
+
+/* ---------- custom palette editor ---------- */
+
+.pal-editor {
+  margin-top: 10px;
+}
+
+.pal-editor input[type='text'] {
+  margin-top: 8px;
+  font-size: 10px;
+  text-overflow: ellipsis;
+}
+
+.pal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pal-chip {
+  position: relative;
+  width: 24px;
+  height: 24px;
+}
+
+.pal-chip input {
+  display: block;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.pal-chip input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.pal-chip input::-webkit-color-swatch {
+  border: 1px solid var(--swatch-edge);
+  border-radius: 0;
+}
+
+.pal-chip input::-moz-color-swatch {
+  border: 1px solid var(--swatch-edge);
+  border-radius: 0;
+}
+
+.pal-chip-x {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 10px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.pal-chip:hover .pal-chip-x,
+.pal-chip:focus-within .pal-chip-x {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .pal-chip-x {
+    opacity: 1;
+  }
+}
+
+.pal-chip-x:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+
+.pal-chips.at-min .pal-chip-x {
+  display: none;
+}
+
+.pal-chip-add {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px dashed var(--line-strong);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.pal-chip-add:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--text);
+}
+
+.pal-chip-add:disabled {
+  display: none;
+}
+
+.pal-actions {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0 4px;
+}

@@ -88,11 +88,21 @@ export const info = {
 };
 
 let statusTimer = 0;
+let flashing = false;
 /** Show a short message in the footer for three seconds. */
 export function flash(msg: string): void {
   info.status.textContent = msg;
+  flashing = true;
   clearTimeout(statusTimer);
-  statusTimer = window.setTimeout(() => (info.status.textContent = ''), 3000);
+  statusTimer = window.setTimeout(() => {
+    flashing = false;
+    info.status.textContent = '';
+  }, 3000);
+}
+
+/** Render status (e.g. diffusion time); held back while a flash message is showing. */
+export function setStatus(text: string): void {
+  if (!flashing) info.status.textContent = text;
 }
 
 /** Press-and-hold comparison for touch screens (Space does the same on a keyboard). */

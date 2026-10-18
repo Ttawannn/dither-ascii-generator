@@ -11,7 +11,7 @@
 | ต้องมี (MVP) | ทำทีหลัง |
 |---|---|
 | อัปโหลดภาพ / ลากวาง / วางจากคลิปบอร์ด | โหมดเลเยอร์ซ้อนกันหลายเอฟเฟกต์ |
-| Dither หลายอัลกอริทึม + พาเลตสี | แก้ palette เองแบบละเอียด / import .hex .gpl |
+| Dither หลายอัลกอริทึม + พาเลตสี | ~~แก้ palette เองแบบละเอียด / import .hex .gpl~~ (ทำแล้ว ดูท้ายไฟล์) |
 | ASCII หลายชุดตัวอักษร + โหมดสี | ใส่ฟอนต์เอง (.ttf) |
 | พรีวิวเรียลไทม์ขณะเลื่อนสไลเดอร์ | PWA ใช้งานออฟไลน์ |
 | วิดีโอ + เว็บแคม | Timeline / keyframe แอนิเมชันพารามิเตอร์ |
@@ -236,3 +236,66 @@ dither-ascii-generator/
 - ภาพนิ่งที่มีการ animate export เป็น GIF / WebM / MP4 ได้ · ตรวจแล้ว: ตั้ง keyframe Brightness −80 → 80 แล้ว export 4 วินาที ความสว่างเฉลี่ยไล่จาก 2 → 136 → 251
 - การ animate อยู่ใน preset และลิงก์แชร์ (เก็บเป็น JSON ใน param `animLanes` ผ่าน `sanitize()`)
 - **ธีม Parchment:** ปุ่ม ◐ ที่หัวหน้า หรือกด `T` สลับได้ทันทีโดยไม่โหลดหน้าใหม่ และจำไว้ในเบราว์เซอร์ (ไม่อยู่ใน preset หรือลิงก์แชร์) ใช้ฟอนต์ blackletter "Grenze Gotisch" เฉพาะโลโก้และหัวข้อ ธีมดำยังเป็นค่าเริ่มต้น
+
+### พาเลตกำหนดเอง (2026-10-18)
+
+- พาเลต **Custom** ใช้ได้ทั้งโหมด Dither และ ASCII (โหมดสี Palette): 2–32 สี เก็บใน param `customPalette` เป็นรายการ `#rrggbb` คั่นด้วยช่องว่าง จึงอยู่ใน preset และลิงก์แชร์ด้วย
+- แก้สีได้ที่ชิปแต่ละสี กด + เพื่อเพิ่ม × เพื่อลบ วางรายการ hex ลงช่องข้อความได้ และมีปุ่ม Sort เรียงจากมืดไปสว่าง
+- **Match by brightness** (`customRamp`): เลือกสีตามความสว่างแทนการหาสีที่ใกล้ที่สุด เหมาะกับพาเลต 2–3 สีแบบ duotone
+- **นำเข้าไฟล์พาเลต:** ปุ่ม Import file… หรือลากไฟล์มาวางบนหน้า รองรับ JSON ที่มีรายการสีอยู่ตรงไหนก็ได้ (hex หรือ `{r,g,b}`), `.hex`, GIMP `.gpl` และข้อความที่มีรหัส `#rrggbb`
+- ข้อความแจ้งเตือนที่ footer ไม่ถูกเวลาประมวลผลเขียนทับแล้ว (`setStatus()` รอให้ข้อความหายไปก่อน)
+
+---
+
+## 10. เฟส 10–13 — โทนภาพ, เอฟเฟกต์ขั้นสูง, dither แบบใหม่ และนำเข้า preset
+
+เป้าหมาย: เพิ่มการปรับโทนภาพให้ละเอียดขึ้น ขยายเอฟเฟกต์เดิมให้ปรับได้ลึกขึ้น เพิ่มอัลกอริทึม dither แนว glitch/pattern และรับ preset จากไฟล์ JSON ภายนอกได้
+
+### ฟีเจอร์เป้าหมาย
+
+| ฟีเจอร์ | ของเราตอนนี้ | ทำในเฟส |
+|---|---|---|
+| Blur และ Denoise ก่อน dither | มีแค่ Sharpen | 10 |
+| Hue shift | ไม่มี | 10 |
+| Shadows / Midtones / Highlights | มีแค่ Gamma | 10 |
+| จับคู่สีแบบ perceptual (OKLab) | หาสีใกล้สุดใน RGB | 10 |
+| เอฟเฟกต์ Tint + blend mode | ไม่มี | 10 |
+| Glow รัศมีกว้าง ยืดเป็นแนวได้ หมุนทิศได้ | Glow รัศมีสูงสุด 32px วงกลมอย่างเดียว | 11 |
+| JPEG glitch แยก 5 แบบ | ค่า Amount รวมค่าเดียว | 11 |
+| Chromatic แยกระยะ R / G / B | ค่าเดียว | 11 |
+| Boil เลือกรูปแบบ noise และความแรง | สุ่มแบบเดียว ปรับได้แค่ fps | 11 |
+| เอฟเฟกต์ Finish (blur / sharpen / hue หลัง dither) | ไม่มี | 11 |
+| Wave diffusion (error diffusion ที่มีเส้นคลื่นแทรก) | ไม่มี | 12 |
+| Honeycomb pattern (ลาย dither ช่องหกเหลี่ยม) | มี dot / line / crosshatch | 12 |
+| Orbs (ลายวงกลมสุ่มที่ลากเป็นแนว) | ไม่มี | 12 |
+| Halftone สี CMYK (มุมแยกช่องสี, dot gain, GCR) | halftone ขาวดำ | 12 |
+| ASCII ตัวหนา | มีแค่น้ำหนักปกติ | 13 |
+| นำเข้า preset จากไฟล์ JSON ภายนอก | นำเข้าได้แค่พาเลต | 13 |
+
+### ลำดับงาน
+
+| เฟส | งาน | ผลลัพธ์ที่ตรวจได้ |
+|---|---|---|
+| **10. Tone & colour** | Adjust: **Blur** (0–100, Gaussian แยกแกน 2 pass), **Denoise** (bilateral แบบเบา), **Hue** (−180°…180°), **Shadows / Midtones / Highlights** (เส้นโค้งโทน 3 จุด ทำงานต่อจาก Gamma ไม่ได้แทนที่) · Palette: toggle **Perceptual match** จับคู่สีใน OKLab ใช้กับพาเลตแบบ `set` ทั้งใน shader และ worker · Effect ใหม่ **Tint**: สี, blend mode (multiply / screen / overlay / soft light / color / color burn), opacity | ปรับ Blur แล้ววิดีโอ 1080p ยังลื่น · Hue หมุนครบรอบกลับมาภาพเดิม · Perceptual match ให้สีผิวและท้องฟ้าตรงขึ้นเมื่อเทียบกับ RGB บนภาพ sample · Tint ทุก blend mode ไม่ทำให้ alpha เพี้ยน (`rgb <= a`) |
+| **11. Effects+** | **Glow:** ขยายรัศมีถึง 200px ด้วย downsample หลายชั้น (mip chain) · เพิ่ม Softness (ขอบ threshold นุ่ม), Aspect (ยืดแนวนอน/ตั้ง), Angle, Falloff · **JPEG glitch:** แยกเป็น Block shift, Channel swap, Scanline offset, Block scramble, Interlace ปรับความแรงทีละแบบ · **Chromatic:** ระยะเลื่อน R / G / B แยกกัน + ระยะสูงสุด · **Boil:** เลือก pattern (random / blue noise) และความแรง · Effect ใหม่ **Finish:** blur / sharpen / hue หลัง dither ใช้ซ้อนเอฟเฟกต์อื่นได้ | Glow รัศมี 200px ยังได้ 30fps ขึ้นไปบนภาพ 1080p · preset เก่าที่มี glitch/chroma ยังได้ภาพเหมือนเดิม (ค่าใหม่ตั้งค่าเริ่มต้นให้ผลเท่าของเดิม) · Boil แบบ blue noise ไม่เป็นก้อน |
+| **12. New dithers** | **Wave diffusion:** ตัวเลือกใน error diffusion ทุก kernel ใส่คลื่น sine ลงใน threshold ตามแถว ปรับ Strength และ Bias (เอียงตามแกน x) ทำใน `diffuse()` จึงเขียนเทสต์ได้ · **Honeycomb:** pattern ใน `dither.frag` แบ่งภาพเป็นช่องหกเหลี่ยม ปรับ Cell size และ Line scale · **Orbs:** วงกลมนุ่มจำนวนหนึ่งวางแบบสุ่มตาม seed แล้วลากเป็นแนว (นอน/ตั้ง) ใช้เป็น threshold map ปรับ Size, Count, Intensity, Randomness, Vertical · **Halftone CMYK:** แยกช่องสีเป็น C/M/Y/K แต่ละช่องมีมุมของตัวเอง, Dot gain, GCR, Supersample (ลดรอยหยัก) | ทุกอัลกอริทึมใหม่ใช้ได้กับทุกพาเลต (ยกเว้น CMYK ที่กำหนดสีเอง) · Orbs ได้ผลเดิมทุกครั้งที่ seed เดิม (export ซ้ำได้ภาพเดิม) · Boil ทำให้ Wave/Orbs ขยับได้ |
+| **13. Import & polish** | **ASCII Bold:** ตัวเลือกน้ำหนักฟอนต์ (atlas สร้างใหม่ตามน้ำหนัก) · **นำเข้า preset JSON ภายนอก:** แปลงค่าเท่าที่จับคู่ได้เข้า `Params` (พาเลต, threshold, ค่า Adjust, เอฟเฟกต์, ASCII) ผ่าน `sanitize()` แล้วแจ้งรายการที่ข้ามไป · ตรวจรูปแบบไฟล์จากโครงสร้าง JSON | นำเข้าแล้วได้ภาพใกล้เคียง และมีรายการแจ้งเตือนค่าที่ใช้ไม่ได้ · ไฟล์ที่เสียหรือไม่รู้จักไม่ทำให้แอปพัง |
+
+### หมายเหตุทางเทคนิค
+
+- **Param ใหม่ทุกตัว** ทำตามขั้นใน CLAUDE.md: `Params`/`DEFAULTS` → `SliderSpec` หรือ `ENUMS` → กลุ่ม key · slider ใหม่จะ animate ได้อัตโนมัติผ่าน `ANIMATABLE` · ค่าเริ่มต้นต้องไม่เปลี่ยนภาพของ preset/ลิงก์แชร์ที่มีอยู่แล้ว
+- **Blur / Denoise ก่อน dither:** ทำใน pass แยกก่อน `adjust.frag` (หรือใน FBO ระหว่างทาง) เพราะต้องอ่านพิกเซลรอบข้างหลายจุด · ทุก texture/framebuffer ที่เพิ่มต้องสร้างใน `Renderer.createResources()` เพื่อให้กู้คืนได้หลัง context lost
+- **Glow รัศมีกว้าง:** การ blur ตรง ๆ ที่ 200px ช้าเกินไป ใช้ downsample → blur → upsample หลายชั้น ต้องมี FBO เพิ่มหลายขนาด (สร้างใน `createResources()` และสร้างใหม่ตอน resize)
+- **Perceptual match ต้องทำ 2 ที่:** shader (`dither.frag`) และ worker (`diffuse.ts`) ให้ได้ผลตรงกัน เหมือนพาเลตทั้ง 3 แบบในปัจจุบัน · เทสต์ฝั่ง `diffuse()` ได้
+- **Wave diffusion** ใส่ใน `diffuse()` ซึ่งเป็นฟังก์ชัน pure จึงเขียนเทสต์ได้ (เช่น strength 0 ต้องได้ผลเท่าเดิมทุกพิกเซล)
+- **Orbs** ใช้ hash จาก seed ใน shader ห้ามใช้ `Math.random()` ฝั่ง CPU เพื่อให้ export ได้ผลซ้ำได้
+- **Halftone CMYK** ไม่ใช้พาเลต จึงต้องซ่อนตัวเลือกพาเลตตอนเลือกอัลกอริทึมนี้ (แบบเดียวกับที่ `uses` ของ palette ทำ)
+- **เอฟเฟกต์ใหม่ (Tint, Finish)** เพิ่มตามขั้นใน CLAUDE.md: entry ใน `EFFECTS` พร้อม `u_kind` ใหม่ (6, 7), branch ใน `post.frag`, flag เปิด/ปิด + `FX_SLIDERS`, และ key ใน `FX_KEYS` · ต้องรักษา premultiplied alpha
+- **ตัวนำเข้า preset** แยกเป็นโมดูล pure (`src/presets-import.ts` หรือคล้ายกัน) รับ JSON คืน `{ params, skipped[] }` เพื่อเขียนเทสต์ได้ · ห้ามใส่ชื่อผลิตภัณฑ์อื่นในโค้ด ชื่อไฟล์ หรือ UI ให้ตรวจรูปแบบจากโครงสร้างข้อมูลเท่านั้น
+- **เทสต์:** เพิ่มเทสต์ของ logic ใหม่ทุกตัวที่เป็น pure (เส้นโค้งโทน, OKLab, wave diffusion, normalize ค่า glitch, ตัวนำเข้า preset) ส่วนที่เป็น WebGL ตรวจในเบราว์เซอร์
+
+### คำถามที่ต้องตัดสินใจก่อนเริ่ม
+
+- Shadows/Midtones/Highlights ควร **แทนที่ Gamma** หรืออยู่คู่กัน (แผนนี้ให้อยู่คู่กันเพื่อไม่ให้ preset เก่าเปลี่ยน)
+- JPEG glitch แบบ 5 ค่า: เก็บ **Amount เดิมเป็นค่ารวม** ที่คูณทุกแบบ หรือเลิกใช้ (แผนนี้เก็บไว้เพื่อความเข้ากันได้)
+- Tint/Finish ควรเพิ่มซ้ำได้หลายชั้นในสแต็กไหม (แผนนี้: ชั้นเดียวต่อเอฟเฟกต์เหมือนเดิม)

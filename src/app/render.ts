@@ -5,7 +5,7 @@ import { actions, animatedParams, lanesOf, lfoActive, requestRender, rt, setDraw
 import { drawAscii } from './ascii-view';
 import { drawDither } from './dither-view';
 import { renderer } from './gpu';
-import { info, stage } from './shell';
+import { info, setStatus, stage } from './shell';
 
 /** Draw the current source with the current (animated) settings. Synchronous. */
 export function draw(): void {
@@ -23,10 +23,10 @@ export function draw(): void {
   if (rt.showOriginal) {
     renderer.renderAdjust(p, true);
     renderer.renderAdjusted();
-    info.status.textContent = '';
+    setStatus('');
   } else if (p.mode === 'ascii') {
     drawAscii(p);
-    info.status.textContent = '';
+    setStatus('');
   } else {
     drawDither(p);
   }

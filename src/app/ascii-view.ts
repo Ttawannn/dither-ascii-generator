@@ -38,6 +38,8 @@ function asciiPaletteColors(p: Params): Float32Array | null {
     ink: p.asciiBg,
     paper: p.asciiFg,
     extracted: p.asciiPalette === 'image' ? (asciiExtracted?.colors ?? null) : null,
+    custom: p.customPalette,
+    customRamp: p.customRamp,
   });
   return new Float32Array(pal.colors.flat());
 }
