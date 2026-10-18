@@ -14,6 +14,8 @@ uniform vec2 u_offset;      // pattern shift; changes per frame when boiling
 
 uniform int u_kind;         // 0 ramp, 1 set, 2 rgb
 uniform vec3 u_pal[32];
+uniform vec3 u_palLab[32];  // u_pal in OKLab, set when u_perceptual
+uniform bool u_perceptual;
 uniform int u_palSize;
 uniform float u_levels;
 
@@ -58,13 +60,36 @@ float pattern(vec2 fc) {
   return min(lineA, 0.25 + 0.75 * lineB); // crosshatch: second direction joins in the shadows
 }
 
+// sRGB → OKLab; matches oklabInto() in oklab.ts.
+vec3 oklab(vec3 c) {
+  c = clamp(c, 0.0, 1.0);
+  vec3 lin = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
+  vec3 lms = vec3(
+    dot(lin, vec3(0.4122214708, 0.5363325363, 0.0514459929)),
+    dot(lin, vec3(0.2119034982, 0.6806995451, 0.1073969566)),
+    dot(lin, vec3(0.0883024619, 0.2817188376, 0.6299787005)));
+  lms = pow(lms, vec3(1.0 / 3.0));
+  return vec3(
+    dot(lms, vec3(0.2104542553, 0.7936177850, -0.0040720468)),
+    dot(lms, vec3(1.9779984951, -2.4285922050, 0.4505937099)),
+    dot(lms, vec3(0.0259040371, 0.7827717662, -0.8086757660)));
+}
+
+// Nearest palette colour: weighted RGB, or plain distance in OKLab when perceptual.
 vec3 nearest(vec3 c) {
   float best = 1e9;
   vec3 res = u_pal[0];
+  vec3 cl = u_perceptual ? oklab(c) : vec3(0.0);
   for (int i = 0; i < 32; i++) {
     if (i >= u_palSize) break;
-    vec3 d = c - u_pal[i];
-    float e = dot(d * d, vec3(2.0, 4.0, 3.0));
+    float e;
+    if (u_perceptual) {
+      vec3 d = cl - u_palLab[i];
+      e = dot(d, d);
+    } else {
+      vec3 d = c - u_pal[i];
+      e = dot(d * d, vec3(2.0, 4.0, 3.0));
+    }
     if (e < best) { best = e; res = u_pal[i]; }
   }
   return res;

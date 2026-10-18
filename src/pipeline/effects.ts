@@ -1,11 +1,14 @@
 import type { Params } from '../state';
+import { hexToRgb } from './palettes';
 
 /** One pass of the post-effect chain, as sent to post.frag. */
 export interface PostEffect {
   /** `u_kind` in post.frag. */
   kind: number;
-  /** Effect parameters in shader units. */
+  /** Effect parameters in shader units (`u_p`). */
   params: [number, number, number, number];
+  /** More parameters for effects that need them (`u_q`). */
+  extra: [number, number, number, number];
 }
 
 export interface EffectDef {
@@ -17,7 +20,18 @@ export interface EffectDef {
   /** Shown under the toggle: true when the effect moves with Boil. */
   animated?: boolean;
   uniforms: (p: Params) => [number, number, number, number];
+  extra?: (p: Params) => [number, number, number, number];
 }
+
+/** Blend modes for the Tint effect, in `u_q.x` order. */
+export const TINT_MODES = [
+  { id: 'multiply', label: 'Multiply' },
+  { id: 'screen', label: 'Screen' },
+  { id: 'overlay', label: 'Overlay' },
+  { id: 'soft-light', label: 'Soft light' },
+  { id: 'color', label: 'Colour' },
+  { id: 'color-burn', label: 'Colour burn' },
+];
 
 export const EFFECTS: EffectDef[] = [
   {
@@ -64,6 +78,14 @@ export const EFFECTS: EffectDef[] = [
     animated: true,
     uniforms: (p) => [p.fxGrainAmount / 100, p.fxGrainSize, 0, 0],
   },
+  {
+    id: 'tint',
+    label: 'Tint',
+    enabled: 'fxTint',
+    kind: 6,
+    uniforms: (p) => [...hexToRgb(p.fxTintColor), p.fxTintOpacity / 100],
+    extra: (p) => [Math.max(0, TINT_MODES.findIndex((m) => m.id === p.fxTintMode)), 0, 0, 0],
+  },
 ];
 
 export const EFFECT_IDS = EFFECTS.map((e) => e.id);
@@ -101,5 +123,5 @@ export function activeEffects(p: Params): PostEffect[] {
     .split(',')
     .map(getEffect)
     .filter((e) => p[e.enabled] === true)
-    .map((e) => ({ kind: e.kind, params: e.uniforms(p) }));
+    .map((e) => ({ kind: e.kind, params: e.uniforms(p), extra: e.extra?.(p) ?? [0, 0, 0, 0] }));
 }

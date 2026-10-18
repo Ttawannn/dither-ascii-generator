@@ -5,14 +5,37 @@ precision highp float;
 // (framebuffer layout, so gl_FragCoord addresses the source directly).
 uniform sampler2D u_tex;
 uniform vec2 u_size;
-uniform int u_kind;      // 0 glow, 1 chromatic aberration, 2 scanlines/CRT, 3 glitch, 4 vignette, 5 grain
+uniform int u_kind;      // 0 glow, 1 chromatic aberration, 2 scanlines/CRT, 3 glitch, 4 vignette, 5 grain, 6 tint
 uniform vec4 u_p;        // effect parameters, see EFFECTS in effects.ts
+uniform vec4 u_q;        // more parameters (EffectDef.extra)
 uniform float u_seed;    // boil seed: animates glitch and grain
 uniform bool u_opaque;   // false when the image has a transparent background
 
 out vec4 outColor;
 
 const float TAU = 6.28318531;
+const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+
+// Give `c` the luminance `l`, pulling it back into gamut without changing hue.
+vec3 setLum(vec3 c, float l) {
+  c += l - dot(c, LUMA);
+  float L = dot(c, LUMA);
+  float lo = min(c.r, min(c.g, c.b));
+  float hi = max(c.r, max(c.g, c.b));
+  if (lo < 0.0) c = L + (c - L) * L / max(L - lo, 1e-5);
+  if (hi > 1.0) c = L + (c - L) * (1.0 - L) / max(hi - L, 1e-5);
+  return c;
+}
+
+// Blend tint colour t over base b (both straight RGB) with TINT_MODES[mode].
+vec3 blend(vec3 b, vec3 t, int mode) {
+  if (mode == 0) return b * t;
+  if (mode == 1) return 1.0 - (1.0 - b) * (1.0 - t);
+  if (mode == 2) return mix(2.0 * b * t, 1.0 - 2.0 * (1.0 - b) * (1.0 - t), step(0.5, b));
+  if (mode == 3) return mix(b - (1.0 - 2.0 * t) * b * (1.0 - b), b + (2.0 * t - 1.0) * (sqrt(b) - b), step(0.5, t));
+  if (mode == 4) return setLum(t, dot(b, LUMA));
+  return 1.0 - min(vec3(1.0), (1.0 - b) / max(t, vec3(1e-3)));
+}
 
 float hash(vec2 p) {
   p = fract(p * vec2(123.34, 456.21));
@@ -86,6 +109,11 @@ void main() {
     // Vignette.
     float d = distance(uv, vec2(0.5)) * 1.41421356;
     o = vec4(c.rgb * (1.0 - u_p.x * smoothstep(0.35, 1.0, d)), c.a);
+  } else if (u_kind == 6) {
+    // Tint: blend a flat colour over the straight (un-premultiplied) colour, mixed by opacity.
+    vec3 b = c.a > 0.0 ? c.rgb / c.a : vec3(0.0);
+    vec3 r = clamp(blend(b, u_p.rgb, int(u_q.x + 0.5)), 0.0, 1.0);
+    o = vec4(mix(b, r, u_p.w) * c.a, c.a);
   } else {
     // Film grain, in cells of u_p.y pixels; scaled by alpha to stay premultiplied.
     float n = hash(floor(px / u_p.y) + u_seed * 1.37) - 0.5;

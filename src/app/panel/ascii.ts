@@ -100,6 +100,7 @@ export const asciiControls = showWhen(
       (p) => p.asciiColor === 'palette',
     ),
     showWhen(customPaletteEditor(), store, (p) => p.asciiColor === 'palette' && p.asciiPalette === 'custom'),
+    showWhen(toggle('perceptual', 'Perceptual match', store), store, (p) => p.asciiColor === 'palette'),
     el(
       'div',
       { class: 'color-row' },

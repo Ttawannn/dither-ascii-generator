@@ -137,7 +137,7 @@ export function select(key: StringKey, label: string, options: SelectOption[], s
   return root;
 }
 
-export type ColorKey = 'ink' | 'paper' | 'asciiFg' | 'asciiBg';
+export type ColorKey = 'ink' | 'paper' | 'asciiFg' | 'asciiBg' | 'fxTintColor';
 
 /** Colour swatch bound to a hex string param. */
 export function colorInput(key: ColorKey, label: string, store: Store): HTMLElement {

@@ -49,6 +49,7 @@ Calls that would go up the graph (a panel button starting an export, `draw()` re
 ### Render pipeline (`src/pipeline/gl.ts`, WebGL2)
 ```
 source texture ─adjust.frag─▶ FBO (adjusted, at output or grid resolution)
+  └─ filter.frag H ─▶ temp ─ V ─▶ FBO             denoise, then blur (only when on)
   ├─ dither.frag ─▶ canvas                        ordered / pattern / noise / threshold (GPU)
   ├─ readPixels ─▶ diffusion.worker ─▶ result tex ─blit─▶ canvas    error diffusion (CPU)
   ├─ readPixels ─▶ ascii/grid.ts (glyph ids) ─ascii.frag + atlas─▶ canvas    ASCII
@@ -66,10 +67,10 @@ every output pass ─(effects on)─▶ post texture ─post.frag × N (ping-pon
   - `set`: nearest colour
   - `rgb`: per-channel levels
 
-  Each kind is implemented twice, in the shader and in the worker. Keep them in sync.
+  Each kind is implemented twice, in the shader and in the worker. Keep them in sync. Nearest-colour matching (weighted RGB, or OKLab with the `perceptual` param) lives in `oklab.ts`, which the worker and `buildGrid` share; `dither.frag` has its own copy.
 - Blue noise is generated at startup (void-and-cluster, `bluenoise.ts`) rather than shipped as an asset.
 - Post-effects (`effects.ts`, `post.frag`): every output pass calls `beginOutput()` / `endOutput()`. With effects on, `beginOutput` targets an offscreen texture, and `endOutput` runs the enabled effects in order, ping-ponging two framebuffers, with the last one drawing to the canvas. `draw()` in `app/render.ts` calls `renderer.setEffects()` first, with an empty list for the original view. A new output pass must use the same begin/end pair. Effects work on premultiplied RGBA and must keep `rgb <= a`.
-- Effect settings are flat params like the rest (`fxGlow`, `fxGlowRadius`, …). The order is the string param `fxOrder` (comma-separated ids), which `sanitize()` repairs with `normalizeOrder()`. To add an effect: an `EFFECTS` entry with a new `u_kind`, its branch in `post.frag`, an enable flag plus `FX_SLIDERS` entries in `state.ts`, and the keys in `FX_KEYS`.
+- Effect settings are flat params like the rest (`fxGlow`, `fxGlowRadius`, …). The order is the string param `fxOrder` (comma-separated ids), which `sanitize()` repairs with `normalizeOrder()`. To add an effect: an `EFFECTS` entry with a new `u_kind`, its branch in `post.frag`, an enable flag plus `FX_SLIDERS` entries in `state.ts`, and the keys in `FX_KEYS`. An effect gets four floats in `u_p` (`uniforms`) and four more in `u_q` (`extra`, e.g. Tint's blend mode); controls other than sliders go in `EXTRA_CONTROLS` in `app/panel/effects.ts`.
 
 ### ASCII (`src/ascii/`)
 - The adjusted image is rendered at grid resolution: 1 px per cell, or 2×4 per cell for braille. `buildGrid` turns it into glyph ids (ramp, dither, Sobel edge glyphs `- / | \`) plus per-cell colours, packed as RGBA (alpha = glyph id) for `ascii.frag`.

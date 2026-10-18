@@ -41,6 +41,11 @@ export const ditherControls = showWhen(
     ),
     showWhen(paletteSwatches.root, store, (p) => p.palette !== 'custom'),
     showWhen(customPaletteEditor(), store, (p) => p.palette === 'custom'),
+    showWhen(
+      toggle('perceptual', 'Perceptual match', store),
+      store,
+      (p) => !!getPaletteDef(p.palette).uses.nearest && !(p.palette === 'custom' && p.customRamp),
+    ),
     ditherSlider('levels', (p) => !!getPaletteDef(p.palette).uses.levels),
     showWhen(
       el(

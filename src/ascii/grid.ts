@@ -1,3 +1,4 @@
+import { nearestIndex, paletteLab } from '../pipeline/oklab';
 import { BRAILLE_DOTS } from './atlas';
 
 export interface GridOptions {
@@ -9,6 +10,8 @@ export interface GridOptions {
   offset: number;
   /** Flat RGB (0..1) palette to snap cell colours to, or null to keep image colours. */
   palette: Float32Array | null;
+  /** Snap to the palette in OKLab instead of weighted RGB. */
+  perceptual?: boolean;
   edges: boolean;
   /** 0..1 */
   edgeThreshold: number;
@@ -38,6 +41,7 @@ const bayer = (x: number, y: number) => BAYER4[(y & 3) * 4 + (x & 3)];
 export function buildGrid(data: Uint8Array, cols: number, rows: number, opts: GridOptions): AsciiGrid {
   const braille = opts.levels === null;
   const levels = opts.levels ?? [];
+  const lab = opts.palette && opts.perceptual ? paletteLab(opts.palette) : null;
   const shift = Math.round(opts.offset * levels.length);
   const gw = braille ? cols * 2 : cols;
   const gh = braille ? rows * 4 : rows;
@@ -101,7 +105,10 @@ export function buildGrid(data: Uint8Array, cols: number, rows: number, opts: Gr
         }
       }
 
-      if (opts.palette) [r, g, b] = nearest(opts.palette, r / 255, g / 255, b / 255);
+      if (opts.palette) {
+        const at = nearestIndex(opts.palette, lab, r / 255, g / 255, b / 255) * 3;
+        [r, g, b] = [opts.palette[at] * 255 + 0.5, opts.palette[at + 1] * 255 + 0.5, opts.palette[at + 2] * 255 + 0.5];
+      }
 
       glyphIds[c] = glyph;
       cells[c * 4] = r;
@@ -111,23 +118,6 @@ export function buildGrid(data: Uint8Array, cols: number, rows: number, opts: Gr
     }
   }
   return { cols, rows, cells, glyphIds };
-}
-
-/** Nearest palette colour (same weighting as the dither shader), as 0..255 RGB. */
-function nearest(pal: Float32Array, r: number, g: number, b: number): [number, number, number] {
-  let best = Infinity;
-  let at = 0;
-  for (let i = 0; i < pal.length; i += 3) {
-    const dr = r - pal[i];
-    const dg = g - pal[i + 1];
-    const db = b - pal[i + 2];
-    const e = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
-    if (e < best) {
-      best = e;
-      at = i;
-    }
-  }
-  return [pal[at] * 255 + 0.5, pal[at + 1] * 255 + 0.5, pal[at + 2] * 255 + 0.5];
 }
 
 /** Sobel edge direction at a cell: 0 '-', 1 '/', 2 '|', 3 '\', or -1 for no edge. */

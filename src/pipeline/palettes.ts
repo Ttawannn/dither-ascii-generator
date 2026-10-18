@@ -17,18 +17,19 @@ export interface PaletteDef {
   id: string;
   label: string;
   /** Which extra controls apply. */
-  uses: { levels?: boolean; inkPaper?: boolean; custom?: boolean };
+  /** `nearest`: picks by nearest colour, so perceptual matching applies. */
+  uses: { levels?: boolean; inkPaper?: boolean; custom?: boolean; nearest?: boolean };
 }
 
 export const PALETTES: PaletteDef[] = [
   { id: 'mono', label: 'Mono / Duotone', uses: { levels: true, inkPaper: true } },
   { id: 'gameboy', label: 'Game Boy', uses: {} },
-  { id: 'cga', label: 'CGA', uses: {} },
-  { id: 'pico8', label: 'PICO-8', uses: {} },
-  { id: 'c64', label: 'Commodore 64', uses: {} },
-  { id: 'custom', label: 'Custom', uses: { custom: true } },
+  { id: 'cga', label: 'CGA', uses: { nearest: true } },
+  { id: 'pico8', label: 'PICO-8', uses: { nearest: true } },
+  { id: 'c64', label: 'Commodore 64', uses: { nearest: true } },
+  { id: 'custom', label: 'Custom', uses: { custom: true, nearest: true } },
   { id: 'rgb', label: 'RGB levels', uses: { levels: true } },
-  { id: 'image', label: 'From image', uses: { levels: true } },
+  { id: 'image', label: 'From image', uses: { levels: true, nearest: true } },
 ];
 
 export function getPaletteDef(id: string): PaletteDef {

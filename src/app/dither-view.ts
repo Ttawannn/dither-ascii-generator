@@ -56,6 +56,7 @@ export function drawDither(p: Params): void {
       kind: pal.kind,
       colors: new Float32Array(pal.colors.flat()),
       levels: pal.levels,
+      perceptual: p.perceptual,
       noise: rt.seed ? 0.06 : 0,
       seed: rt.seed,
     });

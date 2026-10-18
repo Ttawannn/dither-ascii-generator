@@ -1,7 +1,15 @@
-import { EFFECTS, moveEffect, normalizeOrder } from '../../pipeline/effects';
+import { EFFECTS, moveEffect, normalizeOrder, TINT_MODES } from '../../pipeline/effects';
 import { FX_KEYS, FX_SLIDERS, type BooleanKey, type Params } from '../../state';
-import { button, el, section, showWhen, slider, toggle } from '../../ui/controls';
+import { button, colorInput, el, section, select, showWhen, slider, toggle } from '../../ui/controls';
 import { store } from '../core';
+
+/** Controls an effect needs besides its sliders. */
+const EXTRA_CONTROLS: Record<string, () => HTMLElement[]> = {
+  tint: () => [
+    el('div', { class: 'color-row single' }, colorInput('fxTintColor', 'Colour', store)),
+    select('fxTintMode', 'Blend', TINT_MODES.map((m) => ({ value: m.id, label: m.label })), store),
+  ],
+};
 
 const effectList = el('div', { class: 'effect-list' });
 const effectCards = new Map<string, { card: HTMLElement; up: HTMLButtonElement; down: HTMLButtonElement }>();
@@ -14,6 +22,7 @@ for (const fx of EFFECTS) {
     el(
       'div',
       { class: 'effect-body' },
+      ...(EXTRA_CONTROLS[fx.id]?.() ?? []),
       ...FX_SLIDERS[fx.id].map((s) => slider(s, store)),
       ...(fx.animated ? [el('div', { class: 'note' }, 'Moves when Boil is on')] : []),
     ),
