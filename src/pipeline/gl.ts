@@ -305,6 +305,13 @@ export class Renderer {
     gl.uniform1f(u('u_angle'), (p.angle * Math.PI) / 180);
     gl.uniform1ui(u('u_seed'), seed + 1);
     gl.uniform2f(u('u_offset'), (seed * 29) % 64, (seed * 47) % 64);
+    gl.uniform2f(u('u_size'), this.adjW, this.adjH);
+    gl.uniform1f(u('u_hexRings'), p.hexRings / 100);
+    gl.uniform4f(u('u_orb'), p.orbSize, p.orbCount, p.orbIntensity / 100, p.orbRandom / 100);
+    gl.uniform1i(u('u_orbVertical'), p.orbVertical ? 1 : 0);
+    const rad = (deg: number) => (deg * Math.PI) / 180;
+    gl.uniform4f(u('u_cmykAngles'), rad(p.cmykAngleC), rad(p.cmykAngleM), rad(p.cmykAngleY), rad(p.cmykAngleK));
+    gl.uniform3f(u('u_cmyk'), p.cmykDotGain / 100, p.cmykGcr / 100, p.cmykSupersample);
     this.setPalette(u, palette, p.perceptual);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.endOutput();

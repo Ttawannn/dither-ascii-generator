@@ -60,6 +60,7 @@ export function drawDither(p: Params): void {
       perceptual: p.perceptual,
       noise: rt.seed ? 0.12 * (p.boilAmount / 100) : 0,
       noiseTile: p.boilPattern === 'blue' ? blueNoiseTile() : null,
+      wave: p.waveStrength ? [p.waveStrength / 100, p.waveLength, p.waveBias / 100] : null,
       seed: rt.seed,
     });
   } else {

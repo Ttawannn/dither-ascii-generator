@@ -20,6 +20,11 @@ export interface DiffusionJob {
   noise: number;
   /** 64×64 blue-noise tile to take the jitter from instead of white noise. */
   noiseTile?: Uint8Array | null;
+  /**
+   * Wave diffusion: a sine added to the quantisation threshold along visual rows.
+   * [strength 0..1 (±0.5 at 1), wavelength in pixels, bias −1..1 (tilt per pixel along x)].
+   */
+  wave?: [number, number, number] | null;
   seed: number;
 }
 
@@ -71,6 +76,9 @@ export function diffuse(job: DiffusionJob): Uint8Array {
   }
 
   const palSize = colors.length / 3;
+  const [waveAmp, waveLen, waveBias] = job.wave ?? [0, 1, 0];
+  const waveK = (2 * Math.PI) / Math.max(1, waveLen);
+  const wavePhase = job.seed * 1.7; // boil moves the waves
   const lab = kind === 'set' && job.perceptual ? paletteLab(colors) : null;
   const steps = job.levels - 1;
   const q = [0, 0, 0];
@@ -84,21 +92,23 @@ export function diffuse(job: DiffusionJob): Uint8Array {
       const x = reverse ? w - 1 - k : k;
       const i = row * w + x;
       let ci = 0; // palette index for output colour (ramp/set)
+      // Threshold modulation: the wave shifts which level is picked, the error still uses the true value.
+      const m = waveAmp ? 0.5 * waveAmp * Math.sin((vy + waveBias * x) * waveK + wavePhase) : 0;
 
       if (ch === 1) {
         const v = Math.min(1, Math.max(0, buf[i]));
-        ci = Math.min(palSize - 1, Math.max(0, Math.round(v * (palSize - 1))));
+        ci = Math.min(palSize - 1, Math.max(0, Math.round((v + m) * (palSize - 1))));
         err[0] = (v - ci / (palSize - 1)) * strength;
       } else {
         const r = Math.min(1, Math.max(0, buf[i * 3]));
         const g = Math.min(1, Math.max(0, buf[i * 3 + 1]));
         const b = Math.min(1, Math.max(0, buf[i * 3 + 2]));
         if (kind === 'rgb') {
-          q[0] = Math.round(r * steps) / steps;
-          q[1] = Math.round(g * steps) / steps;
-          q[2] = Math.round(b * steps) / steps;
+          q[0] = Math.min(1, Math.max(0, Math.round((r + m) * steps) / steps));
+          q[1] = Math.min(1, Math.max(0, Math.round((g + m) * steps) / steps));
+          q[2] = Math.min(1, Math.max(0, Math.round((b + m) * steps) / steps));
         } else {
-          ci = nearestIndex(colors, lab, r, g, b);
+          ci = nearestIndex(colors, lab, r + m, g + m, b + m);
           q[0] = colors[ci * 3];
           q[1] = colors[ci * 3 + 1];
           q[2] = colors[ci * 3 + 2];

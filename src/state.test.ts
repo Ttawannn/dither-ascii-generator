@@ -47,6 +47,15 @@ describe('sanitize', () => {
     expect(sanitize({ boilPattern: 'pink', fxGlowRadius: 999 })).toEqual({ fxGlowRadius: 200 });
   });
 
+  it('clamps the new dither settings to their ranges', () => {
+    expect(sanitize({ orbCount: 500, cmykSupersample: 0, waveBias: -300, algorithm: 'honeycomb' })).toEqual({
+      orbCount: 64,
+      cmykSupersample: 1,
+      waveBias: -100,
+      algorithm: 'honeycomb',
+    });
+  });
+
   it('ignores non-objects', () => {
     expect(sanitize(null)).toEqual({});
     expect(sanitize('{"mode":"ascii"}')).toEqual({});
