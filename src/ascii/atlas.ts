@@ -36,8 +36,8 @@ const SHADES: Record<string, (x: number, y: number) => boolean> = {
   '█': () => true,
 };
 
-export function atlasKey(ramp: string[] | null, fontId: string, size: number, lineHeight: number): string {
-  return JSON.stringify([ramp ?? 'braille', fontId, size, lineHeight]);
+export function atlasKey(ramp: string[] | null, fontId: string, size: number, lineHeight: number, bold = false): string {
+  return JSON.stringify([ramp ?? 'braille', fontId, size, lineHeight, bold]);
 }
 
 interface Metrics {
@@ -118,9 +118,10 @@ export async function buildAtlas(
   fontId: string,
   size: number,
   lineHeight: number,
+  bold = false,
 ): Promise<Atlas> {
   const font = getFont(fontId);
-  const fontCss = `${size}px ${font.family}, ${FALLBACK_FONTS}`;
+  const fontCss = `${bold ? 'bold ' : ''}${size}px ${font.family}, ${FALLBACK_FONTS}`;
   // Passing the glyphs makes the browser fetch only the fallback subsets that cover them.
   await document.fonts.load(fontCss, ramp ? ramp.join('') + EDGE_CHARS.join('') : 'M').catch(() => undefined);
 
@@ -153,7 +154,7 @@ export async function buildAtlas(
   });
 
   return {
-    key: atlasKey(ramp, fontId, size, lineHeight),
+    key: atlasKey(ramp, fontId, size, lineHeight, bold),
     canvas: g.canvas,
     cellW,
     cellH,

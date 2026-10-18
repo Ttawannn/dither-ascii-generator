@@ -63,7 +63,7 @@ Ordered and pattern dithers run on the GPU. Error diffusion runs in a Web Worker
 - **Add characters:** mix up to 10 of your own into any set. **Include space** controls the blank glyph.
 - **Edge glyphs:** draws `- / | \` along edges for a hand-drawn look
 - **Dither:** ordered dither applied before choosing characters
-- **Layout:** column count, font (JetBrains Mono, IBM Plex Mono, VT323, Courier), font size and line height
+- **Layout:** column count, font (JetBrains Mono, IBM Plex Mono, VT323, Courier), bold, font size and line height
 - **Animate:** LFOs (sine, triangle, saw) on Offset and Depth, with speed and amount controls
 - **Colour:**
   - Mono, with text and background colours and a swap button
@@ -113,6 +113,7 @@ For animated formats, set the **duration** (up to 30 s) and **frame rate** (5–
 - Click a built-in preset to apply a complete look.
 - Type a name and press **Save** to keep your own presets in this browser.
 - **Copy share link** puts your current settings into the URL (`#s=…`). Anyone opening the link gets the same look.
+- **Import preset…** (or drop a `.preset` / `.json` file on the page) applies a preset file and keeps it under Saved. Besides this app's own `{ name, params }` files it reads preset JSON from other tools that describe a palette, a dither style and a list of effects: values are mapped onto the closest settings here, and a short report lists what was approximated and what has no equivalent.
 
 ## Keyboard shortcuts
 
@@ -153,6 +154,7 @@ src/
   main.ts       app wiring, render loop, export flow
   state.ts      settings store and validation
   presets.ts    built-in / saved presets and share links
+  preset-import.ts  reads preset files (own format and external JSON)
   pipeline/     WebGL2 renderer, shaders, palettes, error-diffusion worker
   ascii/        character sets, glyph atlas, character grid
   source/       image, video and webcam sources

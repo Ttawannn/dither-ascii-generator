@@ -192,7 +192,7 @@ export function gridToHtml(
   }
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>${escapeHtml(opts.title)}</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono&family=IBM+Plex+Mono&family=VT323&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;700&family=VT323&display=swap" rel="stylesheet">
 <style>body{margin:0;background:${opts.bg}}pre{margin:0;padding:16px;font:${opts.fontCss};line-height:${opts.lineHeight};color:${opts.fg};background:${opts.bg};white-space:pre}</style>
 </head><body><pre>${lines.join('\n')}</pre></body></html>
 `;
