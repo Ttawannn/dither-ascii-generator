@@ -10,7 +10,7 @@ A browser-based generator that turns images, videos and your webcam into **dithe
 
 - Real-time preview of every setting, including on video and webcam
 - 17 dither algorithms, from ordered Bayer and blue noise to classic error diffusion
-- 7 palette options: retro systems, duotone colour picks, or colours extracted from your image
+- 8 palette options: retro systems, duotone colour picks, your own colours, or colours extracted from your image
 - ASCII mode with 48 character sets, depth and offset controls, palette colours and transparent backgrounds
 - A "boil" animation that brings still images to life
 - Export to PNG, SVG, GIF, WebM or MP4, or copy the ASCII as text
@@ -39,6 +39,7 @@ New to it? Start from one of the **Presets** (Mac 1-bit, Game Boy, Newsprint, Te
 **Palettes:**
 - Mono / Duotone: any two colours, 2–16 levels, with quick colour presets
 - Retro systems: Game Boy, CGA, PICO-8, Commodore 64
+- Custom: 2–32 colours you pick, paste as hex, or import from a palette file (JSON, .hex, GIMP .gpl), matched by nearest colour or by brightness
 - RGB levels: per-channel colour steps
 - From image: median-cut extraction of 2–16 colours
 
@@ -64,7 +65,7 @@ Ordered and pattern dithers run on the GPU. Error diffusion runs in a Web Worker
 - **Colour:**
   - Mono, with text and background colours and a swap button
   - Image colour per character
-  - Palette colours (PICO-8, C64, CGA, Game Boy, or 8 colours taken from the image)
+  - Palette colours (PICO-8, C64, CGA, Game Boy, your custom palette, or 8 colours taken from the image)
   - Image colour as the cell background
   - **Transparent background**, kept in PNG, GIF and WebM exports
 

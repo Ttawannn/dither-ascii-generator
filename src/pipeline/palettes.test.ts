@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { baseSpread, hexToRgb, PALETTES, resolvePalette, rgbToHex } from './palettes';
+import { baseSpread, hexToRgb, normalizeHex, PALETTES, parseColorList, resolvePalette, rgbToHex } from './palettes';
 
 const opts = { levels: 2, ink: '#000000', paper: '#ffffff', extracted: null };
 
@@ -36,6 +36,20 @@ describe('resolvePalette', () => {
     expect(resolvePalette('image', { ...opts, extracted }).colors).toEqual(extracted);
   });
 
+  it('uses the custom list as a nearest-colour set, or a dark → light ramp', () => {
+    const custom = '#ffffff #ff0000 #000000';
+    const set = resolvePalette('custom', { ...opts, custom });
+    expect(set.kind).toBe('set');
+    expect(set.colors.map(rgbToHex)).toEqual(['#ffffff', '#ff0000', '#000000']);
+    const ramp = resolvePalette('custom', { ...opts, custom, customRamp: true });
+    expect(ramp.kind).toBe('ramp');
+    expect(ramp.colors.map(rgbToHex)).toEqual(['#000000', '#ff0000', '#ffffff']);
+  });
+
+  it('falls back to mono when the custom list has fewer than two colours', () => {
+    expect(resolvePalette('custom', { ...opts, custom: '#ff0000' }).kind).toBe('ramp');
+  });
+
   it('resolves every listed palette to at least two colours', () => {
     for (const def of PALETTES) expect(resolvePalette(def.id, opts).colors.length, def.id).toBeGreaterThanOrEqual(2);
   });
@@ -46,5 +60,19 @@ describe('baseSpread', () => {
     expect(baseSpread(resolvePalette('mono', opts))).toBe(1);
     expect(baseSpread(resolvePalette('mono', { ...opts, levels: 5 }))).toBe(0.25);
     expect(baseSpread(resolvePalette('rgb', { ...opts, levels: 3 }))).toBe(0.5);
+  });
+});
+
+describe('colour lists', () => {
+  it('normalizes hex codes', () => {
+    expect(normalizeHex('#ABCDEF')).toBe('#abcdef');
+    expect(normalizeHex('abcdef')).toBe('#abcdef');
+    expect(normalizeHex('#f0a')).toBe('#ff00aa');
+    expect(normalizeHex('f0a')).toBeNull();
+    expect(normalizeHex('#12345')).toBeNull();
+  });
+
+  it('finds every hex code in a string, in order', () => {
+    expect(parseColorList('#000, #FFFFFF;#12345 #abc')).toEqual(['#000000', '#ffffff', '#aabbcc']);
   });
 });

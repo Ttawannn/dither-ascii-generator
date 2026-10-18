@@ -3,6 +3,7 @@ import { getPaletteDef, MONO_PRESETS, PALETTES } from '../../pipeline/palettes';
 import { DITHER_SLIDERS, type Params } from '../../state';
 import { colorInput, colorPresets, el, select, showWhen, slider, swatches, toggle } from '../../ui/controls';
 import { group, store } from '../core';
+import { customPaletteEditor } from './custom-palette';
 
 const ditherSlider = (key: keyof typeof DITHER_SLIDERS, when: (p: Params) => boolean) =>
   showWhen(slider(DITHER_SLIDERS[key], store), store, when);
@@ -38,7 +39,8 @@ export const ditherControls = showWhen(
       PALETTES.map((p) => ({ value: p.id, label: p.label })),
       store,
     ),
-    paletteSwatches.root,
+    showWhen(paletteSwatches.root, store, (p) => p.palette !== 'custom'),
+    showWhen(customPaletteEditor(), store, (p) => p.palette === 'custom'),
     ditherSlider('levels', (p) => !!getPaletteDef(p.palette).uses.levels),
     showWhen(
       el(

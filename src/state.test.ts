@@ -31,6 +31,12 @@ describe('sanitize', () => {
     expect(sanitize({ asciiCustom: ' .oO@' })).toEqual({ asciiCustom: ' .oO@' });
   });
 
+  it('normalizes the custom palette and rejects one with fewer than two colours', () => {
+    expect(sanitize({ customPalette: '#FFF, #000000; junk #12345' })).toEqual({ customPalette: '#ffffff #000000' });
+    expect(sanitize({ customPalette: '#ffffff' })).toEqual({});
+    expect(sanitize({ customPalette: Array(40).fill('#123456').join(' ') }).customPalette?.split(' ')).toHaveLength(32);
+  });
+
   it('ignores non-objects', () => {
     expect(sanitize(null)).toEqual({});
     expect(sanitize('{"mode":"ascii"}')).toEqual({});

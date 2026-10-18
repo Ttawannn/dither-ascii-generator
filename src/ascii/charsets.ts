@@ -117,7 +117,7 @@ export const COLOR_MODES = [
 ];
 
 /** Palettes offered for palette-coloured characters ("image" extracts 8 colours from the source). */
-export const ASCII_PALETTES = ['pico8', 'c64', 'cga', 'gameboy', 'image'];
+export const ASCII_PALETTES = ['pico8', 'c64', 'cga', 'gameboy', 'custom', 'image'];
 
 export function getFont(id: string): FontDef {
   return FONTS.find((f) => f.id === id) ?? FONTS[0];

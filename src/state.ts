@@ -3,7 +3,7 @@ import { LFO_SHAPES } from './ascii/lfo';
 import { ALGORITHMS } from './pipeline/algorithms';
 import { DEFAULT_ORDER, normalizeOrder } from './pipeline/effects';
 import { parseLanes, serializeLanes } from './anim';
-import { PALETTES } from './pipeline/palettes';
+import { PALETTES, parseColorList, serializeColorList } from './pipeline/palettes';
 
 export type Mode = 'dither' | 'ascii';
 
@@ -37,6 +37,10 @@ export interface Params {
   levels: number;
   ink: string;
   paper: string;
+  /** Custom palette: space-separated #rrggbb, 2–32 colours. */
+  customPalette: string;
+  /** Pick custom palette colours by brightness (dark → light) instead of nearest colour. */
+  customRamp: boolean;
   // ascii
   asciiCharset: string;
   asciiCustom: string;
@@ -114,6 +118,8 @@ export const DEFAULTS: Params = {
   levels: 2,
   ink: '#000000',
   paper: '#ffffff',
+  customPalette: '#0d0b14 #3b2a5c #b0305c #f0a04b #f4ecd8',
+  customRamp: false,
   asciiCharset: 'standard',
   asciiCustom: ' .oO@',
   asciiColumns: 120,
@@ -280,6 +286,8 @@ export const DITHER_KEYS: (keyof Params)[] = [
   'levels',
   'ink',
   'paper',
+  'customPalette',
+  'customRamp',
 ];
 
 export const ANIM_DURATION_SLIDER: SliderSpec = {
@@ -391,6 +399,11 @@ export function sanitize(data: unknown): Partial<Params> {
     if (key === 'asciiInject' && [...(v as string)].length > MAX_INJECT) continue;
     if (key === 'animLanes') {
       out[key] = serializeLanes(parseLanes(v as string, animatableSpec));
+      continue;
+    }
+    if (key === 'customPalette') {
+      const colors = parseColorList(v as string);
+      if (colors.length >= 2) out[key] = serializeColorList(colors);
       continue;
     }
     if (key === 'fxOrder') {

@@ -4,6 +4,7 @@ import { getPaletteDef, MONO_PRESETS } from '../../pipeline/palettes';
 import { ASCII_SLIDERS, type Params } from '../../state';
 import { button, colorInput, colorPresets, el, select, showWhen, slider, textInput, toggle } from '../../ui/controls';
 import { notBraille, store } from '../core';
+import { customPaletteEditor } from './custom-palette';
 
 const asciiSlider = (key: keyof typeof ASCII_SLIDERS, when?: (p: Params) => boolean) =>
   when ? showWhen(slider(ASCII_SLIDERS[key], store), store, when) : slider(ASCII_SLIDERS[key], store);
@@ -98,6 +99,7 @@ export const asciiControls = showWhen(
       store,
       (p) => p.asciiColor === 'palette',
     ),
+    showWhen(customPaletteEditor(), store, (p) => p.asciiColor === 'palette' && p.asciiPalette === 'custom'),
     el(
       'div',
       { class: 'color-row' },

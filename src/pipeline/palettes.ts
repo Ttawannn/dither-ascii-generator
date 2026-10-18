@@ -17,7 +17,7 @@ export interface PaletteDef {
   id: string;
   label: string;
   /** Which extra controls apply. */
-  uses: { levels?: boolean; inkPaper?: boolean };
+  uses: { levels?: boolean; inkPaper?: boolean; custom?: boolean };
 }
 
 export const PALETTES: PaletteDef[] = [
@@ -26,6 +26,7 @@ export const PALETTES: PaletteDef[] = [
   { id: 'cga', label: 'CGA', uses: {} },
   { id: 'pico8', label: 'PICO-8', uses: {} },
   { id: 'c64', label: 'Commodore 64', uses: {} },
+  { id: 'custom', label: 'Custom', uses: { custom: true } },
   { id: 'rgb', label: 'RGB levels', uses: { levels: true } },
   { id: 'image', label: 'From image', uses: { levels: true } },
 ];
@@ -76,11 +77,48 @@ const FIXED: Record<string, Palette> = {
 
 export const MAX_PALETTE = 32;
 
+// ---------- custom palette: a space-separated list of #rrggbb (the `customPalette` param) ----------
+
+/** `#rgb`, `#rrggbb` or bare `rrggbb` → `#rrggbb` in lower case, or null. */
+export function normalizeHex(s: string): string | null {
+  const t = s.trim();
+  const m6 = /^#?([0-9a-f]{6})$/i.exec(t);
+  if (m6) return `#${m6[1].toLowerCase()}`;
+  const m3 = /^#([0-9a-f]{3})$/i.exec(t);
+  if (m3) return `#${[...m3[1].toLowerCase()].map((c) => c + c).join('')}`;
+  return null;
+}
+
+export const HEX_IN_TEXT = /#[0-9a-f]{6}\b|#[0-9a-f]{3}\b/gi;
+
+/** Every `#rrggbb` / `#rgb` in a string, in order, capped at MAX_PALETTE. */
+export function parseColorList(s: string): string[] {
+  return [...s.matchAll(HEX_IN_TEXT)].slice(0, MAX_PALETTE).map((m) => normalizeHex(m[0])!);
+}
+
+export const serializeColorList = (colors: string[]): string => colors.slice(0, MAX_PALETTE).join(' ');
+
 export function resolvePalette(
   id: string,
-  opts: { levels: number; ink: string; paper: string; extracted: RGB[] | null },
+  opts: {
+    levels: number;
+    ink: string;
+    paper: string;
+    extracted: RGB[] | null;
+    /** Colour list for the custom palette, and whether to pick by brightness instead of nearest colour. */
+    custom?: string;
+    customRamp?: boolean;
+  },
 ): Palette {
   if (FIXED[id]) return FIXED[id];
+  if (id === 'custom') {
+    const colors = parseColorList(opts.custom ?? '').map(hexToRgb);
+    if (colors.length >= 2) {
+      return opts.customRamp
+        ? { kind: 'ramp', levels: colors.length, colors: colors.sort((a, b) => luma(a) - luma(b)) }
+        : { kind: 'set', levels: colors.length, colors };
+    }
+  }
   if (id === 'rgb') {
     const levels = Math.min(opts.levels, 8);
     // Representative colours for the swatch strip only.
