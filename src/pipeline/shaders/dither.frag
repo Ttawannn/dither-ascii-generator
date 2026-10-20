@@ -13,6 +13,8 @@ uniform uint u_seed;
 uniform vec2 u_offset;      // pattern shift; changes per frame when boiling
 uniform vec2 u_size;        // output size in pixels
 uniform float u_hexRings;   // honeycomb: 0..1
+uniform sampler2D u_smooth; // blurred adjusted image (Follow image)
+uniform float u_follow;     // 0..1: how far brightness shifts rotated patterns
 uniform vec4 u_orb;         // orbs: radius px, count, intensity 0..1, size variation 0..1
 uniform bool u_orbVertical;
 uniform vec4 u_cmykAngles;  // halftone CMYK: screen angle per ink (radians), C M Y K
@@ -102,6 +104,9 @@ float pattern(vec2 fc) {
 
   float s = sin(u_angle), c = cos(u_angle);
   vec2 r = mat2(c, s, -s, c) * fc / u_cell;
+  // Follow image: smoothed brightness shifts the pattern by up to two cells, so lines and cells
+  // bend along the shapes instead of running straight.
+  if (u_follow > 0.0) r += u_follow * 2.0 * dot(texelFetch(u_smooth, ivec2(gl_FragCoord.xy), 0).rgb, LUMA);
   if (u_algo == 9) return honeycomb(r);
   float lineA = 0.5 - 0.5 * cos(TAU * r.y);
   if (u_algo == 4) return 0.5 - 0.25 * (cos(TAU * r.x) + cos(TAU * r.y));

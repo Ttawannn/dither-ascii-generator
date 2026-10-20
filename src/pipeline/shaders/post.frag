@@ -5,9 +5,13 @@ precision highp float;
 // (framebuffer layout, so gl_FragCoord addresses the source directly).
 uniform sampler2D u_tex;
 uniform sampler2D u_glow; // glow only: mipmapped bright pass of u_tex
+uniform sampler2D u_src;  // mask only: the uploaded source (top row first)
+uniform bool u_srcMirror;
+uniform vec3 u_maskColor;
+uniform bool u_maskView;  // show the mask itself in black and white
 uniform vec2 u_size;
 // 0 glow, 1 chromatic aberration, 2 scanlines/CRT, 3 glitch, 4 vignette, 5 grain, 6 tint, 7 finish;
-// 100 is the bright pass that runs before glow.
+// 100 is the bright pass that runs before glow; 101 the mask, which always runs last.
 uniform int u_kind;
 uniform vec4 u_p;        // effect parameters, see EFFECTS in effects.ts
 uniform vec4 u_q;        // more parameters (EffectDef.extra)
@@ -28,6 +32,14 @@ vec3 setLum(vec3 c, float l) {
   if (lo < 0.0) c = L + (c - L) * L / max(L - lo, 1e-5);
   if (hi > 1.0) c = L + (c - L) * (1.0 - L) / max(hi - L, 1e-5);
   return c;
+}
+
+vec3 rgb2hsv(vec3 c) {
+  vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+  vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+  vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+  float d = q.x - min(q.w, q.y);
+  return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);
 }
 
 // Rotate around the grey axis, which keeps greys grey.
@@ -62,6 +74,34 @@ void main() {
   vec2 uv = px / u_size;
   vec4 c = at(px);
   vec4 o = c;
+
+  if (u_kind == 101) {
+    // Mask from the source: a brightness range (u_p.x..u_p.y) or a hue range (u_q.x ± u_q.y),
+    // softened by u_p.z. Outside it shows the original, a colour, or nothing.
+    vec2 suv = vec2(u_srcMirror ? 1.0 - uv.x : uv.x, 1.0 - uv.y);
+    vec3 s = texture(u_src, suv).rgb;
+    float f = u_p.z * 0.25;
+    float m;
+    if (u_q.z < 1.5) {
+      float l = dot(s, LUMA);
+      float lo = min(u_p.x, u_p.y), hi = max(u_p.x, u_p.y);
+      float a = lo <= 0.0 ? 1.0 : smoothstep(lo - f, lo + 1e-4, l);
+      float b = hi >= 1.0 ? 1.0 : 1.0 - smoothstep(hi - 1e-4, hi + f, l);
+      m = a * b;
+    } else {
+      vec3 hsv = rgb2hsv(s);
+      float d = abs(mod(hsv.x - u_q.x + 0.5, 1.0) - 0.5);
+      m = (1.0 - smoothstep(u_q.y, u_q.y + f + 1e-4, d)) * smoothstep(0.08, 0.2, hsv.y);
+    }
+    if (u_p.w > 0.5) m = 1.0 - m;
+    if (u_maskView) {
+      outColor = vec4(vec3(m), 1.0);
+      return;
+    }
+    vec4 outside = u_q.w < 0.5 ? vec4(s, 1.0) : u_q.w < 1.5 ? vec4(u_maskColor, 1.0) : vec4(0.0);
+    outColor = mix(outside, c, m);
+    return;
+  }
 
   if (u_kind == 100) {
     // Bright pass for glow: what is above the threshold, with a soft knee. The knee's half-width

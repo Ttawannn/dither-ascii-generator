@@ -1,7 +1,7 @@
-import { activeEffects } from '../pipeline/effects';
+import { activeEffects, maskEffect } from '../pipeline/effects';
 import { isVideo, type Source } from '../source/source';
 import type { Params } from '../state';
-import { actions, animatedParams, lanesOf, lfoActive, requestRender, rt, setDrawer, store, transparentAscii } from './core';
+import { actions, animatedParams, lanesOf, lfoActive, requestRender, rt, setDrawer, store, transparentOutput } from './core';
 import { drawAscii } from './ascii-view';
 import { drawDither } from './dither-view';
 import { renderer } from './gpu';
@@ -16,9 +16,11 @@ export function draw(): void {
     renderer.setSource(src.element, src.width, src.height);
   }
   // The original view is shown untouched; otherwise every output pass runs the effect chain.
-  renderer.setEffects(rt.showOriginal ? [] : activeEffects(p), rt.seed, !(p.mode === 'ascii' && transparentAscii(p)));
+  const mask = maskEffect(p, rt.showMask);
+  const effects = rt.showOriginal ? [] : [...activeEffects(p), ...(mask ? [mask] : [])];
+  renderer.setEffects(effects, rt.seed, !transparentOutput(p));
   stage.classList.toggle('ascii', p.mode === 'ascii' && !rt.showOriginal);
-  stage.classList.toggle('transparent', p.mode === 'ascii' && !rt.showOriginal && transparentAscii(p));
+  stage.classList.toggle('transparent', !rt.showOriginal && !rt.showMask && transparentOutput(p));
 
   if (rt.showOriginal) {
     renderer.renderAdjust(p, true);

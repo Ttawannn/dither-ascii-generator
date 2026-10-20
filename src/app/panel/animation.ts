@@ -12,6 +12,7 @@ import {
   BOIL_SLIDER,
   DITHER_SLIDERS,
   FX_SLIDERS,
+  MASK_SLIDERS,
   type Params,
 } from '../../state';
 import { button, el, freeSelect, freeSlider, section, select, showWhen, slider, toggle } from '../../ui/controls';
@@ -27,6 +28,7 @@ const LANE_TARGETS = [
     label: /^offset./.test(name) ? `Offset LFO · ${s.label}` : /^depth./.test(name) ? `Depth LFO · ${s.label}` : s.label,
   })),
   ...EFFECTS.flatMap((fx) => FX_SLIDERS[fx.id].map((s) => ({ group: 'Effects', key: s.key, label: `${fx.label} · ${s.label}` }))),
+  ...Object.values(MASK_SLIDERS).map((s) => ({ group: 'Mask', key: s.key, label: s.label })),
 ].filter((t) => animatableSpec(t.key));
 const targetLabel = (key: string) => LANE_TARGETS.find((t) => t.key === key)?.label ?? key;
 

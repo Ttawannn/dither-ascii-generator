@@ -11,6 +11,27 @@ export interface PostEffect {
   extra: [number, number, number, number];
   /** Run the bright pass first and pass its mipmapped result as `u_glow` (glow). */
   bright: boolean;
+  /** Mask pass only: colour shown outside the mask, and whether to show the mask itself. */
+  mask?: { color: [number, number, number]; view: boolean };
+}
+
+/** `u_kind` of the mask pass, which always runs last. */
+export const MASK_KIND = 101;
+const MASK_OUTSIDE_IDS = ['original', 'color', 'transparent'];
+
+/**
+ * The mask as a final pass, or null when it is off. u_p: from, to, feather, invert;
+ * u_q: hue, hue width (turns), mode (1 brightness, 2 colour), outside index.
+ */
+export function maskEffect(p: Params, view = false): PostEffect | null {
+  if (p.maskMode === 'off') return null;
+  return {
+    kind: MASK_KIND,
+    params: [p.maskLow / 100, p.maskHigh / 100, p.maskFeather / 100, p.maskInvert ? 1 : 0],
+    extra: [p.maskHue / 360, p.maskHueWidth / 360, p.maskMode === 'hue' ? 2 : 1, Math.max(0, MASK_OUTSIDE_IDS.indexOf(p.maskOutside))],
+    bright: false,
+    mask: { color: hexToRgb(p.maskColor), view },
+  };
 }
 
 export interface EffectDef {

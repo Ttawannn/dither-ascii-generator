@@ -11,6 +11,8 @@ export const rt = {
   current: null as Source | null,
   /** True while the original is shown (Space / Original button). */
   showOriginal: false,
+  /** Show the mask itself instead of the result (Mask section). */
+  showMask: false,
   /** Boil seed: 0 = static; advances at `boilFps` while animating. */
   seed: 0,
   /** Frame time in seconds while exporting; null means real time. */
@@ -74,3 +76,6 @@ export const notBraille = (p: Params) => p.asciiCharset !== 'braille';
 export const lfoActive = (p: Params) =>
   p.mode === 'ascii' && notBraille(p) && (p.asciiOffsetLfo !== 'off' || p.asciiDepthLfo !== 'off');
 export const transparentAscii = (p: Params) => p.asciiTransparent && p.asciiColor !== 'colorBg';
+/** The output has transparent areas: an ASCII background, or what lies outside the mask. */
+export const transparentOutput = (p: Params) =>
+  (p.mode === 'ascii' && transparentAscii(p)) || (p.maskMode !== 'off' && p.maskOutside === 'transparent');

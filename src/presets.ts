@@ -1,4 +1,4 @@
-import { ADJUST_KEYS, ANIM_KEYS, ASCII_KEYS, DEFAULTS, DITHER_KEYS, FX_KEYS, sanitize, type Params } from './state';
+import { ADJUST_KEYS, ANIM_KEYS, ASCII_KEYS, DEFAULTS, DITHER_KEYS, FX_KEYS, MASK_KEYS, sanitize, type Params } from './state';
 
 export interface Preset {
   name: string;
@@ -12,6 +12,7 @@ export const PRESET_KEYS: (keyof Params)[] = [
   ...DITHER_KEYS,
   ...ASCII_KEYS,
   ...FX_KEYS,
+  ...MASK_KEYS,
   ...ANIM_KEYS,
 ];
 

@@ -31,6 +31,9 @@ export const ALGORITHMS: Algorithm[] = [
   { id: 'threshold', label: 'Threshold', group: 'other', shader: 8 },
 ];
 
+/** Pattern algorithms whose cells can bend along the image (`patternFollow`). */
+export const FOLLOWS_IMAGE = ['halftone', 'lines', 'crosshatch', 'honeycomb'];
+
 export const GROUP_LABELS: Record<AlgorithmGroup, string> = {
   ordered: 'Ordered',
   pattern: 'Pattern',

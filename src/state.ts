@@ -54,6 +54,8 @@ export interface Params {
   waveFollow: number;
   /** Honeycomb: concentric rings inside each cell, 0..100. */
   hexRings: number;
+  /** Halftone / line / crosshatch / honeycomb: how far smoothed brightness bends the pattern, 0..100. */
+  patternFollow: number;
   /** Orbs: radius px, how many, how strongly they shift the threshold, size variation, smear axis. */
   orbSize: number;
   orbCount: number;
@@ -145,6 +147,18 @@ export interface Params {
   fxFinishBlur: number;
   fxFinishSharpen: number;
   fxFinishHue: number;
+  // mask
+  /** 'off', 'luma' (brightness range) or 'hue' (colour range), measured on the source. */
+  maskMode: string;
+  maskLow: number;
+  maskHigh: number;
+  maskHue: number;
+  maskHueWidth: number;
+  maskFeather: number;
+  maskInvert: boolean;
+  /** What shows outside the mask: 'original', 'color' or 'transparent'. */
+  maskOutside: string;
+  maskColor: string;
   // export
   exportFormat: string;
   exportScale: number;
@@ -186,6 +200,7 @@ export const DEFAULTS: Params = {
   waveBias: 0,
   waveFollow: 0,
   hexRings: 0,
+  patternFollow: 0,
   orbSize: 40,
   orbCount: 16,
   orbIntensity: 60,
@@ -270,6 +285,15 @@ export const DEFAULTS: Params = {
   fxFinishBlur: 0,
   fxFinishSharpen: 0,
   fxFinishHue: 0,
+  maskMode: 'off',
+  maskLow: 0,
+  maskHigh: 50,
+  maskHue: 30,
+  maskHueWidth: 30,
+  maskFeather: 20,
+  maskInvert: false,
+  maskOutside: 'original',
+  maskColor: '#000000',
   exportFormat: 'png',
   exportScale: 2,
   exportDuration: 4,
@@ -336,6 +360,7 @@ export const DITHER_SLIDERS: Record<string, SliderSpec> = {
   waveBias: { key: 'waveBias', label: 'Tilt', min: -100, max: 100, step: 1, format: (v) => `${signed(v)}%` },
   waveFollow: { key: 'waveFollow', label: 'Follow image', min: 0, max: 100, step: 1, format: pct },
   hexRings: { key: 'hexRings', label: 'Rings', min: 0, max: 100, step: 1, format: pct },
+  patternFollow: { key: 'patternFollow', label: 'Follow image', min: 0, max: 100, step: 1, format: pct },
   orbSize: { key: 'orbSize', label: 'Orb size', min: 2, max: 200, step: 1, format: (v) => `${v}px` },
   orbCount: { key: 'orbCount', label: 'Count', min: 1, max: 64, step: 1 },
   orbIntensity: { key: 'orbIntensity', label: 'Intensity', min: 0, max: 100, step: 1, format: pct },
@@ -414,6 +439,34 @@ export const FX_SLIDERS: Record<string, SliderSpec[]> = {
   ],
 };
 
+export const MASK_MODES = [
+  { id: 'off', label: 'Off' },
+  { id: 'luma', label: 'Brightness range' },
+  { id: 'hue', label: 'Colour range' },
+];
+
+export const MASK_OUTSIDE = [
+  { id: 'original', label: 'Original' },
+  { id: 'color', label: 'Colour' },
+  { id: 'transparent', label: 'Transparent' },
+];
+
+export const MASK_SLIDERS: Record<string, SliderSpec> = {
+  low: { key: 'maskLow', label: 'From', min: 0, max: 100, step: 1, format: pct },
+  high: { key: 'maskHigh', label: 'To', min: 0, max: 100, step: 1, format: pct },
+  hue: { key: 'maskHue', label: 'Hue', min: 0, max: 360, step: 1, format: (v) => `${v}°` },
+  hueWidth: { key: 'maskHueWidth', label: 'Width', min: 5, max: 180, step: 1, format: (v) => `±${v}°` },
+  feather: { key: 'maskFeather', label: 'Feather', min: 0, max: 100, step: 1, format: pct },
+};
+
+export const MASK_KEYS: (keyof Params)[] = [
+  'maskMode',
+  'maskInvert',
+  'maskOutside',
+  'maskColor',
+  ...Object.values(MASK_SLIDERS).map((s) => s.key),
+];
+
 export const BOIL_PATTERNS = [
   { id: 'random', label: 'Random' },
   { id: 'blue', label: 'Blue noise' },
@@ -451,6 +504,7 @@ export const DITHER_KEYS: (keyof Params)[] = [
   'waveBias',
   'waveFollow',
   'hexRings',
+  'patternFollow',
   'orbSize',
   'orbCount',
   'orbIntensity',
@@ -540,8 +594,10 @@ const ENUMS: Partial<Record<keyof Params, string[]>> = {
   exportFormat: EXPORT_FORMATS.map((f) => f.id),
   fxTintMode: TINT_MODES.map((m) => m.id),
   boilPattern: BOIL_PATTERNS.map((b) => b.id),
+  maskMode: MASK_MODES.map((m) => m.id),
+  maskOutside: MASK_OUTSIDE.map((m) => m.id),
 };
-const COLOR_KEYS: (keyof Params)[] = ['ink', 'paper', 'asciiFg', 'asciiBg', 'fxTintColor'];
+const COLOR_KEYS: (keyof Params)[] = ['ink', 'paper', 'asciiFg', 'asciiBg', 'fxTintColor', 'maskColor'];
 const HEX = /^#[0-9a-f]{6}$/i;
 
 const STORAGE_KEY = 'dag.params.v1';
@@ -553,6 +609,7 @@ const RANGES = new Map(
     ...Object.values(ASCII_SLIDERS),
     ...Object.values(EXPORT_SLIDERS),
     ...Object.values(FX_SLIDERS).flat(),
+    ...Object.values(MASK_SLIDERS),
     BOIL_SLIDER,
     BOIL_AMOUNT_SLIDER,
     ANIM_DURATION_SLIDER,
@@ -572,6 +629,7 @@ export const ANIMATABLE: SliderSpec[] = [
   ...Object.values(DITHER_SLIDERS),
   ...Object.values(ASCII_SLIDERS).filter((s) => s.key !== 'asciiFontSize' && s.key !== 'asciiLineHeight'),
   ...Object.values(FX_SLIDERS).flat(),
+  ...Object.values(MASK_SLIDERS),
 ];
 const ANIMATABLE_BY_KEY = new Map(ANIMATABLE.map((s) => [s.key as string, s]));
 export const animatableSpec = (key: string) => ANIMATABLE_BY_KEY.get(key);

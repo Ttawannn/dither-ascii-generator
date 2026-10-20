@@ -2,7 +2,7 @@ import type { Atlas } from '../ascii/atlas';
 import type { AsciiGrid } from '../ascii/grid';
 import { hexToRgb } from './palettes';
 import type { Params } from '../state';
-import { getAlgorithm } from './algorithms';
+import { FOLLOWS_IMAGE, getAlgorithm } from './algorithms';
 import { blueNoiseTile } from './bluenoise';
 import { paletteLab } from './oklab';
 import { baseSpread, MAX_PALETTE, type Palette } from './palettes';
@@ -81,6 +81,11 @@ export class Renderer {
   private filter!: Program;
   private tmpTex!: WebGLTexture;
   private tmpFbo!: WebGLFramebuffer;
+  /** Blurred adjusted image for patterns that follow the image (Follow image). */
+  private smoothTex!: WebGLTexture;
+  private smoothFbo!: WebGLFramebuffer;
+  private smoothW = 0;
+  private smoothH = 0;
   private tmpW = 0;
   private tmpH = 0;
   private postTex: WebGLTexture[] = [];
@@ -92,6 +97,8 @@ export class Renderer {
   private effects: PostEffect[] = [];
   private effectSeed = 0;
   private opaque = true;
+  /** Source is shown mirrored (webcam); the mask pass samples the source the same way. */
+  private mirror = false;
   private srcTex!: WebGLTexture;
   private adjTex!: WebGLTexture;
   private resultTex!: WebGLTexture;
@@ -149,6 +156,8 @@ export class Renderer {
     this.fbo = gl.createFramebuffer()!;
     this.tmpTex = texture(gl, gl.NEAREST);
     this.tmpFbo = gl.createFramebuffer()!;
+    this.smoothTex = texture(gl, gl.NEAREST);
+    this.smoothFbo = gl.createFramebuffer()!;
     this.postTex = [texture(gl, gl.LINEAR), texture(gl, gl.LINEAR)];
     this.postFbo = [gl.createFramebuffer()!, gl.createFramebuffer()!];
     this.glowTex = texture(gl, gl.LINEAR_MIPMAP_LINEAR);
@@ -156,6 +165,7 @@ export class Renderer {
     // Cached sizes and uploads referred to the previous objects.
     this.adjW = this.adjH = 0;
     this.tmpW = this.tmpH = 0;
+    this.smoothW = this.smoothH = 0;
     this.postW = this.postH = 0;
     this.atlasKey = '';
     this.hasResult = false;
@@ -217,6 +227,7 @@ export class Renderer {
     gl.uniform1i(u('u_bypass'), bypass ? 1 : 0);
     gl.uniform1i(u('u_mirror'), p.mirror ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    this.mirror = p.mirror;
 
     if (bypass) return;
     const amount = p.denoise / 100;
@@ -225,15 +236,26 @@ export class Renderer {
     if (radius >= 0.5) this.filterAdjusted(0, radius, 0);
   }
 
-  /** Separable filter on the adjusted image: horizontal into the temp target, vertical back. */
+  /** (Re)allocate an RGBA8 render target when the adjusted size changed. */
+  private sizeTarget(tex: WebGLTexture, fbo: WebGLFramebuffer, w: number, h: number): void {
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  }
+
+  /** Separable filter on the adjusted image, in place. */
   private filterAdjusted(mode: number, radius: number, range: number): void {
+    this.separable(this.adjTex, this.fbo, mode, radius, range);
+  }
+
+  /** Separable filter of an adjusted-size texture: horizontal into the temp target, vertical into `dst`. */
+  private separable(src: WebGLTexture, dst: WebGLFramebuffer, mode: number, radius: number, range: number): void {
     const gl = this.gl;
     const [w, h] = [this.adjW, this.adjH];
     if (w !== this.tmpW || h !== this.tmpH) {
-      gl.bindTexture(gl.TEXTURE_2D, this.tmpTex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this.tmpFbo);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.tmpTex, 0);
+      this.sizeTarget(this.tmpTex, this.tmpFbo, w, h);
       this.tmpW = w;
       this.tmpH = h;
     }
@@ -246,8 +268,8 @@ export class Renderer {
     gl.uniform1f(u('u_radius'), radius);
     gl.uniform1f(u('u_range'), range);
     const passes: [WebGLTexture, WebGLFramebuffer, number, number][] = [
-      [this.adjTex, this.tmpFbo, 1, 0],
-      [this.tmpTex, this.fbo, 0, 1],
+      [src, this.tmpFbo, 1, 0],
+      [this.tmpTex, dst, 0, 1],
     ];
     for (const [src, dst, dx, dy] of passes) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, dst);
@@ -289,6 +311,16 @@ export class Renderer {
   renderDither(p: Params, palette: Palette, seed = 0): void {
     const gl = this.gl;
     const algo = getAlgorithm(p.algorithm);
+    // Follow image: blur the adjusted image over ~1.5 cells; its brightness shifts the pattern.
+    const follow = FOLLOWS_IMAGE.includes(p.algorithm) ? p.patternFollow / 100 : 0;
+    if (follow > 0) {
+      if (this.adjW !== this.smoothW || this.adjH !== this.smoothH) {
+        this.sizeTarget(this.smoothTex, this.smoothFbo, this.adjW, this.adjH);
+        this.smoothW = this.adjW;
+        this.smoothH = this.adjH;
+      }
+      this.separable(this.adjTex, this.smoothFbo, 0, Math.max(1, p.cellSize * 1.5), 0);
+    }
     this.beginOutput();
     const { prog, u } = this.dither;
     gl.useProgram(prog);
@@ -307,6 +339,11 @@ export class Renderer {
     gl.uniform2f(u('u_offset'), (seed * 29) % 64, (seed * 47) % 64);
     gl.uniform2f(u('u_size'), this.adjW, this.adjH);
     gl.uniform1f(u('u_hexRings'), p.hexRings / 100);
+    gl.uniform1f(u('u_follow'), follow);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, follow > 0 ? this.smoothTex : this.adjTex);
+    gl.uniform1i(u('u_smooth'), 2);
+    gl.activeTexture(gl.TEXTURE0);
     gl.uniform4f(u('u_orb'), p.orbSize, p.orbCount, p.orbIntensity / 100, p.orbRandom / 100);
     gl.uniform1i(u('u_orbVertical'), p.orbVertical ? 1 : 0);
     const rad = (deg: number) => (deg * Math.PI) / 180;
@@ -421,10 +458,20 @@ export class Renderer {
     gl.uniform2f(u('u_size'), this.postW, this.postH);
     gl.uniform1f(u('u_seed'), this.effectSeed);
     gl.uniform1i(u('u_opaque'), this.opaque ? 1 : 0);
+    // The mask pass reads the untouched source on unit 3.
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.srcTex);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1i(u('u_src'), 3);
+    gl.uniform1i(u('u_srcMirror'), this.mirror ? 1 : 0);
     let src = 0;
     this.effects.forEach((fx, i) => {
       gl.uniform4fv(u('u_p'), fx.params);
       gl.uniform4fv(u('u_q'), fx.extra);
+      if (fx.mask) {
+        gl.uniform3fv(u('u_maskColor'), fx.mask.color);
+        gl.uniform1i(u('u_maskView'), fx.mask.view ? 1 : 0);
+      }
       if (fx.bright) {
         // Bright pass into the glow texture, then mipmaps so wide glows can read coarse levels.
         // Unit 1 must not hold the glow texture while rendering into it (feedback loop).

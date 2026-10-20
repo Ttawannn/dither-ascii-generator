@@ -57,6 +57,17 @@ describe('sanitize', () => {
     });
   });
 
+  it('checks the mask settings', () => {
+    expect(sanitize({ maskMode: 'hue', maskOutside: 'color', maskColor: '#00ff00', maskHue: 400, patternFollow: 50 })).toEqual({
+      maskMode: 'hue',
+      maskOutside: 'color',
+      maskColor: '#00ff00',
+      maskHue: 360,
+      patternFollow: 50,
+    });
+    expect(sanitize({ maskMode: 'depth', maskOutside: 'blur' })).toEqual({});
+  });
+
   it('ignores non-objects', () => {
     expect(sanitize(null)).toEqual({});
     expect(sanitize('{"mode":"ascii"}')).toEqual({});

@@ -32,7 +32,7 @@ New to it? Start from one of the **Presets** (Mac 1-bit, Game Boy, Newsprint, Te
 | Group | Algorithms | Extra controls |
 |---|---|---|
 | Ordered | Bayer 2×2, 4×4, 8×8, blue noise | Strength |
-| Pattern | Halftone dot, halftone line, crosshatch, honeycomb | Strength, cell size, angle; rings for honeycomb |
+| Pattern | Halftone dot, halftone line, crosshatch, honeycomb | Strength, cell size, angle, follow image (the pattern bends along the picture's shapes); rings for honeycomb |
 | Pattern | Orbs: soft circles smeared into streaks over a Bayer pattern, drifting with Boil | Strength, orb size, count, intensity, size variation, vertical |
 | Pattern | Halftone CMYK: four ink screens printed over white (ignores the palette) | Cell size, angle per ink, dot gain, black replacement, smoothing |
 | Error diffusion | Floyd–Steinberg, Atkinson, Jarvis–Judice–Ninke, Stucki, Burkes, Sierra, Sierra two-row, Sierra Lite | Diffusion amount, serpentine scan, wave (lines through the threshold, with wavelength, tilt, and follow image to bend them along the picture's shapes) |
@@ -81,6 +81,10 @@ Copy the result to the clipboard, or save it as `.txt` or as a standalone colour
 - **Webcam:** a live feed with a **Mirror** toggle (on by default for the camera). The browser asks for camera permission first.
 - **Boil:** turn it on under **Animation** to make the dither pattern or ASCII characters shift over time (1–30 fps), even on a still image. For error diffusion and ASCII you can pick the jitter pattern (random or blue noise, which is more even) and its amount.
 - **Animate settings:** pick almost any slider and press **+ Animate**. Each lane is either an **LFO** (shape, speed, swing around the slider value) or **Keys**, going from one value to another with easing and repeat / ping-pong / once looping over a timeline of 1–30 s. Up to 8 lanes run at once, and still images with lanes export as GIF or video.
+
+## Mask
+
+Limit the result to part of the picture. **Mask by** a brightness range (from / to) or a colour range (hue ± width), measured on the original image, with feather and invert. Outside the mask you can show the original, a flat colour, or transparency (kept in PNG, GIF and WebM exports). **Show mask** previews it in black and white. The mask applies after the effects, and its sliders can be animated.
 
 ## Effects
 

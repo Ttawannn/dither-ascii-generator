@@ -2,7 +2,7 @@ import type { AnimationFormat, FrameSequence } from '../export/animation';
 import { download, exportPng } from '../export/png';
 import { canvasToSvg } from '../export/svg';
 import { EXPORT_FORMATS, type Params } from '../state';
-import { actions, lanesOf, lfoActive, requestRender, rt, store, transparentAscii } from './core';
+import { actions, lanesOf, lfoActive, requestRender, rt, store, transparentAscii, transparentOutput } from './core';
 import { currentAtlas } from './ascii-view';
 import { diffuser } from './gpu';
 import { exportBtn, exportInfo } from './panel/export';
@@ -25,7 +25,7 @@ function syncExportInfo(): void {
   }
   const plan = animationLength();
   const alphaNote =
-    p.mode === 'ascii' && transparentAscii(p) && p.exportFormat === 'mp4'
+    transparentOutput(p) && p.exportFormat === 'mp4'
       ? ' · MP4 can’t keep transparency: the background colour is used'
       : '';
   exportInfo.textContent =
@@ -184,8 +184,9 @@ actions.exportClick = async () => {
       frames,
       onProgress: (done, total) => (exportBtn.textContent = `Cancel · ${done}/${total}`),
       isCancelled: () => job.cancelled,
-      transparent: p.mode === 'ascii' && transparentAscii(p),
-      matte: p.asciiBg,
+      transparent: transparentOutput(p),
+      // Transparent ASCII backgrounds fill with the background colour, masked-out areas with the mask colour.
+      matte: p.mode === 'ascii' && transparentAscii(p) ? p.asciiBg : p.maskColor,
       onNote: flash,
     });
     download(blob, `${name}.${p.exportFormat}`);

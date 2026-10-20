@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS, FX_SLIDERS, sanitize, type Params } from '../state';
-import { activeEffects, DEFAULT_ORDER, EFFECT_IDS, EFFECTS, moveEffect, normalizeOrder } from './effects';
+import { activeEffects, DEFAULT_ORDER, EFFECT_IDS, EFFECTS, MASK_KIND, maskEffect, moveEffect, normalizeOrder } from './effects';
 
 describe('effect order', () => {
   it('keeps a valid order as it is', () => {
@@ -85,6 +85,24 @@ describe('glow and finish', () => {
     expect(finish.params[0]).toBe(3);
     expect(finish.params[1]).toBeCloseTo(0.4);
     expect(finish.params[2]).toBeCloseTo(-Math.PI);
+  });
+});
+
+describe('mask', () => {
+  it('is off by default', () => {
+    expect(maskEffect(DEFAULTS)).toBeNull();
+  });
+
+  it('sends the range, feather, invert, hue and outside choice', () => {
+    const fx = maskEffect(
+      { ...DEFAULTS, maskMode: 'hue', maskHue: 90, maskHueWidth: 45, maskFeather: 50, maskInvert: true, maskOutside: 'transparent', maskColor: '#ff0000' },
+      true,
+    )!;
+    expect(fx.kind).toBe(MASK_KIND);
+    expect(fx.params).toEqual([0, 0.5, 0.5, 1]);
+    expect(fx.extra).toEqual([0.25, 0.125, 2, 2]);
+    expect(fx.mask).toEqual({ color: [1, 0, 0], view: true });
+    expect(maskEffect({ ...DEFAULTS, maskMode: 'luma' })!.extra[2]).toBe(1);
   });
 });
 

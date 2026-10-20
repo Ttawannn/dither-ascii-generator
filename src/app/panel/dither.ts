@@ -1,4 +1,4 @@
-import { ALGORITHMS, GROUP_LABELS } from '../../pipeline/algorithms';
+import { ALGORITHMS, FOLLOWS_IMAGE, GROUP_LABELS } from '../../pipeline/algorithms';
 import { getPaletteDef, MONO_PRESETS, PALETTES } from '../../pipeline/palettes';
 import { DITHER_SLIDERS, type Params } from '../../state';
 import { colorInput, colorPresets, el, select, showWhen, slider, swatches, toggle } from '../../ui/controls';
@@ -32,6 +32,7 @@ export const ditherControls = showWhen(
     ditherSlider('cellSize', (p) => group(p) === 'pattern' && p.algorithm !== 'orbs'),
     ditherSlider('angle', (p) => group(p) === 'pattern' && p.algorithm !== 'orbs' && !cmyk(p)),
     ditherSlider('hexRings', (p) => p.algorithm === 'honeycomb'),
+    ditherSlider('patternFollow', (p) => FOLLOWS_IMAGE.includes(p.algorithm)),
     ...(['orbSize', 'orbCount', 'orbIntensity', 'orbRandom'] as const).map((k) => ditherSlider(k, (p) => p.algorithm === 'orbs')),
     showWhen(toggle('orbVertical', 'Vertical', store), store, (p) => p.algorithm === 'orbs'),
     ...(['cmykAngleC', 'cmykAngleM', 'cmykAngleY', 'cmykAngleK', 'cmykDotGain', 'cmykGcr', 'cmykSupersample'] as const).map(
