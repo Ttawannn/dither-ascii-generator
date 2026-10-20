@@ -34,6 +34,7 @@ export function draw(): void {
   const [sw, sh] = renderer.sourceSize;
   const downscaled = src.originalWidth !== sw;
   info.size.textContent = `${src.originalWidth}×${src.originalHeight}${downscaled ? ` → ${sw}×${sh}` : ''}`;
+  actions.drawSplit();
   actions.afterDraw();
 }
 setDrawer(draw);

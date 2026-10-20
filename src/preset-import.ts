@@ -44,6 +44,14 @@ export function importPreset(data: unknown): ImportResult | null {
   return importExternal(isObj(root.preset) ? root.preset : root);
 }
 
+/** A file holding several presets: `{ presets: [...] }` or a bare array, each item read like a single file. */
+export function importPresetList(data: unknown): ImportResult[] | null {
+  const list = Array.isArray(data) ? data : isObj(data) && Array.isArray(data.presets) ? data.presets : null;
+  if (!list) return null;
+  const out = list.map(importPreset).filter((r): r is ImportResult => r !== null);
+  return out.length ? out : null;
+}
+
 // ---------- external presets ----------
 
 const KERNELS: [RegExp, string][] = [
