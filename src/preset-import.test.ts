@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { importPreset, looksLikePreset } from './preset-import';
+import { importPreset, importPresetList, looksLikePreset } from './preset-import';
+import { presetFile, presetFileName, presetListFile } from './presets';
 import { normalizeOrder } from './pipeline/effects';
 
 /** An external preset in the shape these files use, with every effect off unless overridden. */
@@ -173,5 +174,32 @@ describe('importPreset', () => {
       asciiPalette: 'custom',
       asciiBg: '#101010',
     });
+  });
+});
+
+describe('preset files round-trip', () => {
+  const look = { name: 'Blue lines', params: { algorithm: 'atkinson', waveStrength: 60, palette: 'custom', customPalette: '#000000 #0055ff' } };
+
+  it('reads back a single exported look exactly', () => {
+    const r = importPreset(JSON.parse(presetFile(look)))!;
+    expect(r.name).toBe('Blue lines');
+    expect(r.params).toEqual(look.params);
+  });
+
+  it('reads back several looks from one file, skipping unreadable entries', () => {
+    const other = { name: 'Plain', params: { algorithm: 'bayer8' } };
+    const data = JSON.parse(presetListFile([look, other]));
+    data.presets.push({ junk: true });
+    const list = importPresetList(data)!;
+    expect(list.map((r) => r.name)).toEqual(['Blue lines', 'Plain']);
+    expect(list[1].params).toEqual({ algorithm: 'bayer8' });
+    expect(importPresetList({ presets: [] })).toBeNull();
+    expect(importPresetList({ name: 'x', params: {} })).toBeNull();
+  });
+
+  it('makes safe file names in any script', () => {
+    expect(presetFileName('Blue lines')).toBe('Blue-lines.json');
+    expect(presetFileName('ลายเส้น/สีฟ้า?')).toBe('ลายเส้นสีฟ้า.json');
+    expect(presetFileName('  ')).toBe('look.json');
   });
 });

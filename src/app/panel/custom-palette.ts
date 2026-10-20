@@ -1,41 +1,92 @@
+import { loadLibrary, mergeLibrary, storeLibrary, type LibraryPalette } from '../../palette-library';
 import { parsePaletteFile } from '../../pipeline/palette-file';
 import { MAX_PALETTE, parseColorList, serializeColorList } from '../../pipeline/palettes';
 import { button, el, toggle } from '../../ui/controls';
+import { readZip } from '../../zip';
 import { store } from '../core';
 import { flash } from '../shell';
 
-// Editor for the custom palette (`customPalette`): colour chips, a hex list, and file import.
-// The dither and ASCII panels each get their own instance; both edit the same param.
+// Editor for the custom palette (`customPalette`): colour chips, a hex list, file import, and a
+// library of palettes kept in this browser. The dither and ASCII panels each get their own
+// instance; both edit the same param and show the same library.
 
 const PALETTE_FILE = /\.(json|hex|gpl|txt)$/i;
-export const isPaletteFile = (file: File) => PALETTE_FILE.test(file.name);
+export const isPaletteFile = (file: File) => PALETTE_FILE.test(file.name) || /\.zip$/i.test(file.name);
 
 const colors = () => parseColorList(store.params.customPalette);
 const setColors = (list: string[]) => store.set('customPalette', serializeColorList(list));
 
-/** Read a palette file, make it the custom palette, and switch the current mode to it. */
-export async function importPaletteFile(file: File): Promise<void> {
-  let parsed;
-  try {
-    parsed = parsePaletteFile(await file.text());
-  } catch {
-    parsed = null;
-  }
-  if (!parsed) {
-    flash(`No colours found in ${file.name}`);
-    return;
-  }
-  setColors(parsed.colors);
+/** Make the custom palette the active one in the current mode. */
+function useCustom(): void {
   if (store.params.mode === 'dither') {
     store.set('palette', 'custom');
   } else {
     store.set('asciiColor', 'palette');
     store.set('asciiPalette', 'custom');
   }
-  const name = parsed.name ?? file.name.replace(PALETTE_FILE, '');
-  const dropped = parsed.dropped ? ` (first ${MAX_PALETTE}, ${parsed.dropped} left out)` : '';
-  flash(`Palette “${name}”: ${parsed.colors.length} colours${dropped}`);
 }
+
+// ---------- library ----------
+
+let library = loadLibrary();
+const libraryListeners = new Set<() => void>();
+
+function setLibrary(next: LibraryPalette[]): void {
+  library = next;
+  if (!storeLibrary(library)) flash('Could not save the palette library — browser storage is blocked');
+  for (const fn of libraryListeners) fn();
+}
+
+/** Palettes in one file, or in every palette file of a .zip (system files skipped). */
+async function readPalettes(file: File): Promise<LibraryPalette[]> {
+  const fromText = (text: string, fileName: string): LibraryPalette | null => {
+    const parsed = parsePaletteFile(text);
+    if (!parsed) return null;
+    const base = fileName.split('/').pop()!.replace(PALETTE_FILE, '');
+    return { name: (parsed.name ?? base).slice(0, 60), colors: parsed.colors };
+  };
+  if (/\.zip$/i.test(file.name)) {
+    const entries = await readZip(new Uint8Array(await file.arrayBuffer()));
+    const decoder = new TextDecoder();
+    return entries
+      .filter((e) => PALETTE_FILE.test(e.name) && !/(^|\/)(__MACOSX\/|\.)/.test(e.name))
+      .map((e) => fromText(decoder.decode(e.data), e.name))
+      .filter((p): p is LibraryPalette => p !== null);
+  }
+  const one = fromText(await file.text(), file.name);
+  return one ? [one] : [];
+}
+
+/**
+ * Import palette files (.json/.hex/.gpl/.txt or a .zip of them) into the library. A single palette
+ * also becomes the custom palette right away; several are just added to the list.
+ */
+export async function importPaletteFiles(files: File[]): Promise<void> {
+  const found: LibraryPalette[] = [];
+  for (const file of files) {
+    try {
+      found.push(...(await readPalettes(file)));
+    } catch {
+      flash(`Could not read ${file.name}`);
+    }
+  }
+  if (!found.length) {
+    flash(`No colours found in ${files.map((f) => f.name).join(', ')}`);
+    return;
+  }
+  setLibrary(mergeLibrary(library, found));
+  if (found.length === 1) {
+    setColors(found[0].colors);
+    useCustom();
+    flash(`Palette “${found[0].name}”: ${found[0].colors.length} colours`);
+  } else {
+    flash(`Added ${found.length} palettes to the library`);
+  }
+}
+
+export const importPaletteFile = (file: File) => importPaletteFiles([file]);
+
+// ---------- editor ----------
 
 export function customPaletteEditor(): HTMLElement {
   const chips = el('div', { class: 'pal-chips' });
@@ -45,7 +96,12 @@ export function customPaletteEditor(): HTMLElement {
     'aria-label': 'Palette colours (hex)',
     title: 'Hex colours separated by spaces; paste a list here',
   });
-  const picker = el('input', { type: 'file', accept: '.json,.hex,.gpl,.txt,application/json,text/plain', hidden: '' });
+  const picker = el('input', {
+    type: 'file',
+    accept: '.json,.hex,.gpl,.txt,.zip,application/json,text/plain,application/zip',
+    multiple: '',
+    hidden: '',
+  });
 
   function chip(hex: string, i: number): HTMLElement {
     const input = el('input', { type: 'color', 'aria-label': `Colour ${i + 1}` });
@@ -91,9 +147,9 @@ export function customPaletteEditor(): HTMLElement {
   });
 
   picker.addEventListener('change', () => {
-    const file = picker.files?.[0];
+    const files = [...(picker.files ?? [])];
     picker.value = '';
-    if (file) void importPaletteFile(file);
+    if (files.length) void importPaletteFiles(files);
   });
 
   const sort = button('Sort', () => {
@@ -105,6 +161,55 @@ export function customPaletteEditor(): HTMLElement {
   }, 'btn small');
   sort.title = 'Order colours dark → light';
 
+  // Library: search, click a row to use it, × to remove, save the current palette under a name.
+  const search = el('input', { type: 'text', spellcheck: 'false', placeholder: 'Search', 'aria-label': 'Search palettes' });
+  const saveName = el('input', { type: 'text', maxlength: '60', placeholder: 'Name', 'aria-label': 'Palette name' });
+  const list = el('div', { class: 'pal-lib-list' });
+  const summary = el('summary', {});
+  const details = el('details', { class: 'pal-lib' }, summary);
+
+  function renderLibrary(): void {
+    summary.textContent = `Library (${library.length})`;
+    const q = search.value.trim().toLowerCase();
+    const shown = library.filter((p) => !q || p.name.toLowerCase().includes(q)).reverse();
+    list.replaceChildren(
+      ...shown.map((p) => {
+        const use = el(
+          'button',
+          { class: 'pal-lib-row', type: 'button', title: `Use “${p.name}”` },
+          el('span', { class: 'pal-lib-name' }, p.name),
+          el('span', { class: 'pal-lib-swatches' }, ...p.colors.map((c) => el('span', { style: `background:${c}` }))),
+        );
+        use.addEventListener('click', () => {
+          setColors(p.colors);
+          useCustom();
+          flash(`Palette “${p.name}”`);
+        });
+        const remove = button('×', () => setLibrary(library.filter((x) => x !== p)), 'pal-lib-x');
+        remove.title = 'Remove from the library';
+        return el('div', { class: 'pal-lib-item' }, use, remove);
+      }),
+      ...(shown.length ? [] : [el('div', { class: 'note' }, library.length ? 'No match' : 'Import palette files or a .zip to fill the library')]),
+    );
+  }
+
+  function saveCurrent(): void {
+    const name = saveName.value.trim() || `Palette ${library.length + 1}`;
+    setLibrary(mergeLibrary(library, [{ name, colors: colors() }]));
+    saveName.value = '';
+    flash(`Saved “${name}” to the library`);
+  }
+  saveName.addEventListener('keydown', (e) => e.key === 'Enter' && saveCurrent());
+  search.addEventListener('input', renderLibrary);
+  libraryListeners.add(renderLibrary);
+  renderLibrary();
+
+  details.append(
+    search,
+    list,
+    el('div', { class: 'save-row' }, saveName, button('Save', saveCurrent, 'btn small')),
+  );
+
   store.subscribe((_, changed) => changed === 'customPalette' && sync());
   sync();
 
@@ -113,8 +218,9 @@ export function customPaletteEditor(): HTMLElement {
     { class: 'pal-editor' },
     chips,
     text,
-    el('div', { class: 'pal-actions' }, button('Import file…', () => picker.click(), 'btn small'), sort),
+    el('div', { class: 'pal-actions' }, button('Import files…', () => picker.click(), 'btn small'), sort),
     toggle('customRamp', 'Match by brightness', store),
+    details,
     picker,
   );
 }

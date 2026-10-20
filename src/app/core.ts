@@ -35,6 +35,8 @@ export const actions = {
   zoom100: (): void => {},
   /** Runs after every draw (updates the export summary). */
   afterDraw: (): void => {},
+  /** Redraws the before/after split overlay. */
+  drawSplit: (): void => {},
 };
 
 let drawFn = () => {};

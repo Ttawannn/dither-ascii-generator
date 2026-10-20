@@ -22,7 +22,7 @@ Your files never leave your device. All processing happens in the browser.
 
 1. **Load a source.** Drag an image or video onto the page, paste an image with `Ctrl+V`, click **Upload**, or start the **Webcam**. **Sample** loads a built-in test image.
 2. **Pick a mode.** Use the **Dither** or **ASCII** tabs at the top, or press `D` / `A`.
-3. **Tune it.** Use **Adjust** for brightness, contrast, gamma, a shadows / midtones / highlights tone curve, saturation, hue, sharpen, blur, denoise and invert, then **Effect** for the mode-specific settings. Hold `Space` (or the **Original** button) to compare with the source.
+3. **Tune it.** Use **Adjust** for brightness, contrast, gamma, a shadows / midtones / highlights tone curve, saturation, hue, sharpen, blur, denoise and invert, then **Effect** for the mode-specific settings. Hold `Space` (or the **Original** button) to compare with the source, or press **Split** (`S`) to see the original and the result side by side with a draggable line. Undo and redo any change with the ↶ ↷ buttons or `Ctrl+Z` / `Ctrl+Shift+Z`.
 4. **Export.** Choose a format in the **Export** section and press **Export**.
 
 New to it? Start from one of the **Presets** (Mac 1-bit, Game Boy, Newsprint, Terminal, Braille, Matrix…) and tweak from there.
@@ -42,6 +42,7 @@ New to it? Start from one of the **Presets** (Mac 1-bit, Game Boy, Newsprint, Te
 - Mono / Duotone: any two colours, 2–16 levels, with quick colour presets
 - Retro systems: Game Boy, CGA, PICO-8, Commodore 64
 - Custom: 2–32 colours you pick, paste as hex, or import from a palette file (JSON, .hex, GIMP .gpl), matched by nearest colour or by brightness
+- Palette library: import many palette files at once, or a `.zip` of them, and pick from a searchable list; you can also save the current custom palette to it. The library is kept in this browser.
 - **Perceptual match** (for palettes picked by nearest colour): compares colours in OKLab, so lightness is kept closer to the original
 - RGB levels: per-channel colour steps
 - From image: median-cut extraction of 2–16 colours
@@ -113,13 +114,16 @@ For animated formats, set the **duration** (up to 30 s) and **frame rate** (5–
 - Click a built-in preset to apply a complete look.
 - Type a name and press **Save** to keep your own presets in this browser.
 - **Copy share link** puts your current settings into the URL (`#s=…`). Anyone opening the link gets the same look.
-- **Import preset…** (or drop a `.preset` / `.json` file on the page) applies a preset file and keeps it under Saved. Besides this app's own `{ name, params }` files it reads preset JSON from other tools that describe a palette, a dither style and a list of effects: values are mapped onto the closest settings here, and a short report lists what was approximated and what has no equivalent.
+- **Export look** downloads the current settings as a `.json` file (named from the box above), and **Export saved** puts every saved preset in one file, so looks can move between browsers or computers.
+- **Import preset…** (or drop a `.preset` / `.json` file on the page) applies a preset file and keeps it under Saved. A file of several presets is added to Saved without changing the current look. Besides this app's own files it reads preset JSON from other tools that describe a palette, a dither style and a list of effects: values are mapped onto the closest settings here, and a short report lists what was approximated and what has no equivalent.
 
 ## Keyboard shortcuts
 
 | Key | Action |
 |---|---|
 | Hold `Space` | Show original |
+| `S` | Split view: original \| result |
+| `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 | `F` / double-click preview | Fit to view |
 | `1` | 100% zoom |
 | Wheel / drag | Zoom / pan |

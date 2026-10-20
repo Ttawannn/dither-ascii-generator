@@ -139,6 +139,7 @@ export const footer = el(
 
 const SHORTCUTS: [string, string][] = [
   ['Space (hold)', 'Show original'],
+  ['S', 'Split: original | result'],
   ['F · double-click', 'Fit to view'],
   ['1', '100% zoom'],
   ['Wheel · drag', 'Zoom · pan'],
@@ -148,6 +149,7 @@ const SHORTCUTS: [string, string][] = [
   ['T', 'Dark / parchment theme'],
   ['O', 'Open file'],
   ['E', 'Export'],
+  ['Ctrl+Z · Ctrl+Shift+Z', 'Undo · redo'],
   ['Ctrl+V', 'Paste image'],
   ['?', 'This help'],
 ];

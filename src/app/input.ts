@@ -1,9 +1,11 @@
 import { isImageFile } from '../source/image';
 import { actions, store } from './core';
 import { renderer, viewer } from './gpu';
-import { importPaletteFile, isPaletteFile } from './panel/custom-palette';
+import { importPaletteFile, importPaletteFiles, isPaletteFile } from './panel/custom-palette';
 import { importPresetFile } from './panel/presets';
 import { setOriginal } from './render';
+import { toggleSplit } from './split';
+import { redo, undo } from './undo';
 import { openFile } from './sources';
 import { fileInput, flash, stage, toggleHelp, toggleTheme, transport } from './shell';
 
@@ -27,7 +29,10 @@ window.addEventListener('drop', (e) => {
   if (!hasFiles(e)) return;
   e.preventDefault();
   stage.classList.remove('dragover');
-  void openDropped(e.dataTransfer?.files[0]);
+  const files = [...(e.dataTransfer?.files ?? [])];
+  // Several palette files (or a .zip) go to the palette library together.
+  if (files.length > 1 && files.every(isPaletteFile)) void importPaletteFiles(files);
+  else void openDropped(files[0]);
 });
 
 /** Presets (.preset, or .json shaped like one), palette files, otherwise an image or video. */
@@ -49,10 +54,23 @@ const ownsKeys = (t: EventTarget | null) =>
   t instanceof HTMLSelectElement || (t instanceof HTMLInputElement && t.type !== 'range' && t.type !== 'checkbox');
 
 window.addEventListener('keydown', (e) => {
+  // Text fields keep their own undo.
+  const textField = e.target instanceof HTMLTextAreaElement || (e.target instanceof HTMLInputElement && e.target.type === 'text');
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !textField) {
+    const key = e.key.toLowerCase();
+    if (key === 'z' || key === 'y') {
+      e.preventDefault();
+      if (key === 'y' || e.shiftKey) redo();
+      else undo();
+      return;
+    }
+  }
   if (ownsKeys(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.code === 'Space' && renderer.hasSource) {
     e.preventDefault();
     setOriginal(true);
+  } else if (e.key === 's') {
+    toggleSplit();
   } else if (e.key === 'f') {
     viewer.fit();
   } else if (e.key === '1') {

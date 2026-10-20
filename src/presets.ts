@@ -121,6 +121,24 @@ export function snapshot(params: Params): Partial<Params> {
   return out;
 }
 
+// ---------- preset files ----------
+
+/** One look as a file, in the shape `importPreset()` reads back. */
+export const presetFile = (p: Preset): string => JSON.stringify({ name: p.name, params: p.params }, null, 2);
+
+/** Several looks in one file, as `importPresetList()` reads back. */
+export const presetListFile = (list: Preset[]): string =>
+  JSON.stringify({ presets: list.map((p) => ({ name: p.name, params: p.params })) }, null, 2);
+
+/** A safe file name for a look (keeps letters in any script, drops characters filesystems reject). */
+export function presetFileName(name: string): string {
+  const base = name
+    .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+  return `${base || 'look'}.json`;
+}
+
 // ---------- saved presets ----------
 
 const STORAGE_KEY = 'dag.presets.v1';
