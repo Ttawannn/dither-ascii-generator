@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ALGORITHMS, KERNELS } from './algorithms';
 import { blueNoiseTile } from './bluenoise';
-import { diffuse, type DiffusionJob } from './diffuse';
+import { diffuse, smoothLuma, type DiffusionJob } from './diffuse';
 
 const SIZE = 64;
 
@@ -39,6 +39,22 @@ describe('algorithm table', () => {
   it('gives every GPU algorithm its own shader index', () => {
     const gpu = ALGORITHMS.filter((a) => a.shader !== undefined).map((a) => a.shader);
     expect(new Set(gpu).size).toBe(gpu.length);
+  });
+});
+
+describe('smoothLuma', () => {
+  it('keeps a flat image flat and spreads a step over the radius', () => {
+    const w = 8;
+    const h = 2;
+    const data = new Uint8Array(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      const v = i % w < 4 ? 0 : 255;
+      data.set([v, v, v, 255], i * 4);
+    }
+    const s = smoothLuma(data, w, h, 1);
+    const row = Array.from(s.slice(0, w), (v) => +v.toFixed(3));
+    expect(row).toEqual([0, 0, 0, 0.333, 0.667, 1, 1, 1]);
+    expect(Array.from(smoothLuma(grey(128), SIZE, SIZE, 3)).every((v) => Math.abs(v - 128 / 255) < 1e-5)).toBe(true);
   });
 });
 
@@ -139,6 +155,46 @@ describe('diffuse', () => {
     expect(diffuse(job({ wave: [1, 12, 0], seed: 1 }))).toEqual(a);
     expect(diffuse(job({ wave: [1, 12, 0], seed: 2 }))).not.toEqual(a);
     expect(diffuse(job({ wave: [1, 12, 0.5], seed: 1 }))).not.toEqual(a);
+  });
+
+  it('wave follow: zero changes nothing', () => {
+    const data = grey(90);
+    expect(diffuse(job({ data, wave: [1, 12, 0, 0] }))).toEqual(diffuse(job({ data, wave: [1, 12, 0] })));
+  });
+
+  it('wave follow bends the lines where the brightness changes', () => {
+    // Left half ≈ 0.30, right half ≈ 0.55. At full follow the brightness gap shifts the wave by
+    // 0.25 × 2 = half a wavelength, so the two halves' line patterns go from in step to opposite.
+    const data = new Uint8Array(SIZE * SIZE * 4);
+    for (let i = 0; i < SIZE * SIZE; i++) {
+      const v = i % SIZE < SIZE / 2 ? 77 : 140;
+      data.set([v, v, v, 255], i * 4);
+    }
+    const rows = (d: Uint8Array, x0: number, x1: number) =>
+      Array.from({ length: SIZE }, (_, y) => {
+        let n = 0;
+        for (let x = x0; x < x1; x++) if (d[(y * SIZE + x) * 4] === 255) n++;
+        return n / (x1 - x0);
+      });
+    const corr = (a: number[], b: number[]) => {
+      const ma = a.reduce((s, v) => s + v) / a.length;
+      const mb = b.reduce((s, v) => s + v) / b.length;
+      let ab = 0;
+      let aa = 0;
+      let bb = 0;
+      a.forEach((v, i) => {
+        ab += (v - ma) * (b[i] - mb);
+        aa += (v - ma) ** 2;
+        bb += (b[i] - mb) ** 2;
+      });
+      return ab / Math.sqrt(aa * bb);
+    };
+    // Columns well away from the edge, beyond the one-wavelength smoothing.
+    const halves = (d: Uint8Array) => corr(rows(d, 0, 16), rows(d, 48, 64));
+    const straight = diffuse(job({ data, wave: [1, 12, 0, 0] }));
+    const bent = diffuse(job({ data, wave: [1, 12, 0, 1] }));
+    expect(halves(straight)).toBeGreaterThan(0.5);
+    expect(halves(bent)).toBeLessThan(0);
   });
 
   it('is deterministic for a given boil seed and changes with it', () => {

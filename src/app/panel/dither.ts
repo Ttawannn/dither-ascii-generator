@@ -40,7 +40,7 @@ export const ditherControls = showWhen(
     ditherSlider('threshold', (p) => p.algorithm === 'threshold'),
     ditherSlider('diffusion', (p) => group(p) === 'diffusion'),
     showWhen(toggle('serpentine', 'Serpentine', store), store, (p) => group(p) === 'diffusion'),
-    ...(['waveStrength', 'waveLength', 'waveBias'] as const).map((k) =>
+    ...(['waveStrength', 'waveLength', 'waveBias', 'waveFollow'] as const).map((k) =>
       ditherSlider(k, (p) => group(p) === 'diffusion' && (k === 'waveStrength' || p.waveStrength > 0)),
     ),
     // Halftone CMYK prints its own inks, so the palette doesn't apply.

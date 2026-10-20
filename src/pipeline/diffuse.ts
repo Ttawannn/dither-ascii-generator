@@ -22,9 +22,10 @@ export interface DiffusionJob {
   noiseTile?: Uint8Array | null;
   /**
    * Wave diffusion: a sine added to the quantisation threshold along visual rows.
-   * [strength 0..1 (±0.5 at 1), wavelength in pixels, bias −1..1 (tilt per pixel along x)].
+   * [strength 0..1 (±0.5 at 1), wavelength in pixels, bias −1..1 (tilt per pixel along x),
+   *  follow 0..1 (optional): how far smoothed brightness shifts the wave, so lines bend along the image].
    */
-  wave?: [number, number, number] | null;
+  wave?: [number, number, number, number?] | null;
   seed: number;
 }
 
@@ -40,6 +41,35 @@ export interface DiffusionResult {
 const LR = 0.2126;
 const LG = 0.7152;
 const LB = 0.0722;
+
+/** Wavelengths the wave can shift between black and white when following the image fully. */
+const FOLLOW_WAVES = 2;
+
+/**
+ * Luminance (0..1) of RGBA pixels, box-blurred with radius r in both directions (edges clamped).
+ * Same buffer layout as the input.
+ */
+export function smoothLuma(data: Uint8Array, w: number, h: number, r: number): Float32Array {
+  const n = w * h;
+  const a = new Float32Array(n);
+  for (let i = 0; i < n; i++) a[i] = (LR * data[i * 4] + LG * data[i * 4 + 1] + LB * data[i * 4 + 2]) / 255;
+  const b = new Float32Array(n);
+  const pass = (src: Float32Array, dst: Float32Array, len: number, lines: number, at: (line: number, k: number) => number) => {
+    const span = 2 * r + 1;
+    for (let line = 0; line < lines; line++) {
+      const get = (k: number) => src[at(line, Math.min(len - 1, Math.max(0, k)))];
+      let sum = 0;
+      for (let k = -r; k <= r; k++) sum += get(k);
+      for (let k = 0; k < len; k++) {
+        dst[at(line, k)] = sum / span;
+        sum += get(k + r + 1) - get(k - r);
+      }
+    }
+  };
+  pass(a, b, w, h, (y, x) => y * w + x);
+  pass(b, a, h, w, (x, y) => y * w + x);
+  return a;
+}
 
 /** Error-diffuse one frame. Pure function, shared by the worker and the tests. */
 export function diffuse(job: DiffusionJob): Uint8Array {
@@ -76,9 +106,13 @@ export function diffuse(job: DiffusionJob): Uint8Array {
   }
 
   const palSize = colors.length / 3;
-  const [waveAmp, waveLen, waveBias] = job.wave ?? [0, 1, 0];
+  const [waveAmp, waveLen, waveBias, waveFollow = 0] = job.wave ?? [0, 1, 0];
   const waveK = (2 * Math.PI) / Math.max(1, waveLen);
   const wavePhase = job.seed * 1.7; // boil moves the waves
+  // Follow: brightness, smoothed over about one wavelength, pushes the wave by up to FOLLOW_WAVES
+  // wavelengths, so lines shift where the image changes and trace its shapes.
+  const follow = waveAmp && waveFollow ? smoothLuma(data, w, h, Math.max(1, Math.round(waveLen))) : null;
+  const followK = waveFollow * FOLLOW_WAVES * 2 * Math.PI;
   const lab = kind === 'set' && job.perceptual ? paletteLab(colors) : null;
   const steps = job.levels - 1;
   const q = [0, 0, 0];
@@ -93,7 +127,8 @@ export function diffuse(job: DiffusionJob): Uint8Array {
       const i = row * w + x;
       let ci = 0; // palette index for output colour (ramp/set)
       // Threshold modulation: the wave shifts which level is picked, the error still uses the true value.
-      const m = waveAmp ? 0.5 * waveAmp * Math.sin((vy + waveBias * x) * waveK + wavePhase) : 0;
+      const bend = follow ? follow[i] * followK : 0;
+      const m = waveAmp ? 0.5 * waveAmp * Math.sin((vy + waveBias * x) * waveK + wavePhase + bend) : 0;
 
       if (ch === 1) {
         const v = Math.min(1, Math.max(0, buf[i]));
