@@ -48,10 +48,11 @@ describe('sanitize', () => {
   });
 
   it('clamps the new dither settings to their ranges', () => {
-    expect(sanitize({ orbCount: 500, cmykSupersample: 0, waveBias: -300, algorithm: 'honeycomb' })).toEqual({
+    expect(sanitize({ orbCount: 500, cmykSupersample: 0, waveBias: -300, waveFollow: 150, algorithm: 'honeycomb' })).toEqual({
       orbCount: 64,
       cmykSupersample: 1,
       waveBias: -100,
+      waveFollow: 100,
       algorithm: 'honeycomb',
     });
   });

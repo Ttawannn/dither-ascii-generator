@@ -35,7 +35,7 @@ New to it? Start from one of the **Presets** (Mac 1-bit, Game Boy, Newsprint, Te
 | Pattern | Halftone dot, halftone line, crosshatch, honeycomb | Strength, cell size, angle; rings for honeycomb |
 | Pattern | Orbs: soft circles smeared into streaks over a Bayer pattern, drifting with Boil | Strength, orb size, count, intensity, size variation, vertical |
 | Pattern | Halftone CMYK: four ink screens printed over white (ignores the palette) | Cell size, angle per ink, dot gain, black replacement, smoothing |
-| Error diffusion | Floyd–Steinberg, Atkinson, Jarvis–Judice–Ninke, Stucki, Burkes, Sierra, Sierra two-row, Sierra Lite | Diffusion amount, serpentine scan, wave (lines through the threshold, with wavelength and tilt) |
+| Error diffusion | Floyd–Steinberg, Atkinson, Jarvis–Judice–Ninke, Stucki, Burkes, Sierra, Sierra two-row, Sierra Lite | Diffusion amount, serpentine scan, wave (lines through the threshold, with wavelength, tilt, and follow image to bend them along the picture's shapes) |
 | Other | Random noise, threshold | Strength / threshold |
 
 **Palettes:**

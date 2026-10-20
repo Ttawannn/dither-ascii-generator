@@ -47,10 +47,11 @@ export interface Params {
   angle: number;
   diffusion: number;
   serpentine: boolean;
-  /** Wave diffusion: threshold sine strength 0..100, wavelength in px, tilt −100..100. */
+  /** Wave diffusion: threshold sine strength 0..100, wavelength in px, tilt −100..100, follow image 0..100. */
   waveStrength: number;
   waveLength: number;
   waveBias: number;
+  waveFollow: number;
   /** Honeycomb: concentric rings inside each cell, 0..100. */
   hexRings: number;
   /** Orbs: radius px, how many, how strongly they shift the threshold, size variation, smear axis. */
@@ -183,6 +184,7 @@ export const DEFAULTS: Params = {
   waveStrength: 0,
   waveLength: 12,
   waveBias: 0,
+  waveFollow: 0,
   hexRings: 0,
   orbSize: 40,
   orbCount: 16,
@@ -332,6 +334,7 @@ export const DITHER_SLIDERS: Record<string, SliderSpec> = {
   waveStrength: { key: 'waveStrength', label: 'Wave', min: 0, max: 100, step: 1, format: pct },
   waveLength: { key: 'waveLength', label: 'Wavelength', min: 2, max: 64, step: 1, format: (v) => `${v}px` },
   waveBias: { key: 'waveBias', label: 'Tilt', min: -100, max: 100, step: 1, format: (v) => `${signed(v)}%` },
+  waveFollow: { key: 'waveFollow', label: 'Follow image', min: 0, max: 100, step: 1, format: pct },
   hexRings: { key: 'hexRings', label: 'Rings', min: 0, max: 100, step: 1, format: pct },
   orbSize: { key: 'orbSize', label: 'Orb size', min: 2, max: 200, step: 1, format: (v) => `${v}px` },
   orbCount: { key: 'orbCount', label: 'Count', min: 1, max: 64, step: 1 },
@@ -446,6 +449,7 @@ export const DITHER_KEYS: (keyof Params)[] = [
   'waveStrength',
   'waveLength',
   'waveBias',
+  'waveFollow',
   'hexRings',
   'orbSize',
   'orbCount',
