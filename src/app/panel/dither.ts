@@ -4,8 +4,10 @@ import { DITHER_SLIDERS, HALFTONE_SHAPES, PALETTE_MIXING, type ParamStore, type 
 import { button, colorInput, colorPresets, el, select, showWhen, slider, swatches, toggle } from '../../ui/controls';
 import { actions, group, stippleProgress, store } from '../core';
 import { customPaletteEditor } from './custom-palette';
+import { lumaShapesEditor } from './luma-shapes';
 
 const cmyk = (p: Params) => p.algorithm === 'halftone-cmyk';
+const lumaShapes = (p: Params) => p.algorithm === 'luma-shapes';
 
 /** Colour chips of layer 1's palette; filled by dither-view.ts. */
 export const paletteSwatches = swatches();
@@ -48,6 +50,7 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
         ALGORITHMS.map((a) => ({ value: a.id, label: a.label, group: GROUP_LABELS[a.group] })),
         s,
       ),
+      showWhen(lumaShapesEditor(s), s, lumaShapes),
       showWhen(
         el(
           'div',
@@ -65,7 +68,7 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
       ),
       ditherSlider(
         'strength',
-        (p) => (group(p) === 'ordered' || group(p) === 'pattern' || p.algorithm === 'noise') && !cmyk(p),
+        (p) => (group(p) === 'ordered' || group(p) === 'pattern' || p.algorithm === 'noise') && !cmyk(p) && !lumaShapes(p),
       ),
       ditherSlider('cellSize', (p) => group(p) === 'pattern' && p.algorithm !== 'orbs'),
       ditherSlider('angle', (p) => group(p) === 'pattern' && p.algorithm !== 'orbs' && !cmyk(p)),
@@ -88,7 +91,7 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
         s,
         (p) => p.algorithm === 'halftone' || cmyk(p),
       ),
-      showWhen(toggle('linearLight', 'Linear light', s), s, (p) => !cmyk(p) && p.algorithm !== 'stippling'),
+      showWhen(toggle('linearLight', 'Linear light', s), s, (p) => !cmyk(p) && !lumaShapes(p) && p.algorithm !== 'stippling'),
       ditherSlider('threshold', (p) => p.algorithm === 'threshold'),
       ditherSlider('diffusion', (p) => group(p) === 'diffusion'),
       showWhen(
@@ -150,7 +153,7 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
           ),
         ),
         s,
-        (p) => !cmyk(p) && p.algorithm !== 'stippling',
+        (p) => !cmyk(p) && !lumaShapes(p) && p.algorithm !== 'stippling',
       ),
     ),
     s,

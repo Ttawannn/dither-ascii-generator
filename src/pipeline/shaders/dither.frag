@@ -29,6 +29,13 @@ uniform float u_levels;
 uniform bool u_linear;
 uniform bool u_mixing;
 uniform int u_shape;
+uniform int u_bandCount;
+uniform vec4 u_bands[12]; // exclusive upper boundary, shape, size, reserved
+uniform vec3 u_bandColors[12];
+uniform vec3 u_bandBackground;
+uniform float u_bandFeather;
+uniform bool u_bandScatter;
+uniform sampler2D u_bandImages; // 12 vertical RGBA tiles, each 64×64
 
 out vec4 outColor;
 
@@ -222,7 +229,51 @@ vec3 cmyk(vec3 c, vec2 fc) {
   return (1.0 - cover.rgb) * (1.0 - cover.a);
 }
 
+// Sample one source value per cell so the entire symbol belongs to the same band.
+vec3 lumaShapes(vec2 fc) {
+  float s = sin(u_angle), c = cos(u_angle);
+  mat2 rotate = mat2(c, s, -s, c);
+  vec2 grid = rotate * (fc + u_offset) / u_cell;
+  vec2 cell = floor(grid);
+  vec2 centre = transpose(rotate) * ((cell + 0.5) * u_cell) - u_offset;
+  ivec2 sampleAt = ivec2(clamp(centre, vec2(0.0), u_size - 1.0));
+  float luma = dot(texelFetch(u_src, sampleAt, 0).rgb, LUMA);
+  float rank = u_bandScatter ? hash(uvec2(ivec2(cell))) : bayer(ivec2(cell), 3);
+  int band = u_bandCount - 1;
+  for (int i = 0; i < 11; i++) {
+    if (i >= u_bandCount - 1) break;
+    float lower = i == 0 ? 0.0 : u_bands[i - 1].x;
+    float width = min(u_bands[i].x - lower, u_bands[i + 1].x - u_bands[i].x);
+    if (luma < u_bands[i].x + (rank - 0.5) * width * u_bandFeather) { band = i; break; }
+  }
+  int shape = int(u_bands[band].y);
+  float radius = u_bands[band].z * 0.5;
+  if (shape == 0 || radius <= 0.0) return u_bandBackground;
+  if (shape == 7) {
+    vec2 local = (fract(grid) - 0.5) / (radius * 2.0) + 0.5;
+    if (any(lessThan(local, vec2(0.0))) || any(greaterThan(local, vec2(1.0)))) return u_bandBackground;
+    // Raw tiles are top-down; cell coordinates grow upwards. Half-texel padding avoids tile bleed.
+    vec2 uv = vec2((0.5 + local.x * 63.0) / 64.0,
+      (float(band) * 64.0 + 0.5 + (1.0 - local.y) * 63.0) / 768.0);
+    vec4 image = texture(u_bandImages, uv);
+    return mix(u_bandBackground, image.rgb * u_bandColors[band], image.a);
+  }
+  vec2 q = abs(fract(grid) - 0.5);
+  float d = length(q) - radius;
+  if (shape == 2) d = max(q.x, q.y) - radius;
+  if (shape == 3) d = (q.x + q.y - radius) * 0.70710678;
+  if (shape == 4) d = q.y - radius;
+  if (shape == 5) d = min(q.x, q.y) - radius * 0.35;
+  if (shape == 6) d = abs(length(q) - radius * 0.8) - radius * 0.2;
+  float aa = max(fwidth(d) * 0.5, 0.0001);
+  return mix(u_bandBackground, u_bandColors[band], 1.0 - smoothstep(-aa, aa, d));
+}
+
 void main() {
+  if (u_algo == 12) {
+    outColor = vec4(lumaShapes(gl_FragCoord.xy), 1.0);
+    return;
+  }
   vec3 c = texelFetch(u_src, ivec2(gl_FragCoord.xy), 0).rgb;
   if (u_algo == 11) {
     outColor = vec4(cmyk(c, gl_FragCoord.xy + u_offset), 1.0);

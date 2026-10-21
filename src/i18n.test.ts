@@ -7,6 +7,7 @@ import { LAYER_BLENDS } from './layers';
 import { ALGORITHMS, GROUP_LABELS } from './pipeline/algorithms';
 import { EFFECTS, TINT_MODES } from './pipeline/effects';
 import { MONO_PRESETS, PALETTES } from './pipeline/palettes';
+import { BAND_SHAPES, SHAPE_SETS } from './pipeline/shape-bands';
 import {
   ADJUST_SLIDERS,
   ANIM_DURATION_SLIDER,
@@ -87,6 +88,8 @@ describe('Thai dictionary', () => {
       ...ANSI_DEPTHS,
       ...PALETTE_MIXING,
       ...HALFTONE_SHAPES,
+      ...BAND_SHAPES,
+      ...SHAPE_SETS,
       ...MASK_MODES,
       ...MASK_OUTSIDE,
       ...BOIL_PATTERNS,

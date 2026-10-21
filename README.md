@@ -9,7 +9,7 @@ A browser-based generator that turns images, videos and your webcam into **dithe
 ## Highlights
 
 - Real-time preview of every setting, including on video and webcam
-- 23 dither algorithms, including palette mixing, Ostromoukhov, Riemersma and dot diffusion, plus weighted Voronoi stippling
+- 24 dither algorithms, including Luma Shapes, palette mixing, Ostromoukhov, Riemersma and dot diffusion, plus weighted Voronoi stippling
 - 8 palette options: retro systems, duotone colour picks, your own colours, or colours extracted from your image
 - ASCII mode with 48 character sets, depth and offset controls, palette colours and transparent backgrounds
 - A "boil" animation that brings still images to life
@@ -40,6 +40,7 @@ New to it? Start from one of the **Presets** (Mac 1-bit, Game Boy, Newsprint, Te
 | Pattern | Halftone dot, halftone line, crosshatch, honeycomb | Strength, cell size, angle, follow image (the pattern bends along the picture's shapes); rings for honeycomb |
 | Pattern | Orbs: soft circles smeared into streaks over a Bayer pattern, drifting with Boil | Strength, orb size, count, intensity, size variation, vertical |
 | Pattern | Halftone CMYK: four ink screens printed over white (ignores the palette) | Cell size, angle per ink, dot gain, black replacement, smoothing |
+| Pattern | Luma Shapes: choose a shape for each brightness band | Shape sets, 2–12 bands, per-band shape / size / colour, background, cell size, angle, ordered or scattered feathering |
 | Error diffusion | Floyd–Steinberg, Atkinson, Jarvis–Judice–Ninke, Stucki, Burkes, Sierra, Sierra two-row, Sierra Lite | Diffusion amount, serpentine scan, wave (lines through the threshold, with wavelength, tilt, and follow image to bend them along the picture's shapes) |
 | Other | Random noise, threshold | Strength / threshold |
 
@@ -61,6 +62,10 @@ New to it? Start from one of the **Presets** (Mac 1-bit, Game Boy, Newsprint, Te
 **Stippling:** choose it under Algorithm, set Dots, Relaxation, Dot size and Seed, then press **Generate dots**. It runs weighted Lloyd relaxation in a worker with progress and cancellation, and caches the result until the image or settings change. It supports still images; Boil and video exports are unavailable for this algorithm. Plain stippling exports to SVG as real circles. With layers, a mask or post-effects, use PNG for the complete composition (SVG falls back to the usual low-colour pixel export).
 
 **Pixel size** (1–16) sets how chunky the result is.
+
+**Luma Shapes:** choose it under Algorithm, then start from Halftone Dots, Geometric or Lines. Each cell samples the adjusted image at its centre and maps its brightness to a band (0–255). Drag the dividers along the brightness strip to change ranges, or focus a divider and use the arrow keys (Shift for ten levels, Home / End for its limits). Each band keeps at least one brightness level. Click a band to change its shape, size, colour or width; the final band's width moves its left edge and keeps the endpoint at 255. Split adds a band; Distribute makes the ranges even; Reverse bands reverses the appearances while keeping the ranges. Feather spreads transitions across cells using Ordered or Scatter.
+
+**Custom image shapes:** select a band and press **Upload shape image**. PNG, JPEG, WebP, GIF, BMP and AVIF files up to 10 MB are fitted inside a 64×64 tile with their aspect ratio and transparency preserved (GIF uses a still frame). Upload resets the band's colour to white to keep the image's colours; changing Band colour tints it. Remove image returns to a circle. Import / Export shapes exchanges a JSON set including the embedded images; save a Preset to keep the complete look, including background and feather. Works with images, video, webcam, layers and the existing PNG / animation exports. SVG uses the existing pixel export and its colour limit; PNG preserves the full-colour result.
 
 Ordered and pattern dithers run on the GPU. Error diffusion runs in a Web Worker, so the UI stays responsive.
 

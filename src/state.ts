@@ -5,6 +5,7 @@ import { DEFAULT_ORDER, normalizeOrder, TINT_MODES } from './pipeline/effects';
 import { parseLanes, serializeLanes } from './anim';
 import { parseLayer, serializeLayer, type Layer } from './layers';
 import { PALETTES, parseColorList, serializeColorList } from './pipeline/palettes';
+import { DEFAULT_SHAPE_BANDS, parseShapeBands } from './pipeline/shape-bands';
 
 export type Mode = 'dither' | 'ascii';
 
@@ -44,6 +45,10 @@ export interface Params {
   paletteMixing: string;
   linearLight: boolean;
   halftoneShape: string;
+  shapeBands: string;
+  shapeFeather: number;
+  shapeFeatherPattern: string;
+  shapeBackground: string;
   stippleCount: number;
   stippleIterations: number;
   stippleSize: number;
@@ -217,6 +222,10 @@ export const DEFAULTS: Params = {
   paletteMixing: 'nearest',
   linearLight: false,
   halftoneShape: 'round',
+  shapeBands: DEFAULT_SHAPE_BANDS,
+  shapeFeather: 0,
+  shapeFeatherPattern: 'ordered',
+  shapeBackground: '#101218',
   stippleCount: 10000,
   stippleIterations: 8,
   stippleSize: 100,
@@ -415,6 +424,7 @@ export const HALFTONE_SHAPES = [
 ];
 
 export const DITHER_SLIDERS: Record<string, SliderSpec> = {
+  shapeFeather: { key: 'shapeFeather', label: 'Band feather', min: 0, max: 100, step: 1, format: pct },
   stippleCount: { key: 'stippleCount', label: 'Dots', min: 100, max: 30000, step: 100 },
   stippleIterations: { key: 'stippleIterations', label: 'Relaxation', min: 0, max: 20, step: 1 },
   stippleSize: { key: 'stippleSize', label: 'Dot size', min: 10, max: 200, step: 1, format: pct },
@@ -568,6 +578,7 @@ export const BOIL_SLIDER: SliderSpec = {
 
 export const ADJUST_KEYS: (keyof Params)[] = [...ADJUST_SLIDERS.map((s) => s.key), 'invert'];
 export const DITHER_KEYS: (keyof Params)[] = [
+  'shapeBands', 'shapeFeather', 'shapeFeatherPattern', 'shapeBackground',
   'paletteMixing', 'linearLight', 'halftoneShape',
   'stippleCount', 'stippleIterations', 'stippleSize', 'stippleSeed',
   'algorithm',
@@ -683,6 +694,7 @@ export function layerParams(p: Params, layer: Layer): Params {
 
 /** Allowed values for string params that come from a fixed list. */
 const ENUMS: Partial<Record<keyof Params, string[]>> = {
+  shapeFeatherPattern: ['ordered', 'scatter'],
   paletteMixing: PALETTE_MIXING.map((x) => x.id),
   halftoneShape: HALFTONE_SHAPES.map((x) => x.id),
   mode: ['dither', 'ascii'],
@@ -701,7 +713,7 @@ const ENUMS: Partial<Record<keyof Params, string[]>> = {
   maskMode: MASK_MODES.map((m) => m.id),
   maskOutside: MASK_OUTSIDE.map((m) => m.id),
 };
-const COLOR_KEYS: (keyof Params)[] = ['ink', 'paper', 'asciiFg', 'asciiBg', 'fxTintColor', 'maskColor'];
+const COLOR_KEYS: (keyof Params)[] = ['ink', 'paper', 'asciiFg', 'asciiBg', 'fxTintColor', 'maskColor', 'shapeBackground'];
 const HEX = /^#[0-9a-f]{6}$/i;
 
 const STORAGE_KEY = 'dag.params.v1';
@@ -766,6 +778,11 @@ export function sanitize(data: unknown): Partial<Params> {
     if (key === 'customPalette') {
       const colors = parseColorList(v as string);
       if (colors.length >= 2) out[key] = serializeColorList(colors);
+      continue;
+    }
+    if (key === 'shapeBands') {
+      const bands = parseShapeBands(v as string);
+      if (bands) out[key] = JSON.stringify(bands);
       continue;
     }
     if (key === 'fxOrder') {

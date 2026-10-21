@@ -175,7 +175,8 @@ export function encodeShare(params: Params): string {
   const diff: Record<string, unknown> = {};
   for (const key of PRESET_KEYS) if (params[key] !== DEFAULTS[key]) diff[key] = params[key];
   const bytes = new TextEncoder().encode(JSON.stringify(diff));
-  const b64 = btoa(String.fromCharCode(...bytes));
+  // Embedded band images can exceed the engine's maximum function-argument count.
+  const b64 = btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''));
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
