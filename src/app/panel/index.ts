@@ -7,6 +7,7 @@ import { asciiControls } from './ascii';
 import { ditherControls } from './dither';
 import { effectsSection } from './effects';
 import { exportFoot, exportSection } from './export';
+import { layerSection } from './layer';
 import { maskSection } from './mask';
 import { presetsSection } from './presets';
 import { sourceSection } from './source';
@@ -28,6 +29,7 @@ export const panel = el(
     presetsSection.root,
     adjustSection.root,
     effectSection.root,
+    layerSection.root,
     animationSection.root,
     effectsSection.root,
     maskSection.root,

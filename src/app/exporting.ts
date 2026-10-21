@@ -2,9 +2,9 @@ import type { AnimationFormat, FrameSequence } from '../export/animation';
 import { download, exportPng } from '../export/png';
 import { canvasToSvg } from '../export/svg';
 import { EXPORT_FORMATS, type Params } from '../state';
-import { actions, lanesOf, lfoActive, requestRender, rt, store, transparentAscii, transparentOutput } from './core';
+import { actions, activeLayer, lanesOf, lfoActive, requestRender, rt, store, transparentAscii, transparentOutput } from './core';
 import { currentAtlas } from './ascii-view';
-import { diffuser } from './gpu';
+import { diffusers } from './gpu';
 import { exportBtn, exportInfo } from './panel/export';
 import { draw, setOriginal, stopBoil, syncBoil } from './render';
 import { canvas, flash } from './shell';
@@ -71,11 +71,17 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Draw synchronously and wait until the canvas really shows the result (atlas built, worker done). */
 async function renderNow(): Promise<void> {
-  for (let tries = 0; store.params.mode === 'ascii' && !currentAtlas(store.params) && tries < 100; tries++) {
-    await sleep(20);
-  }
+  // Both layers' atlases must be ready (layer 2 only when it is on and in ASCII mode).
+  const atlasesPending = () => {
+    const layer = activeLayer(store.params);
+    return (
+      (store.params.mode === 'ascii' && !currentAtlas(store.params)) ||
+      (!!layer && layer.params.mode === 'ascii' && !currentAtlas(layer.params, 1))
+    );
+  };
+  for (let tries = 0; atlasesPending() && tries < 100; tries++) await sleep(20);
   draw();
-  await diffuser.idle();
+  await Promise.all(diffusers.map((d) => d.idle()));
 }
 
 function seek(v: HTMLVideoElement, t: number): Promise<void> {

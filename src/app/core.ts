@@ -1,7 +1,8 @@
 import { applyAnimation, parseLanes, type Lane } from '../anim';
 import { getAlgorithm } from '../pipeline/algorithms';
 import type { Source } from '../source/source';
-import { animatableSpec, Store, type Params } from '../state';
+import type { Layer } from '../layers';
+import { animatableSpec, layerParams, readLayer, Store, type Params } from '../state';
 
 /** The one settings store for the page. */
 export const store = new Store();
@@ -66,6 +67,16 @@ let lanesCache: { json: string; lanes: Lane[] } = { json: '', lanes: [] };
 export function lanesOf(p: Params): Lane[] {
   if (lanesCache.json !== p.animLanes) lanesCache = { json: p.animLanes, lanes: parseLanes(p.animLanes, animatableSpec) };
   return lanesCache.lanes;
+}
+
+// Parsed layer 2, cached per stored string.
+let layerCache: { json: string; layer: Layer | null } = { json: '', layer: null };
+
+/** Layer 2 when it is switched on, with the params it renders with (shared settings taken from `p`). */
+export function activeLayer(p: Params): { layer: Layer; params: Params } | null {
+  if (layerCache.json !== p.layer2) layerCache = { json: p.layer2, layer: readLayer(p) };
+  const layer = layerCache.layer;
+  return layer?.on ? { layer, params: layerParams(p, layer) } : null;
 }
 
 /** The params to render with: slider values, with animated settings at the current clock. */

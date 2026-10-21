@@ -12,8 +12,12 @@ import { renderer } from './gpu';
 import { glyphInfo, glyphPreview } from './panel/ascii';
 import { flash, info } from './shell';
 
+// Built atlases by key: layer 1 and layer 2 may each need their own. The oldest are dropped.
+const atlases = new Map<string, Atlas>();
+const loading = new Set<string>();
+const MAX_ATLASES = 4;
+/** Layer 1's current atlas, shown in the glyph preview. */
 let atlas: Atlas | null = null;
-let atlasLoading = '';
 // The grid is paired with the atlas it was built for, so exports never mix glyph sets.
 let lastAscii: { grid: AsciiGrid; atlas: Atlas } | null = null;
 
@@ -68,27 +72,36 @@ const luma = (hex: string) => {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 };
 
-/** The glyph atlas for the current settings, or null while it is being built (a render follows). */
-export function currentAtlas(p: Params): Atlas | null {
+/**
+ * The glyph atlas for these settings, or null while it is being built (a render follows).
+ * `layer` 0 also drives the glyph preview in the panel.
+ */
+export function currentAtlas(p: Params, layer = 0): Atlas | null {
   const ramp = rampFor(p.asciiCharset, p.asciiCustom, p.asciiInject, p.asciiSpace);
   const key = atlasKey(ramp, p.asciiFont, p.asciiFontSize, p.asciiLineHeight, p.asciiBold);
-  if (atlas?.key === key) return atlas;
-  if (atlasLoading !== key) {
-    atlasLoading = key;
-    void buildAtlas(ramp, p.asciiFont, p.asciiFontSize, p.asciiLineHeight, p.asciiBold).then((a) => {
-      if (atlasLoading !== a.key) return; // settings moved on while fonts loaded
-      atlas = a;
-      atlasLoading = '';
+  const hit = atlases.get(key);
+  if (hit) {
+    if (layer === 0 && atlas !== hit) {
+      atlas = hit;
       syncGlyphPreview(store.params);
+    }
+    return hit;
+  }
+  if (!loading.has(key)) {
+    loading.add(key);
+    void buildAtlas(ramp, p.asciiFont, p.asciiFontSize, p.asciiLineHeight, p.asciiBold).then((a) => {
+      loading.delete(key);
+      atlases.set(a.key, a);
+      while (atlases.size > MAX_ATLASES) atlases.delete(atlases.keys().next().value!);
       requestRender();
     });
   }
   return null;
 }
 
-/** ASCII mode: adjusted image at grid size → glyph grid on the CPU → atlas pass on the GPU. */
-export function drawAscii(p: Params): void {
-  const a = currentAtlas(p);
+/** ASCII mode: adjusted image at grid size → glyph grid on the CPU → atlas pass on the GPU (into `layer`). */
+export function drawAscii(p: Params, layer = 0): void {
+  const a = currentAtlas(p, layer);
   if (!a) return;
   const [sw, sh] = renderer.sourceSize;
   const cols = p.asciiColumns;
@@ -118,8 +131,9 @@ export function drawAscii(p: Params): void {
     boilAmount: p.boilAmount / 50,
     noiseTile: p.boilPattern === 'blue' ? blueNoiseTile() : null,
   });
+  renderer.renderAscii(grid, a, p.asciiColor, p.asciiFg, p.asciiBg, p.asciiTransparent, layer);
+  if (layer !== 0) return;
   lastAscii = { grid, atlas: a };
-  renderer.renderAscii(grid, a, p.asciiColor, p.asciiFg, p.asciiBg, p.asciiTransparent);
   info.out.textContent = `${cols}×${rows} chars`;
 }
 

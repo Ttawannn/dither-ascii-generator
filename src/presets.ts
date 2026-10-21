@@ -14,6 +14,7 @@ export const PRESET_KEYS: (keyof Params)[] = [
   ...FX_KEYS,
   ...MASK_KEYS,
   ...ANIM_KEYS,
+  'layer2',
 ];
 
 export const BUILT_IN: Preset[] = [

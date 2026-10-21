@@ -3,6 +3,7 @@ import { LFO_SHAPES } from './ascii/lfo';
 import { ALGORITHMS } from './pipeline/algorithms';
 import { DEFAULT_ORDER, normalizeOrder, TINT_MODES } from './pipeline/effects';
 import { parseLanes, serializeLanes } from './anim';
+import { parseLayer, serializeLayer, type Layer } from './layers';
 import { PALETTES, parseColorList, serializeColorList } from './pipeline/palettes';
 
 export type Mode = 'dither' | 'ascii';
@@ -159,6 +160,8 @@ export interface Params {
   /** What shows outside the mask: 'original', 'color' or 'transparent'. */
   maskOutside: string;
   maskColor: string;
+  /** Layer 2 as JSON (see layers.ts); empty when never set up. */
+  layer2: string;
   // export
   exportFormat: string;
   exportScale: number;
@@ -294,6 +297,7 @@ export const DEFAULTS: Params = {
   maskInvert: false,
   maskOutside: 'original',
   maskColor: '#000000',
+  layer2: '',
   exportFormat: 'png',
   exportScale: 2,
   exportDuration: 4,
@@ -580,6 +584,27 @@ export const ASCII_KEYS: (keyof Params)[] = [
   'asciiTransparent',
 ];
 
+/** Settings layer 2 has of its own; the rest (adjust, effects, mask, animation) is shared. */
+export const LAYER_KEYS: (keyof Params)[] = ['mode', 'pixelSize', ...DITHER_KEYS, ...ASCII_KEYS];
+
+/** Keep only a layer's own settings, sanitized. */
+function cleanLayerParams(data: unknown): Record<string, unknown> {
+  const clean = sanitize(data) as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of LAYER_KEYS) if (key in clean) out[key] = clean[key];
+  return out;
+}
+
+/** Layer 2 of these params, or null when there is none. */
+export const readLayer = (p: Params): Layer | null => parseLayer(p.layer2, cleanLayerParams);
+
+/** The params layer 2 renders with: shared settings from `p`, its own from defaults + the layer. */
+export function layerParams(p: Params, layer: Layer): Params {
+  const own: Record<string, unknown> = {};
+  for (const key of LAYER_KEYS) own[key] = DEFAULTS[key];
+  return { ...p, ...own, ...layer.params } as Params;
+}
+
 /** Allowed values for string params that come from a fixed list. */
 const ENUMS: Partial<Record<keyof Params, string[]>> = {
   mode: ['dither', 'ascii'],
@@ -645,6 +670,11 @@ export function sanitize(data: unknown): Partial<Params> {
     if (COLOR_KEYS.includes(key) && !HEX.test(v as string)) continue;
     if (key === 'asciiCustom' && (v as string).length > 64) continue;
     if (key === 'asciiInject' && [...(v as string)].length > MAX_INJECT) continue;
+    if (key === 'layer2') {
+      const layer = parseLayer(v as string, cleanLayerParams);
+      out[key] = layer ? serializeLayer(layer) : '';
+      continue;
+    }
     if (key === 'animLanes') {
       out[key] = serializeLanes(parseLanes(v as string, animatableSpec));
       continue;
@@ -678,9 +708,16 @@ function load(): Partial<Params> {
   }
 }
 
-type Listener = (params: Params, changed: keyof Params) => void;
+export type Listener = (params: Params, changed: keyof Params) => void;
 
-export class Store {
+/** What controls bind to: the page's Store, or a view of it such as layer 2's settings. */
+export interface ParamStore {
+  readonly params: Params;
+  set<K extends keyof Params>(key: K, value: Params[K]): void;
+  subscribe(fn: Listener): () => void;
+}
+
+export class Store implements ParamStore {
   params: Params = { ...DEFAULTS, ...load() };
   private listeners = new Set<Listener>();
   private saveTimer = 0;

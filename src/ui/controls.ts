@@ -1,4 +1,4 @@
-import { DEFAULTS, type BooleanKey, type Params, type SliderSpec, type Store, type StringKey } from '../state';
+import { DEFAULTS, type BooleanKey, type ParamStore, type Params, type SliderSpec, type StringKey } from '../state';
 
 type Attrs = Record<string, string>;
 
@@ -27,7 +27,7 @@ export function section(title: string, ...children: Node[]): { root: HTMLElement
 }
 
 /** Range slider bound to a numeric param. Double-click resets to default. */
-export function slider(spec: SliderSpec, store: Store): HTMLElement {
+export function slider(spec: SliderSpec, store: ParamStore): HTMLElement {
   const fmt = spec.format ?? ((v: number) => `${v}`);
   const value = el('span', { class: 'control-value' });
   const input = el('input', {
@@ -60,7 +60,7 @@ export function slider(spec: SliderSpec, store: Store): HTMLElement {
 }
 
 /** On/off switch bound to a boolean param. */
-export function toggle(key: BooleanKey, label: string, store: Store): HTMLElement {
+export function toggle(key: BooleanKey, label: string, store: ParamStore): HTMLElement {
   const root = el(
     'button',
     { class: 'toggle control', type: 'button', role: 'switch' },
@@ -81,7 +81,7 @@ export function toggle(key: BooleanKey, label: string, store: Store): HTMLElemen
 export function segmented<K extends 'mode'>(
   key: K,
   options: { value: Params[K]; label: string }[],
-  store: Store,
+  store: ParamStore,
 ): HTMLElement {
   const root = el('div', { class: 'segmented', role: 'tablist' });
   const buttons = options.map((opt) => {
@@ -109,7 +109,7 @@ export interface SelectOption {
 }
 
 /** Native <select> bound to a string param; options with a `group` go into <optgroup>s. */
-export function select(key: StringKey, label: string, options: SelectOption[], store: Store): HTMLElement {
+export function select(key: StringKey, label: string, options: SelectOption[], store: ParamStore): HTMLElement {
   const input = el('select', { 'aria-label': label });
   const groups = new Map<string, HTMLOptGroupElement>();
   for (const opt of options) {
@@ -140,7 +140,7 @@ export function select(key: StringKey, label: string, options: SelectOption[], s
 export type ColorKey = 'ink' | 'paper' | 'asciiFg' | 'asciiBg' | 'fxTintColor' | 'maskColor';
 
 /** Colour swatch bound to a hex string param. */
-export function colorInput(key: ColorKey, label: string, store: Store): HTMLElement {
+export function colorInput(key: ColorKey, label: string, store: ParamStore): HTMLElement {
   const input = el('input', { type: 'color', 'aria-label': label });
   const hex = el('span', { class: 'control-value' });
   const root = el('label', { class: 'color-input' }, input, el('span', { class: 'control-label' }, label), hex);
@@ -169,7 +169,7 @@ export function swatches(): { root: HTMLElement; update: (hexes: string[], extra
 }
 
 /** Show `node` only while `when(params)` is true. */
-export function showWhen(node: HTMLElement, store: Store, when: (p: Params) => boolean): HTMLElement {
+export function showWhen(node: HTMLElement, store: ParamStore, when: (p: Params) => boolean): HTMLElement {
   const sync = (p: Params) => (node.hidden = !when(p));
   store.subscribe(sync);
   sync(store.params);
@@ -177,7 +177,7 @@ export function showWhen(node: HTMLElement, store: Store, when: (p: Params) => b
 }
 
 /** Single-line text field bound to a string param. */
-export function textInput(key: StringKey, label: string, store: Store, maxLength = 64): HTMLElement {
+export function textInput(key: StringKey, label: string, store: ParamStore, maxLength = 64): HTMLElement {
   const input = el('input', { type: 'text', maxlength: `${maxLength}`, spellcheck: 'false', 'aria-label': label });
   const root = el(
     'label',

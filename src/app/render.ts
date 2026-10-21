@@ -1,7 +1,8 @@
 import { activeEffects, maskEffect } from '../pipeline/effects';
 import { isVideo, type Source } from '../source/source';
 import type { Params } from '../state';
-import { actions, animatedParams, lanesOf, lfoActive, requestRender, rt, setDrawer, store, transparentOutput } from './core';
+import { LAYER_BLENDS } from '../layers';
+import { actions, activeLayer, animatedParams, lanesOf, lfoActive, requestRender, rt, setDrawer, store, transparentOutput } from './core';
 import { drawAscii } from './ascii-view';
 import { drawDither } from './dither-view';
 import { renderer } from './gpu';
@@ -16,8 +17,11 @@ export function draw(): void {
     renderer.setSource(src.element, src.width, src.height);
   }
   // The original view is shown untouched; otherwise every output pass runs the effect chain.
+  const layer = rt.showOriginal ? null : activeLayer(p);
   const mask = maskEffect(p, rt.showMask);
-  const effects = rt.showOriginal ? [] : [...activeEffects(p), ...(mask ? [mask] : [])];
+  // The mask limits layer 2 only when asked (but "Show mask" always shows it full screen).
+  const maskOnLayer = !!layer && layer.layer.maskOnly && !!mask && !rt.showMask;
+  const effects = rt.showOriginal ? [] : [...activeEffects(p), ...(mask && !maskOnLayer ? [mask] : [])];
   renderer.setEffects(effects, rt.seed, !transparentOutput(p));
   stage.classList.toggle('ascii', p.mode === 'ascii' && !rt.showOriginal);
   stage.classList.toggle('transparent', !rt.showOriginal && !rt.showMask && transparentOutput(p));
@@ -26,6 +30,22 @@ export function draw(): void {
     renderer.renderAdjust(p, true);
     renderer.renderAdjusted();
     setStatus('');
+  } else if (layer) {
+    // Each layer renders into its own texture; then layer 2 is blended over layer 1.
+    const drawLayer = (lp: typeof p, i: number) => {
+      renderer.setLayerTarget(i, lp.mode === 'ascii');
+      if (lp.mode === 'ascii') drawAscii(lp, i);
+      else drawDither(lp, i);
+    };
+    drawLayer(p, 0);
+    drawLayer(layer.params, 1);
+    renderer.setLayerTarget(null);
+    renderer.compositeLayers({
+      blend: Math.max(0, LAYER_BLENDS.findIndex((b) => b.id === layer.layer.blend)),
+      opacity: layer.layer.opacity / 100,
+      mask: maskOnLayer ? mask : null,
+    });
+    if (p.mode === 'ascii') setStatus('');
   } else if (p.mode === 'ascii') {
     drawAscii(p);
     setStatus('');

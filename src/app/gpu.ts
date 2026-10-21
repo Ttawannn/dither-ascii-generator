@@ -1,8 +1,9 @@
+import type { DiffusionResult } from '../pipeline/diffuse';
 import { Diffuser } from '../pipeline/diffuser';
 import { Renderer } from '../pipeline/gl';
 import { el } from '../ui/controls';
 import { Viewer } from '../ui/viewer';
-import { actions, group, requestRender, rt, store } from './core';
+import { actions, activeLayer, group, requestRender, rt, store } from './core';
 import { canvas, flash, info, setStatus, stage } from './shell';
 
 function createRenderer(): Renderer {
@@ -38,10 +39,24 @@ viewer.onChange = () => {
 actions.fit = () => viewer.fit();
 actions.zoom100 = () => viewer.setZoom(1);
 
-/** Error diffusion runs in a worker; results arrive asynchronously and are drawn if still relevant. */
-export const diffuser = new Diffuser((result) => {
-  const p = store.params;
-  if (rt.showOriginal || p.mode !== 'dither' || group(p) !== 'diffusion') return;
-  renderer.renderResult(result);
-  setStatus(`${Math.round(result.ms)} ms`);
-});
+/**
+ * Error diffusion runs in a worker per layer; results arrive asynchronously and are drawn if still
+ * relevant. With layer 2 on, a result updates that layer's texture and the layers are blended again.
+ */
+function onDiffused(layer: number, result: DiffusionResult): void {
+  if (rt.showOriginal) return;
+  const active = activeLayer(store.params);
+  const p = layer === 0 ? store.params : active?.params;
+  if (!p || p.mode !== 'dither' || group(p) !== 'diffusion') return;
+  if (active) {
+    renderer.setLayerTarget(layer);
+    renderer.renderResult(result, layer);
+    renderer.setLayerTarget(null);
+    renderer.recomposite();
+  } else if (layer === 0) {
+    renderer.renderResult(result);
+  }
+  if (layer === 0) setStatus(`${Math.round(result.ms)} ms`);
+}
+
+export const diffusers = [new Diffuser((r) => onDiffused(0, r)), new Diffuser((r) => onDiffused(1, r))];

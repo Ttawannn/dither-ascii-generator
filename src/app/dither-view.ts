@@ -3,7 +3,7 @@ import { extractPalette, resolvePalette, rgbToHex, type Palette, type RGB } from
 import type { Source } from '../source/source';
 import type { Params } from '../state';
 import { group, rt, store } from './core';
-import { diffuser, renderer } from './gpu';
+import { diffusers, renderer } from './gpu';
 import { paletteSwatches } from './panel/dither';
 import { info, setStatus } from './shell';
 
@@ -37,17 +37,17 @@ const PALETTE_KEYS: (keyof Params)[] = ['palette', 'levels', 'ink', 'paper', 'cu
 store.subscribe((_, changed) => PALETTE_KEYS.includes(changed) && syncSwatches());
 syncSwatches();
 
-/** Dither mode: GPU passes for ordered/pattern algorithms, the worker for error diffusion. */
-export function drawDither(p: Params): void {
+/** Dither mode: GPU passes for ordered/pattern algorithms, the worker for error diffusion (into `layer`). */
+export function drawDither(p: Params, layer = 0): void {
   renderer.renderAdjust(p, false);
   const [ow, oh] = renderer.adjustedSize;
-  info.out.textContent = `OUT ${ow}×${oh}`;
+  if (layer === 0) info.out.textContent = `OUT ${ow}×${oh}`;
 
   if (group(p) === 'diffusion') {
     // Keep the previous frame on screen while the worker runs; only redraw now if a resize would blank it.
-    if (!renderer.canvasMatches) renderer.renderResult();
+    if (!renderer.canvasMatches) renderer.renderResult(undefined, layer);
     const pal = currentPalette(p);
-    diffuser.request({
+    diffusers[layer].request({
       width: ow,
       height: oh,
       data: renderer.readAdjusted(),
@@ -65,6 +65,6 @@ export function drawDither(p: Params): void {
     });
   } else {
     renderer.renderDither(p, currentPalette(p), rt.seed);
-    setStatus('');
+    if (layer === 0) setStatus('');
   }
 }

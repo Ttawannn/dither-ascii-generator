@@ -82,6 +82,10 @@ Copy the result to the clipboard, or save it as `.txt` or as a standalone colour
 - **Boil:** turn it on under **Animation** to make the dither pattern or ASCII characters shift over time (1–30 fps), even on a still image. For error diffusion and ASCII you can pick the jitter pattern (random or blue noise, which is more even) and its amount.
 - **Animate settings:** pick almost any slider and press **+ Animate**. Each lane is either an **LFO** (shape, speed, swing around the slider value) or **Keys**, going from one value to another with easing and repeat / ping-pong / once looping over a timeline of 1–30 s. Up to 8 lanes run at once, and still images with lanes export as GIF or video.
 
+## Layer 2
+
+Turn on **Layer 2** to render the same picture a second time, in Dither or ASCII mode with its own algorithm, palette, characters and pixel size, and blend it over the first (normal, multiply, screen, overlay, difference) with an opacity. Adjust, effects, the mask and animation are shared. The effects run once on the combined image. With **Mask this layer only**, the Mask decides where layer 2 shows instead of limiting the whole result. Layer 2 is part of presets, share links and undo.
+
 ## Mask
 
 Limit the result to part of the picture. **Mask by** a brightness range (from / to) or a colour range (hue ± width), measured on the original image, with feather and invert. Outside the mask you can show the original, a flat colour, or transparency (kept in PNG, GIF and WebM exports). **Show mask** previews it in black and white. The mask applies after the effects, and its sliders can be animated.

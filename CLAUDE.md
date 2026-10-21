@@ -38,13 +38,15 @@ Everything runs client-side in one page with no framework. `src/main.ts` only im
 | `dither-view.ts`, `ascii-view.ts` | the two render paths (palettes / swatches; atlas, glyph grid, text exports) |
 | `render.ts` | `draw()`, original view, boil timer, LFO/lane redraw loop, video frame loop |
 | `split.ts` | before/after split: a 2D overlay canvas of the untouched source, kept on top of the preview via `viewer.onChange` and clipped at a draggable line; redrawn through `actions.drawSplit` after every draw |
+| `layer-store.ts` | `layerStore`: layer 2's settings as a `ParamStore` (page params + the layer's own keys), so the dither / ASCII panels can be reused for it |
 | `undo.ts` | undo/redo of the `PRESET_KEYS` snapshot (`History` in `src/history.ts`, coalescing changes within 400 ms); header buttons and Ctrl+Z |
 | `sources.ts`, `exporting.ts`, `input.ts` | loading sources; Export button and frame sequences; file input, drag/drop, paste, shortcuts |
 
 Calls that would go up the graph (a panel button starting an export, `draw()` refreshing the export summary) go through the late-bound `actions` registry in `core.ts`, which feature modules fill in when they load. Keep it that way instead of importing upward.
 
 ### State (`src/state.ts`)
-- A single flat `Params` object in a `Store` with per-key subscribers. UI controls in `src/ui/controls.ts` (`slider`, `select`, `toggle`, `colorInput`, `textInput`, `showWhen`) bind straight to keys.
+- A single flat `Params` object in a `Store` with per-key subscribers. UI controls in `src/ui/controls.ts` (`slider`, `select`, `toggle`, `colorInput`, `textInput`, `showWhen`) bind straight to keys of a `ParamStore`: the page `store`, or `layerStore` for layer 2 (`ditherControlsFor()` / `asciiControlsFor()` / `customPaletteEditor()` take the store to bind to).
+- Layer 2 is the JSON string param `layer2` (`src/layers.ts`), repaired by `sanitize()` (only `LAYER_KEYS` survive in its `params`, and only values that differ from the defaults are stored). `layerParams()` gives the params it renders with: shared settings from layer 1, its own from defaults + the layer. `activeLayer()` in `core.ts` caches the parse.
 - Params persist to localStorage (`dag.params.v1`). Every external input goes through `sanitize()`: localStorage, saved presets (`dag.presets.v1`), and share links. It drops unknown keys and wrong types, checks enums (`ENUMS`) and hex colours, and clamps numbers to the slider spec ranges.
 - **Adding a param:** add it to `Params`/`DEFAULTS`. Add a `SliderSpec` (which also defines its clamp range) or an `ENUMS` entry, then add it to the right key group (`ADJUST_KEYS` / `DITHER_KEYS` / `ASCII_KEYS`). `PRESET_KEYS` in `src/presets.ts` is built from those groups, so presets, share links and Reset buttons pick it up automatically.
 - Preset files: `presetFile()` / `presetListFile()` in `src/presets.ts` write them; `importPresetList()` reads a multi-preset file. Palette files can come in a `.zip` (`src/zip.ts`, a small reader using `DecompressionStream`), and imported palettes go to the library in `src/palette-library.ts` (`localStorage['dag.palettes.v1']`).
@@ -60,7 +62,10 @@ source texture ─adjust.frag─▶ FBO (adjusted, at output or grid resolution)
   └─ blit ─▶ canvas                               "original" view (Space / Original button)
 
 every output pass ─(effects on)─▶ post texture ─post.frag × N (ping-pong)─▶ canvas
+
+with layer 2 on:  layer 1 pass ─▶ layerTex[0] · layer 2 pass ─▶ layerTex[1] ─composite.frag─▶ (effects) ─▶ canvas
 ```
+- **Layers:** `setLayerTarget(i)` makes `beginOutput()` render into `layerTex[i]` and `endOutput()` skip the effects; `compositeLayers()` blends them (premultiplied, standard separable blend formula) at the larger layer size, then the effect chain and the mask run once. Each layer has its own diffusion worker (`diffusers[i]`), result texture and atlas texture; a late worker result re-renders its layer and calls `recomposite()`. `currentAtlas()` keeps a small cache of atlases by key so the two layers don't rebuild each other's. A layer not drawn yet (atlas loading) counts as transparent. Layer 2 off takes the old direct path, so output is unchanged.
 - **Texture orientation is the main trap.** Only uploaded sources (images and video frames, top row first) are sampled via the flipped `v_uv` from `fullscreen.vert`. FBO and worker-result textures are bottom-up (`readPixels` layout). Passes that read them use `texelFetch(..., ivec2(gl_FragCoord.xy))` or `gl_FragCoord / size`. The CPU code (worker, `buildGrid`) walks rows as `h - 1 - y` to process in visual order.
 - The canvas holds processed pixels at output resolution and is upscaled by CSS (`image-rendering: pixelated`, or smooth in ASCII mode). `src/ui/viewer.ts` zooms and pans it relative to the *source* size.
 - `draw()` is synchronous, and `requestRender()` coalesces calls into one rAF.

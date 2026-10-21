@@ -13,7 +13,18 @@ import blitFrag from './shaders/blit.frag?raw';
 import asciiFrag from './shaders/ascii.frag?raw';
 import postFrag from './shaders/post.frag?raw';
 import filterFrag from './shaders/filter.frag?raw';
+import compositeFrag from './shaders/composite.frag?raw';
 import type { PostEffect } from './effects';
+
+/** How layer 2 is blended over layer 1 (see composite.frag). */
+export interface CompositeOptions {
+  /** LAYER_BLENDS index. */
+  blend: number;
+  /** 0..1 */
+  opacity: number;
+  /** The mask pass, when the Mask limits layer 2 only; its params are reused. */
+  mask: PostEffect | null;
+}
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
   const sh = gl.createShader(type)!;
@@ -101,17 +112,31 @@ export class Renderer {
   private mirror = false;
   private srcTex!: WebGLTexture;
   private adjTex!: WebGLTexture;
-  private resultTex!: WebGLTexture;
+  private resultTex: WebGLTexture[] = [];
   private noiseTex!: WebGLTexture;
   private gridTex!: WebGLTexture;
-  private atlasTex!: WebGLTexture;
+  private atlasTex: WebGLTexture[] = [];
+  private composite!: Program;
+  // Layers: when `layerTarget` is set, output passes render into that layer's texture instead of
+  // the canvas, and compositeLayers() blends them to the canvas (through the effects).
+  private layerTex: WebGLTexture[] = [];
+  private layerFbo: WebGLFramebuffer[] = [];
+  private layerSize: [number, number][] = [
+    [0, 0],
+    [0, 0],
+  ];
+  private layerTarget: number | null = null;
+  private lastComposite: CompositeOptions | null = null;
+  /** Size of the target the current output pass draws into. */
+  private outW = 0;
+  private outH = 0;
   private fbo!: WebGLFramebuffer;
-  private atlasKey = '';
+  private atlasKey = ['', ''];
   private srcW = 0;
   private srcH = 0;
   private adjW = 0;
   private adjH = 0;
-  private hasResult = false;
+  private hasResult = [false, false];
   private palBuf = new Float32Array(MAX_PALETTE * 3);
 
   constructor(readonly canvas: HTMLCanvasElement) {
@@ -146,9 +171,12 @@ export class Renderer {
     // Mipmaps give a clean box-filtered downsample when pixel size > 1.
     this.srcTex = texture(gl, gl.LINEAR_MIPMAP_LINEAR);
     this.adjTex = texture(gl, gl.NEAREST);
-    this.resultTex = texture(gl, gl.NEAREST);
+    this.resultTex = [texture(gl, gl.NEAREST), texture(gl, gl.NEAREST)];
     this.gridTex = texture(gl, gl.NEAREST);
-    this.atlasTex = texture(gl, gl.NEAREST);
+    this.atlasTex = [texture(gl, gl.NEAREST), texture(gl, gl.NEAREST)];
+    this.composite = program(gl, fullscreenVert, compositeFrag);
+    this.layerTex = [texture(gl, gl.NEAREST), texture(gl, gl.NEAREST)];
+    this.layerFbo = [gl.createFramebuffer()!, gl.createFramebuffer()!];
     this.noiseTex = texture(gl, gl.NEAREST, gl.REPEAT);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 64, 64, 0, gl.RED, gl.UNSIGNED_BYTE, blueNoiseTile());
@@ -167,8 +195,13 @@ export class Renderer {
     this.tmpW = this.tmpH = 0;
     this.smoothW = this.smoothH = 0;
     this.postW = this.postH = 0;
-    this.atlasKey = '';
-    this.hasResult = false;
+    this.atlasKey = ['', ''];
+    this.hasResult = [false, false];
+    this.layerSize = [
+      [0, 0],
+      [0, 0],
+    ];
+    this.lastComposite = null;
   }
 
   get hasSource(): boolean {
@@ -187,7 +220,7 @@ export class Renderer {
     gl.generateMipmap(gl.TEXTURE_2D);
     this.srcW = w;
     this.srcH = h;
-    this.hasResult = false;
+    this.hasResult = [false, false];
   }
 
   /** Processed (output) resolution for the given pixel size. */
@@ -302,9 +335,70 @@ export class Renderer {
     this.opaque = opaque;
   }
 
-  /** True when the canvas already has the current output size (resizing would clear it). */
+  /** True when the output target already has the current output size (resizing would clear it). */
   get canvasMatches(): boolean {
+    if (this.layerTarget !== null) {
+      const [w, h] = this.layerSize[this.layerTarget];
+      return w === this.adjW && h === this.adjH;
+    }
     return this.canvas.width === this.adjW && this.canvas.height === this.adjH;
+  }
+
+  // ---------- layers ----------
+
+  /** Send the following output passes to layer `i`'s texture (null: back to the canvas). */
+  setLayerTarget(i: number | null, smooth = false): void {
+    this.layerTarget = i;
+    if (i === null) return;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.layerTex[i]);
+    const filter = smooth ? gl.LINEAR : gl.NEAREST;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+  }
+
+  /** Blend layer 2 over layer 1 to the canvas, through the effect chain. */
+  compositeLayers(options: CompositeOptions): void {
+    this.lastComposite = options;
+    this.drawComposite();
+  }
+
+  /** Composite again with the last options (after one layer changed on its own, e.g. a worker result). */
+  recomposite(): void {
+    if (this.lastComposite) this.drawComposite();
+  }
+
+  private drawComposite(): void {
+    const gl = this.gl;
+    const o = this.lastComposite!;
+    const [[aw, ah], [bw, bh]] = this.layerSize;
+    // Composite at the larger of the two layer sizes; the other is scaled to match.
+    const [w, h] = aw * ah >= bw * bh ? [aw, ah] : [bw, bh];
+    if (!w || !h) return;
+    this.layerTarget = null;
+    this.beginOutput(w, h);
+    const { prog, u } = this.composite;
+    gl.useProgram(prog);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.layerTex[0]);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.layerTex[1]);
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.srcTex);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1i(u('u_a'), 0);
+    gl.uniform1i(u('u_b'), 1);
+    gl.uniform1i(u('u_src'), 3);
+    gl.uniform1i(u('u_srcMirror'), this.mirror ? 1 : 0);
+    gl.uniform2f(u('u_size'), w, h);
+    gl.uniform1i(u('u_blend'), o.blend);
+    gl.uniform1f(u('u_opacity'), o.opacity);
+    gl.uniform2i(u('u_has'), aw > 0 ? 1 : 0, bw > 0 ? 1 : 0);
+    gl.uniform1i(u('u_maskOn'), o.mask ? 1 : 0);
+    gl.uniform4fv(u('u_mp'), o.mask?.params ?? [0, 0, 0, 0]);
+    gl.uniform4fv(u('u_mq'), o.mask?.extra ?? [0, 0, 0, 0]);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    this.endOutput();
   }
 
   /** Pass 2 (GPU): ordered / pattern / threshold dither to the canvas. `seed` 0 = static pattern. */
@@ -354,15 +448,18 @@ export class Renderer {
     this.endOutput();
   }
 
-  /** Show a CPU-dithered frame. Without data, re-shows the last result (scaled to the current size). */
-  renderResult(result?: { data: Uint8Array; width: number; height: number }): void {
+  /**
+   * Show a CPU-dithered frame of layer `layer` on the current target. Without data, re-shows that
+   * layer's last result (scaled to the current size).
+   */
+  renderResult(result?: { data: Uint8Array; width: number; height: number }, layer = 0): void {
     const gl = this.gl;
     if (result) {
-      gl.bindTexture(gl.TEXTURE_2D, this.resultTex);
+      gl.bindTexture(gl.TEXTURE_2D, this.resultTex[layer]);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, result.width, result.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, result.data);
-      this.hasResult = true;
+      this.hasResult[layer] = true;
     }
-    this.blitToCanvas(this.hasResult ? this.resultTex : this.adjTex);
+    this.blitToCanvas(this.hasResult[layer] ? this.resultTex[layer] : this.adjTex);
   }
 
   /** Show the adjusted image as-is. */
@@ -370,14 +467,14 @@ export class Renderer {
     this.blitToCanvas(this.adjTex);
   }
 
-  /** ASCII pass: glyph grid + atlas → canvas at cols×cellW by rows×cellH. */
-  renderAscii(grid: AsciiGrid, atlas: Atlas, mode: string, fg: string, bg: string, transparent = false): void {
+  /** ASCII pass: glyph grid + atlas → canvas at cols×cellW by rows×cellH. Each layer keeps its own atlas texture. */
+  renderAscii(grid: AsciiGrid, atlas: Atlas, mode: string, fg: string, bg: string, transparent = false, layer = 0): void {
     const gl = this.gl;
-    if (this.atlasKey !== atlas.key) {
-      gl.bindTexture(gl.TEXTURE_2D, this.atlasTex);
+    if (this.atlasKey[layer] !== atlas.key) {
+      gl.bindTexture(gl.TEXTURE_2D, this.atlasTex[layer]);
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, atlas.canvas);
-      this.atlasKey = atlas.key;
+      this.atlasKey[layer] = atlas.key;
     }
     gl.bindTexture(gl.TEXTURE_2D, this.gridTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, grid.cols, grid.rows, 0, gl.RGBA, gl.UNSIGNED_BYTE, grid.cells);
@@ -388,7 +485,7 @@ export class Renderer {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.gridTex);
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.atlasTex);
+    gl.bindTexture(gl.TEXTURE_2D, this.atlasTex[layer]);
     gl.uniform1i(u('u_grid'), 0);
     gl.uniform1i(u('u_atlas'), 1);
     gl.uniform2i(u('u_cell'), atlas.cellW, atlas.cellH);
@@ -410,7 +507,7 @@ export class Renderer {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.uniform1i(u('u_tex'), 0);
-    gl.uniform2f(u('u_outSize'), this.canvas.width, this.canvas.height);
+    gl.uniform2f(u('u_outSize'), this.outW, this.outH);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.endOutput();
   }
@@ -418,6 +515,19 @@ export class Renderer {
   /** Size the canvas and bind where the final image goes: the canvas, or the first post buffer. */
   private beginOutput(w = this.adjW, h = this.adjH): void {
     const gl = this.gl;
+    this.outW = w;
+    this.outH = h;
+    if (this.layerTarget !== null) {
+      const i = this.layerTarget;
+      const [lw, lh] = this.layerSize[i];
+      if (lw !== w || lh !== h) {
+        this.sizeTarget(this.layerTex[i], this.layerFbo[i], w, h);
+        this.layerSize[i] = [w, h];
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.layerFbo[i]);
+      gl.viewport(0, 0, w, h);
+      return;
+    }
     if (this.canvas.width !== w || this.canvas.height !== h) {
       this.canvas.width = w;
       this.canvas.height = h;
@@ -447,6 +557,7 @@ export class Renderer {
 
   /** Run the post-effect chain; the last effect draws to the canvas. */
   private endOutput(): void {
+    if (this.layerTarget !== null) return; // layers get the effects once, after compositing
     const n = this.effects.length;
     if (!n) return;
     const gl = this.gl;
