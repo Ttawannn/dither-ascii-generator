@@ -1531,3 +1531,29 @@ html:lang(th) body * {
     display: none;
   }
 }
+
+/* ---------- Luma Shapes ---------- */
+.luma-strip { position: relative; height: 82px; margin: 12px 0 0; }
+.luma-rail { position: absolute; height: 12px; left: 0; right: 0; bottom: 4px; background: linear-gradient(to right, #000, #fff); border: 1px solid var(--line-strong); }
+.luma-segment { position: absolute; display: flex; justify-content: center; align-items: flex-start; height: 44px; min-width: 0; overflow: hidden; border: 0; background: transparent; color: var(--text); cursor: pointer; padding: 0; }
+.luma-segment .luma-icon { flex-shrink: 0; border: 1px solid var(--line-strong); }
+.luma-segment.active .luma-icon { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.luma-segment.active::after { content: ''; position: absolute; bottom: 2px; width: 100%; height: 2px; background: var(--accent); }
+.luma-boundary { position: absolute; z-index: 2; top: 25px; bottom: 0; width: 24px; margin-left: -12px; border: 0; padding: 0; cursor: ew-resize; background: transparent; touch-action: none; }
+.luma-boundary::before { content: ''; position: absolute; width: 1px; left: 11px; top: 0; bottom: 0; background: var(--text); }
+.luma-boundary::after { content: ''; position: absolute; width: 9px; height: 9px; left: 7px; top: 19px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 2px var(--bg); }
+.luma-boundary:hover::after, .luma-boundary:focus-visible::after { background: var(--accent); box-shadow: 0 0 0 3px var(--bg), 0 0 0 4px var(--accent); }
+.luma-boundary:focus-visible { outline: 1px dashed var(--accent); outline-offset: 2px; }
+.luma-scale { display: flex; justify-content: space-between; color: var(--faint); font-size: 10px; margin: 7px 0 12px; }
+.luma-bands { display: grid; gap: 4px; margin: 12px 0; }
+.luma-band { display: flex; gap: 9px; align-items: center; width: 100%; padding: 7px; border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; text-align: left; font: inherit; }
+.luma-band.active { border-color: var(--accent); }
+.luma-band .control-value { margin-left: auto; }
+.luma-icon { display: grid; place-items: center; width: 25px; height: 25px; font-size: 19px; }
+.luma-selected { border: 1px solid var(--accent); padding: 10px; margin-bottom: 12px; }
+.luma-editor .pal-actions { flex-wrap: wrap; }
+.luma-editor .note:empty { display: none; }
+.luma-upload { margin: 12px 0; }
+.luma-upload-preview { width: 64px; height: 64px; margin-bottom: 8px; border: 1px solid var(--line-strong); }
+.luma-image-preview { width: 100%; height: 100%; display: block; }
+.luma-image-name { display: block; overflow-wrap: anywhere; color: var(--faint); font-size: 10px; margin-bottom: 6px; }

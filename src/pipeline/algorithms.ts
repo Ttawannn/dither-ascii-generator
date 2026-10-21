@@ -19,6 +19,7 @@ export const ALGORITHMS: Algorithm[] = [
   { id: 'honeycomb', label: 'Honeycomb', group: 'pattern', shader: 9 },
   { id: 'orbs', label: 'Orbs', group: 'pattern', shader: 10 },
   { id: 'halftone-cmyk', label: 'Halftone CMYK', group: 'pattern', shader: 11 },
+  { id: 'luma-shapes', label: 'Luma Shapes', group: 'pattern', shader: 12 },
   { id: 'floyd-steinberg', label: 'Floyd–Steinberg', group: 'diffusion' },
   { id: 'atkinson', label: 'Atkinson', group: 'diffusion' },
   { id: 'jjn', label: 'Jarvis–Judice–Ninke', group: 'diffusion' },

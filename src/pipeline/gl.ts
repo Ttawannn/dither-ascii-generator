@@ -6,6 +6,7 @@ import { FOLLOWS_IMAGE, getAlgorithm } from './algorithms';
 import { blueNoiseTile } from './bluenoise';
 import { paletteLab } from './oklab';
 import { baseSpread, MAX_PALETTE, type Palette } from './palettes';
+import { BAND_IMAGE_SIZE, BAND_SHAPES, MAX_SHAPE_BANDS, decodeBandImage, parseShapeBands, shapeSet } from './shape-bands';
 import fullscreenVert from './shaders/fullscreen.vert?raw';
 import adjustFrag from './shaders/adjust.frag?raw';
 import ditherFrag from './shaders/dither.frag?raw';
@@ -140,6 +141,8 @@ export class Renderer {
   private outH = 0;
   private fbo!: WebGLFramebuffer;
   private atlasKey = ['', ''];
+  private bandImageTex!: WebGLTexture;
+  private bandImageKey = '';
   private srcW = 0;
   private srcH = 0;
   private adjW = 0;
@@ -187,6 +190,10 @@ export class Renderer {
     this.resultTex = [texture(gl, gl.NEAREST), texture(gl, gl.NEAREST)];
     this.gridTex = texture(gl, gl.NEAREST);
     this.atlasTex = [texture(gl, gl.NEAREST), texture(gl, gl.NEAREST)];
+    this.bandImageTex = texture(gl, gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, BAND_IMAGE_SIZE, BAND_IMAGE_SIZE * MAX_SHAPE_BANDS,
+      0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    this.bandImageKey = '';
     this.composite = program(gl, fullscreenVert, compositeFrag);
     this.layerTex = [texture(gl, gl.NEAREST), texture(gl, gl.NEAREST)];
     this.layerFbo = [gl.createFramebuffer()!, gl.createFramebuffer()!];
@@ -462,6 +469,30 @@ export class Renderer {
     const rad = (deg: number) => (deg * Math.PI) / 180;
     gl.uniform4f(u('u_cmykAngles'), rad(p.cmykAngleC), rad(p.cmykAngleM), rad(p.cmykAngleY), rad(p.cmykAngleK));
     gl.uniform3f(u('u_cmyk'), p.cmykDotGain / 100, p.cmykGcr / 100, p.cmykSupersample);
+    if (p.algorithm === 'luma-shapes') {
+      const bands = parseShapeBands(p.shapeBands) ?? shapeSet();
+      gl.activeTexture(gl.TEXTURE3);
+      gl.bindTexture(gl.TEXTURE_2D, this.bandImageTex);
+      const imageKey = bands.map((b) => b.image ?? '').join('|');
+      if (imageKey !== this.bandImageKey) {
+        const pixels = new Uint8Array(BAND_IMAGE_SIZE * BAND_IMAGE_SIZE * MAX_SHAPE_BANDS * 4);
+        bands.forEach((b, i) => {
+          if (b.image) pixels.set(decodeBandImage(b.image), i * BAND_IMAGE_SIZE * BAND_IMAGE_SIZE * 4);
+        });
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BAND_IMAGE_SIZE, BAND_IMAGE_SIZE * MAX_SHAPE_BANDS,
+          gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        this.bandImageKey = imageKey;
+      }
+      gl.uniform1i(u('u_bandImages'), 3);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform1i(u('u_bandCount'), bands.length);
+      gl.uniform4fv(u('u_bands[0]'), new Float32Array(bands.flatMap((b) =>
+        [(b.end + 1) / 256, BAND_SHAPES.findIndex((s) => s.id === b.shape), b.size / 100, 0])));
+      gl.uniform3fv(u('u_bandColors[0]'), new Float32Array(bands.flatMap((b) => hexToRgb(b.color))));
+      gl.uniform3fv(u('u_bandBackground'), hexToRgb(p.shapeBackground));
+      gl.uniform1f(u('u_bandFeather'), p.shapeFeather / 100);
+      gl.uniform1i(u('u_bandScatter'), p.shapeFeatherPattern === 'scatter' ? 1 : 0);
+    }
     this.setPalette(u, palette, p.perceptual);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.endOutput();
