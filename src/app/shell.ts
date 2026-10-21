@@ -1,6 +1,7 @@
 import { button, el, segmented } from '../ui/controls';
 import { Transport } from '../ui/transport';
 import { actions, rt, store } from './core';
+import { currentLang, onLangChange, toggleLang } from './lang';
 
 // The page frame: preview stage, header, footer status line, help overlay and theme.
 
@@ -58,12 +59,25 @@ export function setTheme(theme: Theme): void {
 
 export const toggleTheme = () => setTheme(currentTheme() === 'dark' ? 'parchment' : 'dark');
 
+// ---------- language ----------
+
+// The button names the other language, in that language, so it can be found in either.
+const langBtn = button('', () => toggleLang(), 'btn small lang-btn');
+langBtn.setAttribute('translate', 'no');
+const syncLangButton = () => {
+  const thai = currentLang() === 'th';
+  langBtn.textContent = thai ? 'EN' : 'ไทย';
+  langBtn.title = thai ? 'Switch to English (L)' : 'เปลี่ยนเป็นภาษาไทย (L)';
+};
+syncLangButton();
+onLangChange(syncLangButton);
+
 // ---------- header / footer ----------
 
 export const header = el(
   'header',
   { class: 'header' },
-  el('div', { class: 'logo' }, 'DITHER', el('span', {}, '/'), 'ASCII'),
+  el('div', { class: 'logo', translate: 'no' }, 'DITHER', el('span', {}, '/'), 'ASCII'),
   segmented(
     'mode',
     [
@@ -73,6 +87,7 @@ export const header = el(
     store,
   ),
   el('div', { class: 'hint' }, 'Hold Space — original'),
+  langBtn,
   themeBtn,
   button('?', () => toggleHelp(), 'btn small help-btn'),
 );
@@ -80,7 +95,7 @@ export const header = el(
 export const transport = new Transport();
 
 export const info = {
-  name: el('span', { class: 'name' }, '—'),
+  name: el('span', { class: 'name', translate: 'no' }, '—'),
   size: el('span', { class: 'hide-sm' }),
   out: el('span', { class: 'out-size' }),
   zoom: el('span', { class: 'hide-sm' }),
@@ -148,6 +163,7 @@ const SHORTCUTS: [string, string][] = [
   ['[ · ]', 'Trim video: In · Out'],
   ['B', 'Toggle boil'],
   ['T', 'Dark / parchment theme'],
+  ['L', 'English / Thai'],
   ['O', 'Open file'],
   ['E', 'Export'],
   ['Ctrl+Z · Ctrl+Shift+Z', 'Undo · redo'],

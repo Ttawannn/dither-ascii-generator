@@ -7,6 +7,7 @@ import { setOriginal } from './render';
 import { toggleSplit } from './split';
 import { redo, undo } from './undo';
 import { openFile } from './sources';
+import { toggleLang } from './lang';
 import { fileInput, flash, stage, toggleHelp, toggleTheme, transport } from './shell';
 
 // File picker, drag and drop, paste, and keyboard shortcuts.
@@ -93,6 +94,8 @@ window.addEventListener('keydown', (e) => {
     void actions.exportClick();
   } else if (e.key === 't') {
     toggleTheme();
+  } else if (e.key === 'l') {
+    toggleLang();
   } else if (e.key === '?') {
     toggleHelp();
   } else if (e.key === 'Escape') {

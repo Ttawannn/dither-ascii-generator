@@ -19,6 +19,17 @@ function createRenderer(): Renderer {
 
 export const renderer = createRenderer();
 
+/**
+ * Where a frame is drawn: the main preview, or a preset thumbnail (its own small renderer; error
+ * diffusion runs synchronously and nothing in the panel or footer is updated).
+ */
+export interface RenderTarget {
+  r: Renderer;
+  thumb: boolean;
+  seed: number;
+}
+export const mainTarget = (): RenderTarget => ({ r: renderer, thumb: false, seed: rt.seed });
+
 // Mobile browsers and GPU driver resets can take the WebGL context away. preventDefault()
 // asks for it back; on restore every GPU object is rebuilt and the source re-uploaded.
 canvas.addEventListener('webglcontextlost', (e) => {

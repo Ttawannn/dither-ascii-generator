@@ -174,6 +174,8 @@ export interface Params {
   exportUnit: string;
   /** SVG of Halftone dot / CMYK as one vector circle per cell instead of pixel runs. */
   exportVectorDots: boolean;
+  /** ANSI text export colours: 'truecolor' or '256'. */
+  exportAnsi: string;
 }
 
 export const DEFAULTS: Params = {
@@ -313,6 +315,7 @@ export const DEFAULTS: Params = {
   exportDpi: 300,
   exportUnit: 'cm',
   exportVectorDots: true,
+  exportAnsi: 'truecolor',
 };
 
 export const EXPORT_FORMATS = [
@@ -331,6 +334,11 @@ export const EXPORT_SLIDERS: Record<string, SliderSpec> = {
   fps: { key: 'exportFps', label: 'Frame rate', min: 5, max: 30, step: 1, format: (v) => `${v} fps` },
   dpi: { key: 'exportDpi', label: 'Resolution', min: 72, max: 1200, step: 1, format: (v) => `${v} dpi` },
 };
+
+export const ANSI_DEPTHS = [
+  { id: 'truecolor', label: 'Truecolor' },
+  { id: '256', label: '256 colours' },
+];
 
 export const EXPORT_UNITS = [
   { id: 'cm', label: 'Centimetres' },
@@ -637,6 +645,7 @@ const ENUMS: Partial<Record<keyof Params, string[]>> = {
   asciiPalette: ASCII_PALETTES,
   exportFormat: EXPORT_FORMATS.map((f) => f.id),
   exportUnit: EXPORT_UNITS.map((u) => u.id),
+  exportAnsi: ANSI_DEPTHS.map((d) => d.id),
   fxTintMode: TINT_MODES.map((m) => m.id),
   boilPattern: BOIL_PATTERNS.map((b) => b.id),
   maskMode: MASK_MODES.map((m) => m.id),

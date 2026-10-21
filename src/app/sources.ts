@@ -25,6 +25,7 @@ export function setSource(src: Source): void {
   viewer.setImageSize(src.width, src.height);
   if (isVideo(src)) watchVideo(src);
   requestRender();
+  actions.refreshThumbs(true);
 }
 
 function clearSource(): void {

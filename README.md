@@ -14,7 +14,8 @@ A browser-based generator that turns images, videos and your webcam into **dithe
 - ASCII mode with 48 character sets, depth and offset controls, palette colours and transparent backgrounds
 - A "boil" animation that brings still images to life
 - Export to PNG, SVG, GIF, WebM or MP4, or copy the ASCII as text; print sizes and whole folders of images in one go
-- Presets you can save and share as a link
+- Presets you can save and share as a link, each shown as a small preview of your picture
+- English and Thai interface
 
 Your files never leave your device. All processing happens in the browser.
 
@@ -27,7 +28,9 @@ Your files never leave your device. All processing happens in the browser.
 3. **Tune it.** Use **Adjust** for brightness, contrast, gamma, a shadows / midtones / highlights tone curve, saturation, hue, sharpen, blur, denoise and invert, then **Effect** for the mode-specific settings. Hold `Space` (or the **Original** button) to compare with the source, or press **Split** (`S`) to see the original and the result side by side with a draggable line. Undo and redo any change with the ↶ ↷ buttons or `Ctrl+Z` / `Ctrl+Shift+Z`.
 4. **Export.** Choose a format in the **Export** section and press **Export**.
 
-New to it? Start from one of the **Presets** (Mac 1-bit, Game Boy, Newsprint, Terminal, Braille, Matrix…) and tweak from there.
+New to it? Start from one of the **Presets** (Mac 1-bit, Game Boy, Newsprint, Terminal, Braille, Matrix…) and tweak from there. Once a picture is loaded, each preset button shows it rendered with that look. **Surprise me** picks a random look within sensible ranges; Undo brings back the previous one.
+
+**Language:** the **ไทย / EN** button in the header (or `L`) switches the interface between English and Thai without reloading. It starts in Thai when the browser is set to Thai, and the choice is remembered in this browser.
 
 ## Dither mode
 
@@ -116,6 +119,7 @@ Glitch and grain move when **Boil** is on. Effects are included in every export,
 | GIF | An animation from a video, the webcam, or a still image with Boil or an ASCII LFO on |
 | WebM / MP4 | The same as GIF, encoded as video (needs WebCodecs, see below). WebM keeps a transparent background; MP4 fills it with the background colour |
 | Copy / .txt / .html | ASCII mode only: the characters as text |
+| .ans / Copy ANSI | ASCII mode only: the characters with terminal colour codes, in truecolor or 256 colours (**ANSI colours** in Export) |
 
 For animated formats, set the **duration** (up to 30 s) and **frame rate** (5–30 fps). Video files export from the current playhead (or the trimmed In–Out range), one frame at a time, so the result is smooth even when live preview is slow. Press the button again to cancel.
 
@@ -146,6 +150,7 @@ For animated formats, set the **duration** (up to 30 s) and **frame rate** (5–
 | `[` / `]` | Trim video: In / Out |
 | `B` | Toggle boil |
 | `T` | Dark / parchment theme |
+| `L` | English / Thai |
 | `O` | Open file |
 | `E` | Export |
 | `?` | Show all shortcuts |

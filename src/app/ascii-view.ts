@@ -1,7 +1,7 @@
 import { atlasKey, buildAtlas, type Atlas } from '../ascii/atlas';
 import { isUserFontId, pickLevels, rampFor, userFontName } from '../ascii/charsets';
 import { onUserFontsChange, userFonts } from '../user-fonts';
-import { buildGrid, gridToHtml, gridToText, type AsciiGrid } from '../ascii/grid';
+import { buildGrid, gridToAnsi, gridToHtml, gridToText, type AnsiDepth, type AsciiGrid } from '../ascii/grid';
 import { modulatedDepth, modulatedOffset } from '../ascii/lfo';
 import { blueNoiseTile } from '../pipeline/bluenoise';
 import { download } from '../export/png';
@@ -9,14 +9,14 @@ import { extractPalette, hexToRgb, resolvePalette, type RGB } from '../pipeline/
 import type { Source } from '../source/source';
 import type { Params } from '../state';
 import { actions, clock, requestRender, rt, store } from './core';
-import { renderer } from './gpu';
+import { mainTarget, type RenderTarget } from './gpu';
 import { glyphInfo, glyphPreview } from './panel/ascii';
 import { flash, info } from './shell';
 
 // Built atlases by key: layer 1 and layer 2 may each need their own. The oldest are dropped.
 const atlases = new Map<string, Atlas>();
 const loading = new Set<string>();
-const MAX_ATLASES = 4;
+const MAX_ATLASES = 16; // preset thumbnails need one per ASCII look
 /** Layer 1's current atlas, shown in the glyph preview. */
 let atlas: Atlas | null = null;
 // The grid is paired with the atlas it was built for, so exports never mix glyph sets.
@@ -98,14 +98,14 @@ store.subscribe((_, changed) => (changed === 'asciiFont' || changed === 'mode') 
 
 /**
  * The glyph atlas for these settings, or null while it is being built (a render follows).
- * `layer` 0 also drives the glyph preview in the panel.
+ * With `preview`, it also drives the glyph preview in the panel (layer 1 of the main view).
  */
-export function currentAtlas(p: Params, layer = 0): Atlas | null {
+export function currentAtlas(p: Params, layer = 0, preview = layer === 0): Atlas | null {
   const ramp = rampFor(p.asciiCharset, p.asciiCustom, p.asciiInject, p.asciiSpace);
   const key = atlasKey(ramp, p.asciiFont, p.asciiFontSize, p.asciiLineHeight, p.asciiBold);
   const hit = atlases.get(key);
   if (hit) {
-    if (layer === 0 && atlas !== hit) {
+    if (preview && atlas !== hit) {
       atlas = hit;
       syncGlyphPreview(store.params);
     }
@@ -123,12 +123,16 @@ export function currentAtlas(p: Params, layer = 0): Atlas | null {
   return null;
 }
 
-/** ASCII mode: adjusted image at grid size → glyph grid on the CPU → atlas pass on the GPU (into `layer`). */
-export function drawAscii(p: Params, layer = 0): void {
-  const a = currentAtlas(p, layer);
-  if (!a) return;
+/**
+ * ASCII mode: adjusted image at grid size → glyph grid on the CPU → atlas pass on the GPU (into
+ * `layer`). Thumbnails use fewer columns, so the characters still show at that size.
+ */
+export function drawAscii(p: Params, layer = 0, t: RenderTarget = mainTarget()): boolean {
+  const a = currentAtlas(p, layer, layer === 0 && !t.thumb);
+  if (!a) return false;
+  const renderer = t.r;
   const [sw, sh] = renderer.sourceSize;
-  const cols = p.asciiColumns;
+  const cols = t.thumb ? Math.min(p.asciiColumns, 40) : p.asciiColumns;
   const rows = Math.max(1, Math.round(cols * (sh / sw) * (a.cellW / a.cellH)));
   const braille = a.rampSize === 0;
   renderer.renderAdjust(p, false, braille ? [cols * 2, rows * 4] : [cols, rows]);
@@ -151,14 +155,15 @@ export function drawAscii(p: Params, layer = 0): void {
     edgeThreshold: p.asciiEdgeThreshold / 100,
     dither: p.asciiDither,
     lightOnDark,
-    seed: rt.seed,
+    seed: t.seed,
     boilAmount: p.boilAmount / 50,
     noiseTile: p.boilPattern === 'blue' ? blueNoiseTile() : null,
   });
   renderer.renderAscii(grid, a, p.asciiColor, p.asciiFg, p.asciiBg, p.asciiTransparent, layer);
-  if (layer !== 0) return;
+  if (layer !== 0 || t.thumb) return true;
   lastAscii = { grid, atlas: a };
   info.out.textContent = `${cols}×${rows} chars`;
+  return true;
 }
 
 // ---------- text exports ----------
@@ -167,8 +172,20 @@ function asciiText(): string | null {
   return lastAscii ? gridToText(lastAscii.grid, lastAscii.atlas.glyphs) : null;
 }
 
-actions.copyText = async () => {
-  const text = asciiText();
+/** The last grid as ANSI text, in the colours of the current settings. */
+function asciiAnsi(): string | null {
+  if (!lastAscii) return null;
+  const p = store.params;
+  return gridToAnsi(lastAscii.grid, lastAscii.atlas.glyphs, {
+    mode: p.asciiColor,
+    fg: p.asciiFg,
+    bg: p.asciiBg,
+    transparent: p.asciiTransparent,
+    depth: p.exportAnsi as AnsiDepth,
+  });
+}
+
+async function copy(text: string | null): Promise<void> {
   if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
@@ -176,6 +193,15 @@ actions.copyText = async () => {
   } catch {
     flash('Clipboard unavailable');
   }
+}
+
+actions.copyText = () => copy(asciiText());
+actions.copyAnsi = () => copy(asciiAnsi());
+
+actions.exportAnsi = () => {
+  const text = asciiAnsi();
+  if (!text || !rt.current) return;
+  download(new Blob([`${text}\n`], { type: 'text/plain;charset=utf-8' }), `${rt.current.name}-ascii.ans`);
 };
 
 actions.exportText = () => {

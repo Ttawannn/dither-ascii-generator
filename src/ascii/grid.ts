@@ -157,6 +157,58 @@ export function gridToText(grid: AsciiGrid, glyphs: string[]): string {
   return lines.join('\n');
 }
 
+export type AnsiDepth = 'truecolor' | '256';
+
+// The 6 levels of each axis of the 256-colour palette's colour cube.
+const CUBE = [0, 95, 135, 175, 215, 255];
+const nearestLevel = (v: number) => CUBE.reduce((best, c, i) => (Math.abs(c - v) < Math.abs(CUBE[best] - v) ? i : best), 0);
+
+/** Nearest entry of the 256-colour terminal palette: the 6×6×6 cube (16–231) or the grey ramp (232–255). */
+export function ansi256(r: number, g: number, b: number): number {
+  const [ri, gi, bi] = [r, g, b].map(nearestLevel);
+  const cube = 16 + 36 * ri + 6 * gi + bi;
+  const cubeErr = (CUBE[ri] - r) ** 2 + (CUBE[gi] - g) ** 2 + (CUBE[bi] - b) ** 2;
+  const grey = Math.min(23, Math.max(0, Math.round(((r + g + b) / 3 - 8) / 10)));
+  const level = 8 + 10 * grey;
+  const greyErr = (level - r) ** 2 + (level - g) ** 2 + (level - b) ** 2;
+  return greyErr < cubeErr ? 232 + grey : cube;
+}
+
+/**
+ * The grid as text with ANSI colour codes for terminals. Image-colour modes colour each character
+ * (or its background for "colour background"); the others use the fixed foreground / background.
+ * Codes are only written when the colour changes, and every line ends with a reset.
+ */
+export function gridToAnsi(
+  grid: AsciiGrid,
+  glyphs: string[],
+  opts: { mode: string; fg: string; bg: string; transparent: boolean; depth: AnsiDepth },
+): string {
+  const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const code = (layer: 38 | 48, r: number, g: number, b: number) =>
+    opts.depth === 'truecolor' ? `\x1b[${layer};2;${r};${g};${b}m` : `\x1b[${layer};5;${ansi256(r, g, b)}m`;
+  const perCellFg = opts.mode === 'color' || opts.mode === 'palette';
+  const perCellBg = opts.mode === 'colorBg';
+  const fixedFg = perCellFg ? '' : code(38, ...(rgb(opts.fg) as [number, number, number]));
+  const fixedBg = perCellBg || opts.transparent ? '' : code(48, ...(rgb(opts.bg) as [number, number, number]));
+  const lines: string[] = [];
+  for (let row = 0; row < grid.rows; row++) {
+    let line = fixedFg + fixedBg;
+    let last = '';
+    for (let col = 0; col < grid.cols; col++) {
+      const c = row * grid.cols + col;
+      if (perCellFg || perCellBg) {
+        const cell = code(perCellFg ? 38 : 48, grid.cells[c * 4], grid.cells[c * 4 + 1], grid.cells[c * 4 + 2]);
+        if (cell !== last) line += cell;
+        last = cell;
+      }
+      line += glyphs[grid.glyphIds[c]];
+    }
+    lines.push(`${line}\x1b[0m`);
+  }
+  return lines.join('\n');
+}
+
 const escapeHtml = (s: string) => s.replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[ch]!);
 const hex = (r: number, g: number, b: number) =>
   `#${[r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;

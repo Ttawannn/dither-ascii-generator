@@ -13,7 +13,7 @@ function serviceWorker(): Plugin {
     apply: 'build',
     enforce: 'post',
     generateBundle(_, bundle) {
-      const files = Object.keys(bundle).filter((f) => f !== 'sw.js' && !/\.woff$/.test(f) && !/noto-sans/.test(f));
+      const files = Object.keys(bundle).filter((f) => f !== 'sw.js' && !/\.woff$/.test(f) && !/noto-sans|plex-sans-thai-(?!thai)/.test(f));
       const precache = [...new Set(['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', ...files])];
       const version = createHash('sha256').update(precache.join('\n')).digest('hex').slice(0, 12);
       const template = readFileSync('pwa/sw-template.js', 'utf8');

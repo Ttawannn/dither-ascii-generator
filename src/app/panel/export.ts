@@ -1,4 +1,4 @@
-import { EXPORT_FORMATS, EXPORT_SLIDERS, EXPORT_UNITS, isAnimatedFormat } from '../../state';
+import { ANSI_DEPTHS, EXPORT_FORMATS, EXPORT_SLIDERS, EXPORT_UNITS, isAnimatedFormat } from '../../state';
 import { button, el, section, select, showWhen, slider, toggle } from '../../ui/controls';
 import { actions, store } from '../core';
 
@@ -42,6 +42,11 @@ export const exportSection = section(
   ),
   exportInfo,
   showWhen(el('div', { class: 'pal-actions' }, batchBtn, batchPicker), store, still),
+  showWhen(
+    select('exportAnsi', 'ANSI colours', ANSI_DEPTHS.map((d) => ({ value: d.id, label: d.label })), store),
+    store,
+    (p) => p.mode === 'ascii',
+  ),
 );
 
 export const exportBtn = button('Export', () => void actions.exportClick(), 'btn primary');
@@ -49,6 +54,8 @@ const textExports = [
   button('Copy', () => void actions.copyText(), 'btn small'),
   button('.txt', () => actions.exportText(), 'btn small'),
   button('.html', () => actions.exportHtml(), 'btn small'),
+  button('.ans', () => actions.exportAnsi(), 'btn small'),
+  button('Copy ANSI', () => void actions.copyAnsi(), 'btn small'),
 ];
 
 /** Export buttons are only usable once a source is loaded. */

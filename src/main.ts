@@ -9,6 +9,7 @@ import './app/split';
 import './app/sources';
 import './app/exporting';
 import './app/undo';
+import './app/thumbs';
 import './app/input';
 import { openSample } from './app/sources';
 import { applyShareLink } from './app/panel/presets';

@@ -181,7 +181,7 @@ export function customPaletteEditor(s: ParamStore = store): HTMLElement {
         const use = el(
           'button',
           { class: 'pal-lib-row', type: 'button', title: `Use “${p.name}”` },
-          el('span', { class: 'pal-lib-name' }, p.name),
+          el('span', { class: 'pal-lib-name', translate: 'no' }, p.name),
           el('span', { class: 'pal-lib-swatches' }, ...p.colors.map((c) => el('span', { style: `background:${c}` }))),
         );
         use.addEventListener('click', () => {

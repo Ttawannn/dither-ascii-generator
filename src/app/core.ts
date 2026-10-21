@@ -35,6 +35,8 @@ export const actions = {
   copyText: async (): Promise<void> => {},
   exportText: (): void => {},
   exportHtml: (): void => {},
+  copyAnsi: async (): Promise<void> => {},
+  exportAnsi: (): void => {},
   setOriginal: (_on: boolean): void => {},
   fit: (): void => {},
   zoom100: (): void => {},
@@ -42,6 +44,8 @@ export const actions = {
   afterDraw: (): void => {},
   /** Redraws the before/after split overlay. */
   drawSplit: (): void => {},
+  /** Redraw preset thumbnails: all of them for a new picture, otherwise only missing ones. */
+  refreshThumbs: (_pictureChanged: boolean): void => {},
 };
 
 let drawFn = () => {};

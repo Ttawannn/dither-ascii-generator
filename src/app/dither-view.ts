@@ -1,9 +1,10 @@
 import { blueNoiseTile } from '../pipeline/bluenoise';
+import { diffuse, type DiffusionJob } from '../pipeline/diffuse';
 import { extractPalette, resolvePalette, rgbToHex, type Palette, type RGB } from '../pipeline/palettes';
 import type { Source } from '../source/source';
 import type { Params } from '../state';
 import { group, rt, store } from './core';
-import { diffusers, renderer } from './gpu';
+import { diffusers, mainTarget, type RenderTarget } from './gpu';
 import { paletteSwatches } from './panel/dither';
 import { info, setStatus } from './shell';
 
@@ -37,17 +38,19 @@ const PALETTE_KEYS: (keyof Params)[] = ['palette', 'levels', 'ink', 'paper', 'cu
 store.subscribe((_, changed) => PALETTE_KEYS.includes(changed) && syncSwatches());
 syncSwatches();
 
-/** Dither mode: GPU passes for ordered/pattern algorithms, the worker for error diffusion (into `layer`). */
-export function drawDither(p: Params, layer = 0): void {
+/**
+ * Dither mode: GPU passes for ordered/pattern algorithms, the worker for error diffusion (into
+ * `layer`). Thumbnails diffuse synchronously; they are small.
+ */
+export function drawDither(p: Params, layer = 0, t: RenderTarget = mainTarget()): void {
+  const renderer = t.r;
   renderer.renderAdjust(p, false);
   const [ow, oh] = renderer.adjustedSize;
-  if (layer === 0) info.out.textContent = `OUT ${ow}×${oh}`;
+  if (layer === 0 && !t.thumb) info.out.textContent = `OUT ${ow}×${oh}`;
 
   if (group(p) === 'diffusion') {
-    // Keep the previous frame on screen while the worker runs; only redraw now if a resize would blank it.
-    if (!renderer.canvasMatches) renderer.renderResult(undefined, layer);
     const pal = currentPalette(p);
-    diffusers[layer].request({
+    const job: Omit<DiffusionJob, 'id'> = {
       width: ow,
       height: oh,
       data: renderer.readAdjusted(),
@@ -58,13 +61,20 @@ export function drawDither(p: Params, layer = 0): void {
       colors: new Float32Array(pal.colors.flat()),
       levels: pal.levels,
       perceptual: p.perceptual,
-      noise: rt.seed ? 0.12 * (p.boilAmount / 100) : 0,
+      noise: t.seed ? 0.12 * (p.boilAmount / 100) : 0,
       noiseTile: p.boilPattern === 'blue' ? blueNoiseTile() : null,
       wave: p.waveStrength ? [p.waveStrength / 100, p.waveLength, p.waveBias / 100, p.waveFollow / 100] : null,
-      seed: rt.seed,
-    });
+      seed: t.seed,
+    };
+    if (t.thumb) {
+      renderer.renderResult({ width: ow, height: oh, data: diffuse({ ...job, id: 0 }) }, layer);
+      return;
+    }
+    // Keep the previous frame on screen while the worker runs; only redraw now if a resize would blank it.
+    if (!renderer.canvasMatches) renderer.renderResult(undefined, layer);
+    diffusers[layer].request(job);
   } else {
-    renderer.renderDither(p, currentPalette(p), rt.seed);
-    if (layer === 0) setStatus('');
+    renderer.renderDither(p, currentPalette(p), t.seed);
+    if (layer === 0 && !t.thumb) setStatus('');
   }
 }

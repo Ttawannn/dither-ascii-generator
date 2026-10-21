@@ -9,6 +9,10 @@ import '@fontsource/jetbrains-mono/700.css';
 import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/700.css';
 import '@fontsource/vt323/400.css';
+// Thai UI text (after JetBrains Mono in --font, so it only supplies Thai glyphs).
+import '@fontsource/ibm-plex-sans-thai/400.css';
+import '@fontsource/ibm-plex-sans-thai/500.css';
+import '@fontsource/ibm-plex-sans-thai/700.css';
 // Parchment theme display face.
 import '@fontsource/grenze-gotisch/500.css';
 import '@fontsource/grenze-gotisch/600.css';

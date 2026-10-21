@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildGrid, gridToHtml, gridToText, type GridOptions } from './grid';
+import { ansi256, buildGrid, gridToAnsi, gridToHtml, gridToText, type AsciiGrid, type GridOptions } from './grid';
 
 /** RGBA image (row order does not matter for these patterns) from a per-pixel grey function. */
 function image(w: number, h: number, value: (x: number, y: number) => number): Uint8Array {
@@ -102,5 +102,46 @@ describe('text export', () => {
     });
     expect(html).toContain('<pre>&lt;</pre>');
     expect(html).toContain('<title>a&lt;b</title>');
+  });
+});
+
+describe('ANSI export', () => {
+  // 2×2 cells: red, green / blue, white, glyphs a b / c d
+  const grid: AsciiGrid = {
+    cols: 2,
+    rows: 2,
+    cells: Uint8Array.from([255, 0, 0, 0, 0, 255, 0, 1, 0, 0, 255, 2, 255, 255, 255, 3]),
+    glyphIds: Uint16Array.from([0, 1, 2, 3]),
+  };
+  const glyphs = ['a', 'b', 'c', 'd'];
+  const base = { fg: '#e8e8e8', bg: '#000000', transparent: false };
+  const ESC = '\x1b';
+
+  it('colours each character in truecolor, one code per change, reset per line', () => {
+    const out = gridToAnsi(grid, glyphs, { ...base, mode: 'color', depth: 'truecolor' });
+    expect(out.split('\n')).toEqual([
+      `${ESC}[48;2;0;0;0m${ESC}[38;2;255;0;0ma${ESC}[38;2;0;255;0mb${ESC}[0m`,
+      `${ESC}[48;2;0;0;0m${ESC}[38;2;0;0;255mc${ESC}[38;2;255;255;255md${ESC}[0m`,
+    ]);
+  });
+
+  it('uses the cell colour as background for "colour background"', () => {
+    const out = gridToAnsi(grid, glyphs, { ...base, mode: 'colorBg', depth: 'truecolor' });
+    expect(out.startsWith(`${ESC}[38;2;232;232;232m${ESC}[48;2;255;0;0ma`)).toBe(true);
+  });
+
+  it('writes fixed colours once per line in mono mode, and no background when transparent', () => {
+    const out = gridToAnsi(grid, glyphs, { ...base, mode: 'mono', transparent: true, depth: 'truecolor' });
+    expect(out).toBe(`${ESC}[38;2;232;232;232mab${ESC}[0m\n${ESC}[38;2;232;232;232mcd${ESC}[0m`);
+  });
+
+  it('maps to the 256-colour palette', () => {
+    expect(ansi256(255, 0, 0)).toBe(196);
+    expect(ansi256(0, 0, 0)).toBe(16);
+    expect(ansi256(255, 255, 255)).toBe(231);
+    expect(ansi256(128, 128, 128)).toBe(244); // grey ramp beats the cube's 102
+    const out = gridToAnsi(grid, glyphs, { ...base, mode: 'color', depth: '256' });
+    expect(out).toContain(`${ESC}[38;5;196ma`);
+    expect(out).toContain(`${ESC}[48;5;16m`);
   });
 });

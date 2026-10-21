@@ -13,7 +13,7 @@ npx vitest run src/ascii/grid.test.ts   # a single test file
 npx vitest run -t "share links"         # tests whose name matches
 ```
 
-Tests (`src/**/*.test.ts`, Node environment) cover only the pure logic: `sanitize`, presets and share links, palettes, error-diffusion kernels and `diffuse()`, the character library (`rampFor`, `pickLevels`), LFOs, effect order and parameters, animation lanes, audio band levels, zip read/write, PNG DPI, the vector halftone SVG, and the ASCII grid and text export. Anything touching WebGL or the DOM has no tests; verify it in a browser. The deploy workflow runs `npm test` before building, so a failing test blocks the deploy. There is no linter. `/?sample` loads the built-in procedural test image on start, and `#s=<base64url>` applies a shared look.
+Tests (`src/**/*.test.ts`, Node environment) cover only the pure logic: `sanitize`, presets and share links, palettes, error-diffusion kernels and `diffuse()`, the character library (`rampFor`, `pickLevels`), LFOs, effect order and parameters, animation lanes, audio band levels, zip read/write, PNG DPI, the vector halftone SVG, the ASCII grid and text / ANSI export, `randomLook`, and the Thai dictionary (every control label must be covered). Anything touching WebGL or the DOM has no tests; verify it in a browser. The deploy workflow runs `npm test` before building, so a failing test blocks the deploy. There is no linter. `/?sample` loads the built-in procedural test image on start, and `#s=<base64url>` applies a shared look.
 
 TypeScript is v7 (the native compiler) and Vite is v8.
 
@@ -41,6 +41,8 @@ Everything runs client-side in one page with no framework. `src/main.ts` only im
 | `layer-store.ts` | `layerStore`: layer 2's settings as a `ParamStore` (page params + the layer's own keys), so the dither / ASCII panels can be reused for it |
 | `undo.ts` | undo/redo of the `PRESET_KEYS` snapshot (`History` in `src/history.ts`, coalescing changes within 400 ms); header buttons and Ctrl+Z |
 | `sources.ts`, `exporting.ts`, `input.ts` | loading sources; Export button and frame sequences; file input, drag/drop, paste, shortcuts |
+
+`lang.ts` applies the UI language and `thumbs.ts` draws preset thumbnails (see below).
 
 Calls that would go up the graph (a panel button starting an export, `draw()` refreshing the export summary) go through the late-bound `actions` registry in `core.ts`, which feature modules fill in when they load. Keep it that way instead of importing upward.
 
@@ -96,6 +98,16 @@ with layer 2 on:  layer 1 pass ─▶ layerTex[0] · layer 2 pass ─▶ layerTe
 - Lane cards edit the JSON without rebuilding themselves (`editingLanes`), so a slider being dragged keeps its pointer; any outside change (preset, share link, Reset) rebuilds them.
 - Audio lanes (`mode: 'audio'`) read `audioInput.level(band, window)` in `app/core.ts`, which `app/audio.ts` replaces when an input is chosen. An audio file is analysed once by `analyseLevels()` (`src/audio-levels.ts`: FFT, bass / mid / high in dB mapped to 0..1, 60 values a second) and read at `rt.clockOverride` during export, so exports are deterministic; the microphone is sampled live from an `AnalyserNode`. The audio input is not a param: presets carry the lane, not the sound.
 - The transport's In / Out marks (`Transport.trimmed()` / `range()`) keep playback inside the range (checked on every video frame) and set the start and length of video exports; they are cleared when the source changes.
+
+### Language (`src/i18n.ts`, `app/lang.ts`)
+- All UI code writes English. `app/lang.ts` translates the page itself: it keeps the English of every text node and of `title` / `aria-label` / `placeholder` / `label` attributes, shows `translate()`'s result, and follows later changes with a MutationObserver, so no module calls a translation function and switching never rebuilds a control.
+- `translate()` tries an exact entry, then each `" · "`-separated part, then templates whose `{placeholders}` carry numbers and names over. When you add UI text, add its Thai to `TH` in `src/i18n.ts` (a template for text with values in it); names that stay the same go in `KEEP`. The i18n test fails if a label of a slider, select option or list in the code has no entry.
+- User content must not be translated: mark it `translate="no"` (preset chips, file name, palette names). The glyph preview is skipped as well.
+- Thai glyphs come from IBM Plex Sans Thai, second in `--font`; letter spacing is turned off under `html:lang(th)`. The language is a per-browser preference (`localStorage['dag.lang']`, default from the browser language), not a param.
+
+### Preset thumbnails (`app/thumbs.ts`)
+- A second `Renderer` on its own offscreen canvas renders each preset button's look from a downscaled copy of the source (long side 128 × pixel size, or 384 for ASCII), so the main preview's textures, worker results and atlas pairing are never touched. `renderLook(p, target)` in `render.ts` is the shared drawing path; a `RenderTarget` (`gpu.ts`) says which renderer, the boil seed, and whether it is a thumbnail (error diffusion then runs synchronously via `diffuse()`, ASCII uses at most 40 columns, and nothing in the panel or footer is updated).
+- Thumbnails are drawn in idle time, several per idle period; a look whose atlas is still loading is retried. `actions.refreshThumbs(true)` (new source) redraws all, `(false)` (preset list changed) only the missing ones.
 
 ### UI theme
 - Colours are CSS custom properties on `:root`; the parchment theme overrides them under `:root[data-theme='parchment']` and swaps `--display` (logo and section titles) to Grenze Gotisch. Use the tokens (`--dot`, `--overlay`, `--scrim`, `--checker-*`…) rather than hard-coded colours. The theme is a per-browser preference in `localStorage['dag.theme']`, applied by an inline script in `index.html` before first paint. It is deliberately not a `Params` key, so presets and share links don't carry it.

@@ -5,7 +5,7 @@ import { LAYER_BLENDS } from '../layers';
 import { actions, activeLayer, animatedParams, lanesOf, lfoActive, requestRender, rt, setDrawer, store, transparentOutput } from './core';
 import { drawAscii } from './ascii-view';
 import { drawDither } from './dither-view';
-import { renderer } from './gpu';
+import { mainTarget, renderer, type RenderTarget } from './gpu';
 import { info, setStatus, stage } from './shell';
 
 /** Draw the current source with the current (animated) settings. Synchronous. */
@@ -16,41 +16,18 @@ export function draw(): void {
   if (isVideo(src) && src.element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
     renderer.setSource(src.element, src.width, src.height);
   }
-  // The original view is shown untouched; otherwise every output pass runs the effect chain.
-  const layer = rt.showOriginal ? null : activeLayer(p);
-  const mask = maskEffect(p, rt.showMask);
-  // The mask limits layer 2 only when asked (but "Show mask" always shows it full screen).
-  const maskOnLayer = !!layer && layer.layer.maskOnly && !!mask && !rt.showMask;
-  const effects = rt.showOriginal ? [] : [...activeEffects(p), ...(mask && !maskOnLayer ? [mask] : [])];
-  renderer.setEffects(effects, rt.seed, !transparentOutput(p));
   stage.classList.toggle('ascii', p.mode === 'ascii' && !rt.showOriginal);
   stage.classList.toggle('transparent', !rt.showOriginal && !rt.showMask && transparentOutput(p));
 
   if (rt.showOriginal) {
+    // The original view is shown untouched.
+    renderer.setEffects([], rt.seed, !transparentOutput(p));
     renderer.renderAdjust(p, true);
     renderer.renderAdjusted();
     setStatus('');
-  } else if (layer) {
-    // Each layer renders into its own texture; then layer 2 is blended over layer 1.
-    const drawLayer = (lp: typeof p, i: number) => {
-      renderer.setLayerTarget(i, lp.mode === 'ascii');
-      if (lp.mode === 'ascii') drawAscii(lp, i);
-      else drawDither(lp, i);
-    };
-    drawLayer(p, 0);
-    drawLayer(layer.params, 1);
-    renderer.setLayerTarget(null);
-    renderer.compositeLayers({
-      blend: Math.max(0, LAYER_BLENDS.findIndex((b) => b.id === layer.layer.blend)),
-      opacity: layer.layer.opacity / 100,
-      mask: maskOnLayer ? mask : null,
-    });
-    if (p.mode === 'ascii') setStatus('');
-  } else if (p.mode === 'ascii') {
-    drawAscii(p);
-    setStatus('');
   } else {
-    drawDither(p);
+    renderLook(p, mainTarget(), rt.showMask);
+    if (p.mode === 'ascii') setStatus('');
   }
 
   const [sw, sh] = renderer.sourceSize;
@@ -60,6 +37,34 @@ export function draw(): void {
   actions.afterDraw();
 }
 setDrawer(draw);
+
+/**
+ * Render `p` to a target: layers, mode, effects and mask. Returns false when an ASCII atlas is
+ * still loading (nothing new was drawn).
+ */
+export function renderLook(p: Params, t: RenderTarget, showMask = false): boolean {
+  const r = t.r;
+  const layer = activeLayer(p);
+  const mask = maskEffect(p, showMask);
+  // The mask limits layer 2 only when asked (but "Show mask" always shows it full screen).
+  const maskOnLayer = !!layer && layer.layer.maskOnly && !!mask && !showMask;
+  r.setEffects([...activeEffects(p), ...(mask && !maskOnLayer ? [mask] : [])], t.seed, !transparentOutput(p));
+  const drawMode = (lp: Params, i: number) => (lp.mode === 'ascii' ? drawAscii(lp, i, t) : (drawDither(lp, i, t), true));
+
+  if (!layer) return drawMode(p, 0);
+  // Each layer renders into its own texture; then layer 2 is blended over layer 1.
+  r.setLayerTarget(0, p.mode === 'ascii');
+  const a = drawMode(p, 0);
+  r.setLayerTarget(1, layer.params.mode === 'ascii');
+  const b = drawMode(layer.params, 1);
+  r.setLayerTarget(null);
+  r.compositeLayers({
+    blend: Math.max(0, LAYER_BLENDS.findIndex((bl) => bl.id === layer.layer.blend)),
+    opacity: layer.layer.opacity / 100,
+    mask: maskOnLayer ? mask : null,
+  });
+  return a && b;
+}
 store.subscribe(requestRender);
 
 /** Show the unprocessed source (Space / Original button) or go back to the effect. */

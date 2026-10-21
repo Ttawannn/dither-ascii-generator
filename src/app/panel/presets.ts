@@ -1,5 +1,6 @@
 import { download } from '../../export/png';
 import { importPreset, importPresetList } from '../../preset-import';
+import { randomLook, rng } from '../../random-look';
 import {
   BUILT_IN,
   decodeShare,
@@ -13,8 +14,9 @@ import {
   storeSaved,
   type Preset,
 } from '../../presets';
+import type { Params } from '../../state';
 import { button, el, section } from '../../ui/controls';
-import { store } from '../core';
+import { actions, store } from '../core';
 import { flash } from '../shell';
 
 let saved = loadSaved();
@@ -23,9 +25,31 @@ const savedGrid = el('div', { class: 'preset-grid' });
 const savedHead = el('div', { class: 'subhead' }, 'Saved');
 const presetName = el('input', { type: 'text', maxlength: '40', placeholder: 'Name this look', 'aria-label': 'Preset name' });
 
-const chip = (preset: Preset) => button(preset.name, () => store.apply(resolvePreset(preset)), 'chip');
+// Thumbnail canvases by look, kept when the lists are rebuilt so unchanged ones aren't redrawn.
+const thumbCanvases = new Map<string, HTMLCanvasElement>();
+let thumbList: { params: Partial<Params>; canvas: HTMLCanvasElement }[] = [];
+/** Each preset button's look and thumbnail canvas (filled by app/thumbs.ts). */
+export const presetThumbs = () => thumbList;
+
+function chip(preset: Preset): HTMLButtonElement {
+  const params = resolvePreset(preset);
+  const key = JSON.stringify(params);
+  let canvas = thumbCanvases.get(key);
+  if (!canvas) {
+    canvas = el('canvas', { class: 'chip-thumb', hidden: '' });
+    thumbCanvases.set(key, canvas);
+  }
+  thumbList.push({ params, canvas });
+  const b = button('', () => store.apply(params), 'chip preset-chip');
+  // Preset names are names, not UI text: they stay as they are in every language.
+  b.setAttribute('translate', 'no');
+  b.append(canvas, el('span', { class: 'chip-name' }, preset.name));
+  b.title = preset.name;
+  return b;
+}
 
 function renderPresets(): void {
+  thumbList = [];
   builtInGrid.replaceChildren(...BUILT_IN.map(chip));
   savedGrid.replaceChildren(
     ...saved.map((preset) =>
@@ -43,6 +67,7 @@ function renderPresets(): void {
   );
   savedHead.hidden = savedGrid.hidden = saved.length === 0;
   exportAllBtn.disabled = saved.length === 0;
+  actions.refreshThumbs(false);
 }
 
 function savePreset(): void {
@@ -150,9 +175,16 @@ export function applyShareLink(): void {
   }
 }
 
+/** A random look within ranges that keep the picture readable (Undo brings the previous one back). */
+function surprise(): void {
+  const seed = crypto.getRandomValues(new Uint32Array(1))[0];
+  store.apply(resolvePreset({ name: 'Surprise', params: randomLook(rng(seed)) }));
+}
+
 export const presetsSection = section(
   'Presets',
   builtInGrid,
+  el('div', { class: 'btn-row' }, button('Surprise me', surprise, 'btn small share-btn')),
   savedHead,
   savedGrid,
   el('div', { class: 'save-row' }, presetName, button('Save', savePreset, 'btn small')),
