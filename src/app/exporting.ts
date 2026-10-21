@@ -7,7 +7,7 @@ import { loadImageFile } from '../source/image';
 import { EXPORT_FORMATS, printLength, type Params } from '../state';
 import { writeZip, type ZipEntry } from '../zip';
 import { exportAudio } from './audio';
-import { actions, activeLayer, lanesOf, lfoActive, requestRender, rt, store, transparentAscii, transparentOutput } from './core';
+import { actions, activeLayer, autoScale, lanesOf, lfoActive, requestRender, rt, store, transparentAscii, transparentOutput } from './core';
 import { currentAtlas } from './ascii-view';
 import { currentPalette, syncSwatches } from './dither-view';
 import { diffusers, renderer } from './gpu';
@@ -92,6 +92,12 @@ function videoRange(v: HTMLVideoElement): { start: number; end: number } {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Draw synchronously at full resolution (never the fast playback preview). */
+actions.renderFull = () => {
+  autoScale.reset();
+  draw();
+};
+
 /** Draw synchronously and wait until the canvas really shows the result (atlas built, worker done). */
 async function renderNow(): Promise<void> {
   // Both layers' atlases must be ready (layer 2 only when it is on and in ASCII mode).
@@ -103,7 +109,7 @@ async function renderNow(): Promise<void> {
     );
   };
   for (let tries = 0; atlasesPending() && tries < 100; tries++) await sleep(20);
-  draw();
+  actions.renderFull();
   await Promise.all(diffusers.map((d) => d.idle()));
 }
 

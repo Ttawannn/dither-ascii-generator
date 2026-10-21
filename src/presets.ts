@@ -135,6 +135,8 @@ export const presetListFile = (list: Preset[]): string =>
 /** A safe file name for a look (keeps letters in any script, drops characters filesystems reject). */
 export function presetFileName(name: string): string {
   const base = name
+    // Control characters are among those filesystems reject.
+    // eslint-disable-next-line no-control-regex
     .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '')
     .trim()
     .replace(/\s+/g, '-');

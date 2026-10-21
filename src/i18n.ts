@@ -36,6 +36,7 @@ const TH: Record<string, string> = {
   'Switch to the dark theme (T)': 'เปลี่ยนเป็นธีมมืด (T)',
   'Shortcuts': 'ปุ่มลัด',
   'Keyboard shortcuts': 'ปุ่มลัดแป้นพิมพ์',
+  'Settings panel': 'แผงการตั้งค่า',
   'Close': 'ปิด',
   'DROP TO LOAD': 'วางไฟล์เพื่อเปิด',
   'Drop an image or video': 'ลากภาพหรือวิดีโอมาวาง',
@@ -60,6 +61,7 @@ const TH: Record<string, string> = {
   'Trimmed {range}': 'ตัดช่วง {range}',
   'OUT {size}': 'ผลลัพธ์ {size}',
   '{size} chars': '{size} ตัวอักษร',
+  'fast preview': 'พรีวิวแบบเร็ว',
   '{ms} ms': '{ms} มิลลิวินาที',
   // help
   'Space (hold)': 'Space (กดค้าง)',

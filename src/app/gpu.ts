@@ -3,7 +3,7 @@ import { Diffuser } from '../pipeline/diffuser';
 import { Renderer } from '../pipeline/gl';
 import { el } from '../ui/controls';
 import { Viewer } from '../ui/viewer';
-import { actions, activeLayer, group, requestRender, rt, store } from './core';
+import { actions, activeLayer, autoScale, group, isPlaying, requestRender, rt, store } from './core';
 import { canvas, flash, info, setStatus, stage } from './shell';
 
 function createRenderer(): Renderer {
@@ -68,6 +68,8 @@ function onDiffused(layer: number, result: DiffusionResult): void {
     renderer.renderResult(result);
   }
   if (layer === 0) setStatus(`${Math.round(result.ms)} ms`);
+  // The worker is often the slow part: its time counts towards the playback preview resolution.
+  if (isPlaying() && autoScale.sample(result.ms)) requestRender();
 }
 
 export const diffusers = [new Diffuser((r) => onDiffused(0, r)), new Diffuser((r) => onDiffused(1, r))];

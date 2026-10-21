@@ -169,11 +169,13 @@ export function drawAscii(p: Params, layer = 0, t: RenderTarget = mainTarget()):
 // ---------- text exports ----------
 
 function asciiText(): string | null {
+  actions.renderFull(); // the grid at the set columns, not a fast playback preview
   return lastAscii ? gridToText(lastAscii.grid, lastAscii.atlas.glyphs) : null;
 }
 
 /** The last grid as ANSI text, in the colours of the current settings. */
 function asciiAnsi(): string | null {
+  actions.renderFull();
   if (!lastAscii) return null;
   const p = store.params;
   return gridToAnsi(lastAscii.grid, lastAscii.atlas.glyphs, {
@@ -211,6 +213,7 @@ actions.exportText = () => {
 };
 
 actions.exportHtml = () => {
+  actions.renderFull();
   if (!lastAscii || !rt.current) return;
   const p = store.params;
   const html = gridToHtml(lastAscii.grid, lastAscii.atlas.glyphs, {

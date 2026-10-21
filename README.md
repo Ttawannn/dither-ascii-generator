@@ -84,6 +84,7 @@ Copy the result to the clipboard, or save it as `.txt` or as a standalone colour
 
 - **Video files:** play/pause (`K`), scrub, loop and sound in the bottom bar. Every frame is processed live. **In** / **Out** (`[` / `]`) trim the clip: playback stays inside the marks and exports render only that range; **×** clears them.
 - **Webcam:** a live feed with a **Mirror** toggle (on by default for the camera). The browser asks for camera permission first.
+- **Fast preview:** when a look is too heavy to keep up with a playing video or the webcam, the preview drops to a coarser resolution for a while (the footer says *fast preview*) and comes back once there is room. Your settings don't change, pausing shows full resolution, and exports are always full resolution.
 - **Boil:** turn it on under **Animation** to make the dither pattern or ASCII characters shift over time (1–30 fps), even on a still image. For error diffusion and ASCII you can pick the jitter pattern (random or blue noise, which is more even) and its amount.
 - **Animate settings:** pick almost any slider and press **+ Animate**. Each lane is either an **LFO** (shape, speed, swing around the slider value) or **Keys**, going from one value to another with easing and repeat / ping-pong / once looping over a timeline of 1–30 s. A third kind, **Audio**, follows the loudness of the bass, mids or highs (strength, smoothing) of a **Microphone** (live) or an **Audio file** chosen under Audio input. An audio file is analysed up front, so exports move exactly with the music and WebM / MP4 exports include it as the soundtrack. Up to 8 lanes run at once, and still images with lanes export as GIF or video.
 
@@ -145,6 +146,7 @@ For animated formats, set the **duration** (up to 30 s) and **frame rate** (5–
 | `F` / double-click preview | Fit to view |
 | `1` | 100% zoom |
 | Wheel / drag | Zoom / pan |
+| Two fingers (touch) | Pinch to zoom, move together to pan |
 | `D` / `A` | Dither / ASCII mode |
 | `K` | Play / pause video |
 | `[` / `]` | Trim video: In / Out |
@@ -156,6 +158,8 @@ For animated formats, set the **duration** (up to 30 s) and **frame rate** (5–
 | `?` | Show all shortcuts |
 | Double-click a slider | Reset that value |
 | `Ctrl+V` | Paste image |
+
+**On a phone** the settings are a sheet at the bottom of the screen: drag its handle (or tap it) between just the Export button, half the screen and full screen. The preview keeps the space above it.
 
 ## Browser support
 

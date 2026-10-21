@@ -2,7 +2,22 @@ import { activeEffects, maskEffect } from '../pipeline/effects';
 import { isVideo, type Source } from '../source/source';
 import type { Params } from '../state';
 import { LAYER_BLENDS } from '../layers';
-import { actions, activeLayer, animatedParams, lanesOf, lfoActive, requestRender, rt, setDrawer, store, transparentOutput } from './core';
+import { coarser } from '../auto-scale';
+import {
+  actions,
+  activeLayer,
+  animatedParams,
+  autoScale,
+  group,
+  isPlaying,
+  lanesOf,
+  lfoActive,
+  requestRender,
+  rt,
+  setDrawer,
+  store,
+  transparentOutput,
+} from './core';
 import { drawAscii } from './ascii-view';
 import { drawDither } from './dither-view';
 import { mainTarget, renderer, type RenderTarget } from './gpu';
@@ -26,7 +41,17 @@ export function draw(): void {
     renderer.renderAdjusted();
     setStatus('');
   } else {
-    renderLook(p, mainTarget(), rt.showMask);
+    // While playing, a slow look renders coarser (never in exports or when paused).
+    const playing = isPlaying();
+    if (!playing) autoScale.reset();
+    const k = autoScale.factor;
+    const t0 = performance.now();
+    renderLook(coarser(p, k), mainTarget(), rt.showMask);
+    // Error diffusion is timed in the worker (gpu.ts); the draw itself is cheap then.
+    const layer = activeLayer(p);
+    const usesWorker = [p, layer?.params].some((lp) => lp && lp.mode === 'dither' && group(lp) === 'diffusion');
+    if (playing && !usesWorker && autoScale.sample(performance.now() - t0)) requestRender();
+    if (k > 1) info.out.textContent += ' · fast preview';
     if (p.mode === 'ascii') setStatus('');
   }
 
@@ -121,6 +146,8 @@ export function watchVideo(src: Source & { element: HTMLVideoElement }): void {
   if (watching.has(src)) return;
   watching.add(src);
   const v = src.element;
+  // Pausing ends any fast preview: draw once more at full resolution.
+  v.addEventListener('pause', requestRender);
   const tick = () => {
     if (rt.current !== src) {
       watching.delete(src);

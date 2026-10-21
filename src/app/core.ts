@@ -1,4 +1,5 @@
 import { applyAnimation, parseLanes, type AudioLevel, type Lane } from '../anim';
+import { AutoScale } from '../auto-scale';
 import { getAlgorithm } from '../pipeline/algorithms';
 import type { Source } from '../source/source';
 import type { Layer } from '../layers';
@@ -30,6 +31,8 @@ export const actions = {
   openSample: async (): Promise<void> => {},
   toggleWebcam: async (): Promise<void> => {},
   exportClick: async (): Promise<void> => {},
+  /** Draw now at full resolution (ends a fast playback preview), for exports that read the result. */
+  renderFull: (): void => {},
   /** Render each image file with the current look and save them in one .zip. */
   batchExport: async (_files: File[]): Promise<void> => {},
   copyText: async (): Promise<void> => {},
@@ -83,6 +86,16 @@ export function activeLayer(p: Params): { layer: Layer; params: Params } | null 
   if (layerCache.json !== p.layer2) layerCache = { json: p.layer2, layer: readLayer(p) };
   const layer = layerCache.layer;
   return layer?.on ? { layer, params: layerParams(p, layer) } : null;
+}
+
+/** Preview resolution while a video or the webcam plays (see auto-scale.ts). */
+export const autoScale = new AutoScale();
+
+/** A video playing or the webcam streaming, outside an export: the preview may go coarser. */
+export function isPlaying(): boolean {
+  const src = rt.current;
+  if (!src || src.kind === 'image' || rt.exporting) return false;
+  return src.kind === 'webcam' || !(src.element as HTMLVideoElement).paused;
 }
 
 /** Audio input for audio lanes; app/audio.ts replaces `level` when a microphone or file is in use. */

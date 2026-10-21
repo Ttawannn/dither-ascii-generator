@@ -1,3 +1,5 @@
+import { MAX_ZOOM, MIN_ZOOM, pinchStep, type Point } from './gesture';
+
 /**
  * Zoom / pan for the preview canvas inside the stage.
  * The canvas is drawn at processed resolution and scaled up with CSS (pixelated),
@@ -47,7 +49,7 @@ export class Viewer {
     const r = this.stage.getBoundingClientRect();
     cx ??= r.width / 2;
     cy ??= r.height / 2;
-    z = Math.min(64, Math.max(0.02, z));
+    z = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
     this.x = cx - ((cx - this.x) * z) / this.zoom;
     this.y = cy - ((cy - this.y) * z) / this.zoom;
     this.zoom = z;
@@ -71,24 +73,51 @@ export class Viewer {
     this.setZoom(this.zoom * factor, e.clientX - r.left, e.clientY - r.top);
   }
 
+  /**
+   * One pointer pans; two (touch) pinch-zoom around the point between them and pan together.
+   * Lifting one finger of a pinch carries on as a pan with the other.
+   */
   private bindPan(): void {
-    let start: { px: number; py: number; x: number; y: number } | null = null;
+    const pointers = new Map<number, Point>();
+    let last: Point[] = [];
+    const at = (e: PointerEvent): Point => {
+      const r = this.stage.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    const snapshot = () => (last = [...pointers.values()].slice(0, 2));
+
     this.stage.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || !this.w || (e.target !== this.stage && e.target !== this.canvas)) return;
-      start = { px: e.clientX, py: e.clientY, x: this.x, y: this.y };
-      this.stage.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, at(e));
+      snapshot();
+      try {
+        this.stage.setPointerCapture(e.pointerId);
+      } catch {
+        // Synthetic pointer: no capture, the gesture still works while over the stage.
+      }
       this.stage.classList.add('panning');
     });
     this.stage.addEventListener('pointermove', (e) => {
-      if (!start) return;
-      this.x = start.x + e.clientX - start.px;
-      this.y = start.y + e.clientY - start.py;
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, at(e));
+      const now = [...pointers.values()].slice(0, 2);
+      if (now.length === 2 && last.length === 2) {
+        const v = pinchStep({ x: this.x, y: this.y, zoom: this.zoom }, last[0], last[1], now[0], now[1]);
+        this.x = v.x;
+        this.y = v.y;
+        this.zoom = v.zoom;
+      } else if (now.length === 1 && last.length === 1) {
+        this.x += now[0].x - last[0].x;
+        this.y += now[0].y - last[0].y;
+      }
+      last = now;
       this.fitted = false;
       this.apply();
     });
-    const end = () => {
-      start = null;
-      this.stage.classList.remove('panning');
+    const end = (e: PointerEvent) => {
+      if (!pointers.delete(e.pointerId)) return;
+      snapshot();
+      if (!pointers.size) this.stage.classList.remove('panning');
     };
     this.stage.addEventListener('pointerup', end);
     this.stage.addEventListener('pointercancel', end);

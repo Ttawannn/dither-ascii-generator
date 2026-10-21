@@ -31,8 +31,7 @@ export const stage = el(
 
 // ---------- theme ----------
 
-const THEMES = ['dark', 'parchment'] as const;
-type Theme = (typeof THEMES)[number];
+type Theme = 'dark' | 'parchment';
 export const THEME_COLOR: Record<Theme, string> = { dark: '#0a0a0a', parchment: '#efe6d2' };
 
 export function currentTheme(): Theme {

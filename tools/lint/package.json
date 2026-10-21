@@ -1,0 +1,13 @@
+{
+  "name": "dither-ascii-generator-lint",
+  "private": true,
+  "type": "module",
+  "description": "ESLint for the app. Separate because typescript-eslint parses with the TypeScript 6 API, while the app compiles with TypeScript 7.",
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.13.0",
+    "globals": "17.13.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0"
+  }
+}

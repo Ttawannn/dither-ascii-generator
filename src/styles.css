@@ -489,25 +489,69 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
 
 /* ---------- mobile ---------- */
 
-@media (max-width: 760px) {
+/* The panel's drag handle; only shown when the panel is a bottom sheet (app/sheet.ts). */
+.sheet-handle {
+  display: none;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: grab;
+  touch-action: none;
+}
+
+.sheet-grip {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+
+.sheet-handle:hover .sheet-grip,
+.sheet-handle:focus-visible .sheet-grip {
+  background: var(--text);
+}
+
+@media (max-width: 767px) {
+  /* Header, preview and footer fill the screen above the sheet; the last row is the space the
+     sheet takes from them (--sheet-space, at most half the screen). */
   .app {
     grid-template-columns: 1fr;
-    grid-template-rows: 44px 56vh 36px auto;
+    grid-template-rows: 44px 1fr 36px var(--sheet-space, 50dvh);
     grid-template-areas:
       'header'
       'stage'
       'footer'
-      'panel';
-    height: auto;
-    min-height: 100dvh;
+      '.';
+    height: 100vh;
+    height: 100dvh;
   }
 
   .panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    height: var(--sheet-h, 50dvh);
     border-left: 0;
+    border-top: 1px solid var(--line-strong);
+    transition: height 0.2s ease;
   }
 
-  .panel-scroll {
-    overflow: visible;
+  .panel.dragging {
+    transition: none;
+  }
+
+  .panel[data-sheet='peek'] .panel-scroll {
+    visibility: hidden;
+  }
+
+  .sheet-handle {
+    display: flex;
   }
 
   .hint {
@@ -808,7 +852,7 @@ input[type='text']:focus {
   border-color: var(--text);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .transport .time,
   .transport .btn:not(.icon) {
     display: none;
@@ -1001,23 +1045,15 @@ html:lang(th) body * {
   user-select: none;
 }
 
-@media (max-width: 760px) {
-  .app {
-    grid-template-rows: 44px 48vh 36px auto;
+@media (max-width: 767px) {
+  /* Everything in the header fits on a phone: tighter spacing, smaller mode tabs. */
+  .header {
+    gap: 10px;
+    min-width: 0;
   }
 
-  /* Keep the preview in view while scrolling through controls. */
-  .stage {
-    position: sticky;
-    top: 0;
-    z-index: 5;
-  }
-
-  .footer {
-    position: sticky;
-    top: 48vh;
-    z-index: 5;
-    background: var(--bg);
+  .segmented button {
+    padding: 0 9px;
   }
 
   .header .help-btn {
@@ -1488,4 +1524,10 @@ html:lang(th) body * {
 .pal-actions .btn.on {
   background: var(--text);
   color: var(--bg);
+}
+
+@media (max-width: 480px) {
+  .header .logo {
+    display: none;
+  }
 }

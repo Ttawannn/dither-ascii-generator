@@ -9,11 +9,12 @@ npm run dev        # Vite dev server (http://localhost:5173)
 npm run build      # tsc --noEmit, then vite build → dist/
 npm run typecheck  # type-check only
 npm test           # Vitest, run once (npm run test:watch to watch)
+npm run lint       # ESLint (first time: npm run lint:setup)
 npx vitest run src/ascii/grid.test.ts   # a single test file
 npx vitest run -t "share links"         # tests whose name matches
 ```
 
-Tests (`src/**/*.test.ts`, Node environment) cover only the pure logic: `sanitize`, presets and share links, palettes, error-diffusion kernels and `diffuse()`, the character library (`rampFor`, `pickLevels`), LFOs, effect order and parameters, animation lanes, audio band levels, zip read/write, PNG DPI, the vector halftone SVG, the ASCII grid and text / ANSI export, `randomLook`, and the Thai dictionary (every control label must be covered). Anything touching WebGL or the DOM has no tests; verify it in a browser. The deploy workflow runs `npm test` before building, so a failing test blocks the deploy. There is no linter. `/?sample` loads the built-in procedural test image on start, and `#s=<base64url>` applies a shared look.
+Tests (`src/**/*.test.ts`, Node environment) cover only the pure logic: `sanitize`, presets and share links, palettes, error-diffusion kernels and `diffuse()`, the character library (`rampFor`, `pickLevels`), LFOs, effect order and parameters, animation lanes, audio band levels, zip read/write, PNG DPI, the vector halftone SVG, the ASCII grid and text / ANSI export, `randomLook`, and the Thai dictionary (every control label must be covered). Anything touching WebGL or the DOM has no tests; verify it in a browser. The deploy workflow runs `npm test` before building, so a failing test blocks the deploy. ESLint (syntax-level `@eslint/js` + `typescript-eslint` recommended rules) lives in `tools/lint/` with its own `package.json`: typescript-eslint needs the TypeScript 6 API, while the app compiles with TypeScript 7, so the two can't share one `typescript` package. `npm run lint:setup` installs it; lint runs locally only, not in the deploy workflow. `/?sample` loads the built-in procedural test image on start, and `#s=<base64url>` applies a shared look.
 
 TypeScript is v7 (the native compiler) and Vite is v8.
 
@@ -108,6 +109,14 @@ with layer 2 on:  layer 1 pass ─▶ layerTex[0] · layer 2 pass ─▶ layerTe
 ### Preset thumbnails (`app/thumbs.ts`)
 - A second `Renderer` on its own offscreen canvas renders each preset button's look from a downscaled copy of the source (long side 128 × pixel size, or 384 for ASCII), so the main preview's textures, worker results and atlas pairing are never touched. `renderLook(p, target)` in `render.ts` is the shared drawing path; a `RenderTarget` (`gpu.ts`) says which renderer, the boil seed, and whether it is a thumbnail (error diffusion then runs synchronously via `diffuse()`, ASCII uses at most 40 columns, and nothing in the panel or footer is updated).
 - Thumbnails are drawn in idle time, several per idle period; a look whose atlas is still loading is retried. `actions.refreshThumbs(true)` (new source) redraws all, `(false)` (preset list changed) only the missing ones.
+
+### Narrow screens and touch
+- Below 768px the panel is a bottom sheet (`app/sheet.ts`): `--sheet-h` is its height and `--sheet-space` (at most half the screen) the grid row it takes from the preview. Levels and snapping are pure in `ui/sheet.ts`.
+- `ui/viewer.ts` tracks every pointer on the stage: one pans, two pinch (`pinchStep()` in `ui/gesture.ts`, pure). Pointers that start on the split handle or other controls are not the viewer's.
+
+### Fast preview (`src/auto-scale.ts`)
+- While a video plays or the webcam streams (`isPlaying()` in `core.ts`, false during exports), `draw()` renders `coarser(p, autoScale.factor)`: larger pixel size, fewer ASCII columns, pattern cells scaled to match. `AutoScale` averages frame cost (the draw time, or the worker time for error diffusion) and steps 1 → 1.5 → 2 → 3 after sustained slow frames, back one step after sustained fast ones.
+- Anything that reads the result must render at full resolution first: `actions.renderFull()` (used by `renderNow()` and the text exports). Pausing redraws at full resolution.
 
 ### UI theme
 - Colours are CSS custom properties on `:root`; the parchment theme overrides them under `:root[data-theme='parchment']` and swaps `--display` (logo and section titles) to Grenze Gotisch. Use the tokens (`--dot`, `--overlay`, `--scrim`, `--checker-*`…) rather than hard-coded colours. The theme is a per-browser preference in `localStorage['dag.theme']`, applied by an inline script in `index.html` before first paint. It is deliberately not a `Params` key, so presets and share links don't carry it.

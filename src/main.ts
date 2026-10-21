@@ -3,6 +3,7 @@ import './styles.css';
 // Order matters: the page is mounted before the renderer is created, so a WebGL error can be
 // shown; feature modules then register their actions and subscriptions as they load.
 import './app/mount';
+import './app/sheet';
 import './app/gpu';
 import './app/render';
 import './app/split';
