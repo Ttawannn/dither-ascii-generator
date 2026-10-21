@@ -18,6 +18,8 @@ A browser-based generator that turns images, videos and your webcam into **dithe
 
 Your files never leave your device. All processing happens in the browser.
 
+**Works offline:** after the first visit the app (fonts included) is cached, so it opens without a connection, and it can be installed as an app from the browser menu. A new version is picked up the next time it is opened online.
+
 ## How to use
 
 1. **Load a source.** Drag an image or video onto the page, paste an image with `Ctrl+V`, click **Upload**, or start the **Webcam**. **Sample** loads a built-in test image.
@@ -64,7 +66,7 @@ Ordered and pattern dithers run on the GPU. Error diffusion runs in a Web Worker
 - **Add characters:** mix up to 10 of your own into any set. **Include space** controls the blank glyph.
 - **Edge glyphs:** draws `- / | \` along edges for a hand-drawn look
 - **Dither:** ordered dither applied before choosing characters
-- **Layout:** column count, font (JetBrains Mono, IBM Plex Mono, VT323, Courier), bold, font size and line height
+- **Layout:** column count, font (JetBrains Mono, IBM Plex Mono, VT323, Courier, or your own: **Add font…** takes a .ttf, .otf, .woff or .woff2 file and keeps it in this browser), bold, font size and line height. A look that names a font you added is shared by name; where that font isn't added, a fallback is used and you are told so.
 - **Animate:** LFOs (sine, triangle, saw) on Offset and Depth, with speed and amount controls
 - **Colour:**
   - Mono, with text and background colours and a swap button

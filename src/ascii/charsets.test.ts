@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CHARSET_GROUPS, CHARSETS, MAX_INJECT, MAX_RAMP, pickLevels, rampFor } from './charsets';
+import { CHARSET_GROUPS, CHARSETS, fontNameFromFile, getFont, isFontId, MAX_INJECT, MAX_RAMP, pickLevels, rampFor, userFontId } from './charsets';
+import { sanitize } from '../state';
 import { lfo, modulatedDepth, modulatedOffset } from './lfo';
 
 describe('character library', () => {
@@ -83,5 +84,28 @@ describe('LFO', () => {
     expect(modulatedDepth(16, 'triangle', 0, 1, 1)).toBe(16); // LFO at -1
     expect(modulatedDepth(16, 'triangle', 0.5, 1, 1)).toBe(2); // LFO at +1
     expect(modulatedDepth(16, 'triangle', 0.5, 1, 0.5)).toBe(9);
+  });
+});
+
+describe('user fonts', () => {
+  it('names a font after its file, without characters that break CSS quoting', () => {
+    expect(fontNameFromFile('My Font-Bold.woff2')).toBe('My Font-Bold');
+    expect(fontNameFromFile('a"b\\c.ttf')).toBe('a b c');
+    expect(fontNameFromFile('ลายมือ.otf')).toBe('ลายมือ');
+  });
+
+  it('accepts built-in and user font ids, nothing else', () => {
+    expect(isFontId('plex')).toBe(true);
+    expect(isFontId(userFontId('My Font'))).toBe(true);
+    expect(isFontId('user:')).toBe(false);
+    expect(isFontId('user:bad"name')).toBe(false);
+    expect(isFontId('comic')).toBe(false);
+    expect(sanitize({ asciiFont: 'user:My Font' })).toEqual({ asciiFont: 'user:My Font' });
+    expect(sanitize({ asciiFont: 'user:x"y' })).toEqual({});
+  });
+
+  it('uses the quoted name as the CSS family of a user font', () => {
+    expect(getFont(userFontId('My Font')).family).toBe('"My Font"');
+    expect(getFont('nope').id).toBe('jetbrains');
   });
 });

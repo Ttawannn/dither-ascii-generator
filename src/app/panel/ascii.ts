@@ -1,12 +1,90 @@
-import { ASCII_PALETTES, CHARSET_GROUPS, CHARSETS, COLOR_MODES, FONTS, MAX_INJECT } from '../../ascii/charsets';
+import {
+  ASCII_PALETTES,
+  CHARSET_GROUPS,
+  CHARSETS,
+  COLOR_MODES,
+  FONTS,
+  isUserFontId,
+  MAX_INJECT,
+  userFontId,
+  userFontName,
+} from '../../ascii/charsets';
 import { LFO_SHAPES } from '../../ascii/lfo';
 import { getPaletteDef, MONO_PRESETS } from '../../pipeline/palettes';
 import { ASCII_SLIDERS, type ParamStore, type Params } from '../../state';
 import { button, colorInput, colorPresets, el, select, showWhen, slider, textInput, toggle } from '../../ui/controls';
+import { addUserFont, onUserFontsChange, removeUserFont, userFonts } from '../../user-fonts';
 import { notBraille, store } from '../core';
+import { flash } from '../shell';
 import { customPaletteEditor } from './custom-palette';
 
 const groupLabel = (id: string) => CHARSET_GROUPS.find((g) => g.id === id)?.label ?? id;
+
+/** Font choice bound to `s`: the built-in fonts plus fonts added in this browser, with Add / Remove. */
+function fontPicker(s: ParamStore): HTMLElement {
+  const input = el('select', { 'aria-label': 'Font' });
+  const picker = el('input', { type: 'file', accept: '.ttf,.otf,.woff,.woff2,font/*', hidden: '' });
+  const remove = button('Remove', () => {
+    const id = s.params.asciiFont;
+    if (!isUserFontId(id)) return;
+    void removeUserFont(userFontName(id)).then(() => {
+      s.set('asciiFont', FONTS[0].id);
+      flash(`Removed “${userFontName(id)}”`);
+    });
+  }, 'btn small');
+  remove.title = 'Remove this font from the browser';
+
+  function sync(): void {
+    const id = s.params.asciiFont;
+    const own = userFonts().map(userFontId);
+    // A font named by a look but not stored here is still listed, marked missing.
+    const missing = isUserFontId(id) && !own.includes(id) ? [id] : [];
+    input.replaceChildren(
+      ...FONTS.map((f) => el('option', { value: f.id }, f.label)),
+      ...(own.length || missing.length
+        ? [
+            el(
+              'optgroup',
+              { label: 'Added' },
+              ...own.map((u) => el('option', { value: u }, userFontName(u))),
+              ...missing.map((u) => el('option', { value: u }, `${userFontName(u)} (missing)`)),
+            ),
+          ]
+        : []),
+    );
+    input.value = id;
+    remove.hidden = !isUserFontId(id);
+  }
+
+  input.addEventListener('change', () => s.set('asciiFont', input.value));
+  picker.addEventListener('change', () => {
+    const file = picker.files?.[0];
+    picker.value = '';
+    if (!file) return;
+    addUserFont(file)
+      .then((name) => {
+        s.set('asciiFont', userFontId(name));
+        flash(`Added font “${name}”`);
+      })
+      .catch((err: Error) => flash(err.message));
+  });
+  s.subscribe((_, changed) => changed === 'asciiFont' && sync());
+  onUserFontsChange(sync);
+  sync();
+
+  return el(
+    'div',
+    {},
+    el(
+      'label',
+      { class: 'control' },
+      el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, 'Font')),
+      el('div', { class: 'select' }, input),
+    ),
+    el('div', { class: 'pal-actions' }, button('Add font…', () => picker.click(), 'btn small'), remove),
+    picker,
+  );
+}
 
 /** Sorted glyphs of layer 1's set as they will be used; filled by ascii-view.ts when the atlas is built. */
 export const glyphPreview = el('div', { class: 'glyph-preview', 'aria-label': 'Characters in use, sparse to dense' });
@@ -69,12 +147,7 @@ export function asciiControlsFor(s: ParamStore, withPreview = false): HTMLElemen
       asciiSlider('depth', notBraille),
       asciiSlider('offset', notBraille),
       asciiSlider('columns'),
-      select(
-        'asciiFont',
-        'Font',
-        FONTS.map((f) => ({ value: f.id, label: f.label })),
-        s,
-      ),
+      fontPicker(s),
       toggle('asciiBold', 'Bold', s),
       asciiSlider('fontSize'),
       asciiSlider('lineHeight'),

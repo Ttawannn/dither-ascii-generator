@@ -84,7 +84,7 @@ with layer 2 on:  layer 1 pass ─▶ layerTex[0] · layer 2 pass ─▶ layerTe
 ### ASCII (`src/ascii/`)
 - The adjusted image is rendered at grid resolution: 1 px per cell, or 2×4 per cell for braille. `buildGrid` turns it into glyph ids (ramp, dither, Sobel edge glyphs `- / | \`) plus per-cell colours, packed as RGBA (alpha = glyph id) for `ascii.frag`.
 - Character sets live in `charsets.ts` (48 sets in 11 groups). Set order doesn't matter: `atlas.ts` measures each glyph's ink, drops glyphs that render as the font's missing-glyph box, and sorts the ramp sparse → dense. Atlas glyph ids: sorted ramp first (`rampSize`), then the 4 edge glyphs. Ids are 8-bit, so a ramp is capped at `MAX_RAMP` (252).
-- Glyph atlases are built asynchronously because fonts load async (non-Latin glyphs come from Noto fallbacks in `FALLBACK_FONTS`, fetched per Unicode range on demand). `currentAtlas()` returns null and triggers a re-render once the atlas is ready. Shade blocks and braille dots are drawn procedurally, not from the font.
+- Glyph atlases are built asynchronously because fonts load async (non-Latin glyphs come from Noto fallbacks in `FALLBACK_FONTS`, fetched per Unicode range on demand). All fonts ship with the app as `@fontsource` packages imported in `src/fonts.ts` (no Google Fonts at runtime; only the standalone HTML text export still links to them). Fonts the user adds are `user:<name>` ids (`isFontId()` validates them), stored in IndexedDB by `src/user-fonts.ts` and registered with `FontFace`; when that list changes, `ascii-view.ts` clears its atlas cache. `currentAtlas()` returns null and triggers a re-render once the atlas is ready. Shade blocks and braille dots are drawn procedurally, not from the font.
 - Depth and Offset don't rebuild the atlas: `pickLevels()` chooses which sorted glyphs act as brightness levels, and `buildGrid` shifts the level (wrapping) by the offset. Both can be driven by LFOs (`lfo.ts`) that read `clock()` in `app/core.ts`; during export the clock is the frame time, so animated exports are deterministic.
 - Palette colour mode snaps cell colours to a palette in `buildGrid`; the shader then treats it as image colour. A transparent background makes `ascii.frag` output premultiplied alpha. The WebGL context is created with `alpha: true` for this, and every other pass must keep writing alpha 1.
 - Text and HTML exports use `lastAscii`, which pairs a grid with the atlas it was built against. Keep that pairing: glyph ids index into that atlas's glyph list.
@@ -107,6 +107,10 @@ with layer 2 on:  layer 1 pass ─▶ layerTex[0] · layer 2 pass ─▶ layerTe
   Each frame runs `renderNow()`, which waits for the atlas and the diffuser before capturing.
 - `animation.ts` is loaded with a dynamic `import()` so the initial bundle stays small. Don't import it statically (it is imported dynamically in `app/exporting.ts`). In dev, the first dynamic import of new deps makes Vite reload the page once.
 - Video exports force even dimensions and cap each side at 4096. With a transparent ASCII background, GIF uses 1-bit transparency, WebM tries VP9 with alpha and falls back to filling the background colour (`matte`), and MP4 always uses the matte.
+
+### Offline (PWA)
+- `vite.config.ts` has a small plugin that writes `dist/sw.js` at build time: the template `pwa/sw-template.js` with the list of files to precache (every bundle file except the Noto subsets and legacy `.woff`, which are cached on first use) and a version hash. Pages are network-first (so a deploy shows up online), hashed assets cache-first; old caches are dropped on activate. `src/main.ts` registers it in production builds only.
+- `public/` holds the manifest and icons; regenerate the icons with `node scripts/make-icons.mjs`. Test offline with `npm run build` and the `preview` launch config (port 4173), then stop the server and reload.
 
 ## Verifying in the Claude browser pane
 

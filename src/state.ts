@@ -1,4 +1,4 @@
-import { ASCII_PALETTES, CHARSETS, COLOR_MODES, FONTS, MAX_INJECT } from './ascii/charsets';
+import { ASCII_PALETTES, CHARSETS, COLOR_MODES, isFontId, MAX_INJECT } from './ascii/charsets';
 import { LFO_SHAPES } from './ascii/lfo';
 import { ALGORITHMS } from './pipeline/algorithms';
 import { DEFAULT_ORDER, normalizeOrder, TINT_MODES } from './pipeline/effects';
@@ -611,7 +611,6 @@ const ENUMS: Partial<Record<keyof Params, string[]>> = {
   algorithm: ALGORITHMS.map((a) => a.id),
   palette: PALETTES.map((p) => p.id),
   asciiCharset: CHARSETS.map((c) => c.id),
-  asciiFont: FONTS.map((f) => f.id),
   asciiColor: COLOR_MODES.map((c) => c.id),
   asciiOffsetLfo: LFO_SHAPES.map((s) => s.id),
   asciiDepthLfo: LFO_SHAPES.map((s) => s.id),
@@ -670,6 +669,11 @@ export function sanitize(data: unknown): Partial<Params> {
     if (COLOR_KEYS.includes(key) && !HEX.test(v as string)) continue;
     if (key === 'asciiCustom' && (v as string).length > 64) continue;
     if (key === 'asciiInject' && [...(v as string)].length > MAX_INJECT) continue;
+    if (key === 'asciiFont') {
+      // Built-in ids, or a font the user added ('user:<name>'), which may only exist in their browser.
+      if (isFontId(v as string)) out[key] = v;
+      continue;
+    }
     if (key === 'layer2') {
       const layer = parseLayer(v as string, cleanLayerParams);
       out[key] = layer ? serializeLayer(layer) : '';

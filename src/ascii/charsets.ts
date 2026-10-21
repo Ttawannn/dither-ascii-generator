@@ -119,7 +119,33 @@ export const COLOR_MODES = [
 /** Palettes offered for palette-coloured characters ("image" extracts 8 colours from the source). */
 export const ASCII_PALETTES = ['pico8', 'c64', 'cga', 'gameboy', 'custom', 'image'];
 
+// ---------- fonts the user adds (stored in the browser, see src/user-fonts.ts) ----------
+
+const USER_PREFIX = 'user:';
+
+/** A font family name made from a file name: no extension, no characters that break CSS quoting. */
+export function fontNameFromFile(fileName: string): string {
+  return fileName
+    .replace(/\.(ttf|otf|woff2?)$/i, '')
+    .replace(/["\\\n\r]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
+}
+
+export const userFontId = (name: string) => `${USER_PREFIX}${name}`;
+export const isUserFontId = (id: string) => id.startsWith(USER_PREFIX);
+export const userFontName = (id: string) => id.slice(USER_PREFIX.length);
+
+/** A valid `asciiFont` value: a built-in font, or a user font id with a usable name. */
+export const isFontId = (id: string) =>
+  FONTS.some((f) => f.id === id) || (isUserFontId(id) && fontNameFromFile(userFontName(id)) === userFontName(id) && id.length > USER_PREFIX.length);
+
 export function getFont(id: string): FontDef {
+  if (isUserFontId(id)) {
+    const name = userFontName(id);
+    return { id, label: name, family: `"${name}"` };
+  }
   return FONTS.find((f) => f.id === id) ?? FONTS[0];
 }
 

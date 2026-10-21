@@ -1,5 +1,6 @@
 import { atlasKey, buildAtlas, type Atlas } from '../ascii/atlas';
-import { pickLevels, rampFor } from '../ascii/charsets';
+import { isUserFontId, pickLevels, rampFor, userFontName } from '../ascii/charsets';
+import { onUserFontsChange, userFonts } from '../user-fonts';
 import { buildGrid, gridToHtml, gridToText, type AsciiGrid } from '../ascii/grid';
 import { modulatedDepth, modulatedOffset } from '../ascii/lfo';
 import { blueNoiseTile } from '../pipeline/bluenoise';
@@ -71,6 +72,29 @@ const luma = (hex: string) => {
   const [r, g, b] = hexToRgb(hex);
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 };
+
+// An atlas built before a user font finished loading used a fallback: rebuild when fonts change.
+onUserFontsChange(() => {
+  atlases.clear();
+  atlas = null;
+  requestRender();
+});
+
+let fontsReady = false;
+/** Tell the user when the look asks for a font that was added in another browser. */
+export function checkUserFont(): void {
+  if (!fontsReady) return;
+  const id = store.params.asciiFont;
+  if (store.params.mode === 'ascii' && isUserFontId(id) && !userFonts().includes(userFontName(id))) {
+    // After the current task, so a "Loaded shared settings" message doesn't hide it.
+    setTimeout(() => flash(`Font “${userFontName(id)}” isn’t in this browser — add it under ASCII › Font, or a fallback is used`));
+  }
+}
+export function userFontsLoaded(): void {
+  fontsReady = true;
+  checkUserFont();
+}
+store.subscribe((_, changed) => (changed === 'asciiFont' || changed === 'mode') && checkUserFont());
 
 /**
  * The glyph atlas for these settings, or null while it is being built (a render follows).
