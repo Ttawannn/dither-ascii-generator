@@ -109,10 +109,18 @@ const LFO_KEYS: (keyof Params)[] = ['mode', 'asciiCharset', 'asciiOffsetLfo', 'a
 store.subscribe((_, changed) => LFO_KEYS.includes(changed) && syncLfoLoop());
 
 /** Redraw on every decoded video frame (or every animation frame where rVFC is missing). */
+const watching = new WeakSet<Source>();
+
+/** Redraw on every new video frame while `src` is the current source (safe to call again). */
 export function watchVideo(src: Source & { element: HTMLVideoElement }): void {
+  if (watching.has(src)) return;
+  watching.add(src);
   const v = src.element;
   const tick = () => {
-    if (rt.current !== src) return;
+    if (rt.current !== src) {
+      watching.delete(src);
+      return;
+    }
     requestRender();
     schedule();
   };

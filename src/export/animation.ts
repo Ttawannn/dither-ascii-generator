@@ -1,11 +1,15 @@
 import { applyPalette, GIFEncoder, quantize } from 'gifenc';
 import {
+  AudioBufferSource,
   BufferTarget,
   CanvasSource,
+  getFirstEncodableAudioCodec,
   getFirstEncodableVideoCodec,
   Mp4OutputFormat,
   Output,
+  QUALITY_HIGH,
   WebMOutputFormat,
+  type AudioCodec,
   type VideoCodec,
 } from 'mediabunny';
 
@@ -31,6 +35,8 @@ export interface ExportJob {
   matte: string;
   /** Tells the user about a fallback (e.g. transparency dropped). */
   onNote: (message: string) => void;
+  /** Sound to add to WebM / MP4 (from time 0); GIF has none. */
+  audio?: AudioBuffer | null;
 }
 
 export class ExportCancelled extends Error {}
@@ -39,6 +45,10 @@ const MAX_VIDEO_SIDE = 4096;
 const PREFERRED: Record<'webm' | 'mp4', VideoCodec[]> = {
   webm: ['vp9', 'av1', 'vp8'],
   mp4: ['avc', 'hevc', 'av1', 'vp9'],
+};
+const PREFERRED_AUDIO: Record<'webm' | 'mp4', AudioCodec[]> = {
+  webm: ['opus', 'vorbis'],
+  mp4: ['aac', 'opus'],
 };
 
 /**
@@ -142,9 +152,28 @@ async function encodeVideo(job: ExportJob, kind: 'webm' | 'mp4', keepAlpha: bool
   const output = new Output({ format, target: new BufferTarget() });
   const video = new CanvasSource(canvas, { codec, bitrate, alpha: keepAlpha ? 'keep' : 'discard' });
   output.addVideoTrack(video, { frameRate: frames.fps });
+
+  let audio: AudioBufferSource | null = null;
+  if (job.audio) {
+    const supportedAudio = format.getSupportedAudioCodecs();
+    const audioCodec = await getFirstEncodableAudioCodec(
+      PREFERRED_AUDIO[kind].filter((c) => supportedAudio.includes(c)),
+      { numberOfChannels: job.audio.numberOfChannels, sampleRate: job.audio.sampleRate, quality: QUALITY_HIGH },
+    );
+    if (audioCodec) {
+      audio = new AudioBufferSource({ codec: audioCodec, quality: QUALITY_HIGH });
+      output.addAudioTrack(audio);
+    } else {
+      job.onNote(`This browser can’t encode audio for ${kind.toUpperCase()} — saved without sound`);
+    }
+  }
   await output.start();
 
   try {
+    if (audio && job.audio) {
+      await audio.add(job.audio);
+      audio.close();
+    }
     for (let i = 0; i < frames.count; i++) {
       if (job.isCancelled()) throw new ExportCancelled();
       if (i > 0) await frames.render(i);

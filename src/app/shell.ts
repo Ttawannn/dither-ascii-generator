@@ -82,7 +82,7 @@ export const transport = new Transport();
 export const info = {
   name: el('span', { class: 'name' }, '—'),
   size: el('span', { class: 'hide-sm' }),
-  out: el('span'),
+  out: el('span', { class: 'out-size' }),
   zoom: el('span', { class: 'hide-sm' }),
   status: el('span', { class: 'busy' }),
 };
@@ -145,6 +145,7 @@ const SHORTCUTS: [string, string][] = [
   ['Wheel · drag', 'Zoom · pan'],
   ['D · A', 'Dither · ASCII mode'],
   ['K', 'Play / pause video'],
+  ['[ · ]', 'Trim video: In · Out'],
   ['B', 'Toggle boil'],
   ['T', 'Dark / parchment theme'],
   ['O', 'Open file'],

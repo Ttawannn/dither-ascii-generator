@@ -167,6 +167,13 @@ export interface Params {
   exportScale: number;
   exportDuration: number;
   exportFps: number;
+  /** Print size: PNG carries `exportDpi`, SVG gets physical width / height. */
+  exportPrint: boolean;
+  exportDpi: number;
+  /** 'cm' or 'in', for the size shown and the SVG's width / height. */
+  exportUnit: string;
+  /** SVG of Halftone dot / CMYK as one vector circle per cell instead of pixel runs. */
+  exportVectorDots: boolean;
 }
 
 export const DEFAULTS: Params = {
@@ -302,6 +309,10 @@ export const DEFAULTS: Params = {
   exportScale: 2,
   exportDuration: 4,
   exportFps: 15,
+  exportPrint: false,
+  exportDpi: 300,
+  exportUnit: 'cm',
+  exportVectorDots: true,
 };
 
 export const EXPORT_FORMATS = [
@@ -318,7 +329,16 @@ export const EXPORT_SLIDERS: Record<string, SliderSpec> = {
   scale: { key: 'exportScale', label: 'Scale', min: 1, max: 8, step: 1, format: (v) => `${v}×` },
   duration: { key: 'exportDuration', label: 'Duration', min: 1, max: 30, step: 1, format: (v) => `${v} s` },
   fps: { key: 'exportFps', label: 'Frame rate', min: 5, max: 30, step: 1, format: (v) => `${v} fps` },
+  dpi: { key: 'exportDpi', label: 'Resolution', min: 72, max: 1200, step: 1, format: (v) => `${v} dpi` },
 };
+
+export const EXPORT_UNITS = [
+  { id: 'cm', label: 'Centimetres' },
+  { id: 'in', label: 'Inches' },
+];
+
+/** Physical size of `px` pixels at `dpi`, in the unit ('cm' or 'in'). */
+export const printLength = (px: number, dpi: number, unit: string) => (px / dpi) * (unit === 'cm' ? 2.54 : 1);
 
 type KeysOfType<T> = { [K in keyof Params]: Params[K] extends T ? K : never }[keyof Params];
 export type NumericKey = KeysOfType<number>;
@@ -616,6 +636,7 @@ const ENUMS: Partial<Record<keyof Params, string[]>> = {
   asciiDepthLfo: LFO_SHAPES.map((s) => s.id),
   asciiPalette: ASCII_PALETTES,
   exportFormat: EXPORT_FORMATS.map((f) => f.id),
+  exportUnit: EXPORT_UNITS.map((u) => u.id),
   fxTintMode: TINT_MODES.map((m) => m.id),
   boilPattern: BOIL_PATTERNS.map((b) => b.id),
   maskMode: MASK_MODES.map((m) => m.id),

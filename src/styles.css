@@ -746,10 +746,33 @@ input[type='text']:focus {
   min-width: 0;
 }
 
-.transport input[type='range'] {
+.transport .scrub {
+  position: relative;
   width: 180px;
   min-width: 60px;
   flex: 1 1 180px;
+}
+
+/* With a video's transport in the footer, the size readouts make room on narrower screens. */
+@media (max-width: 1280px) {
+  .footer:has(.transport:not([hidden])) :is(.hide-sm, .out-size) {
+    display: none;
+  }
+}
+
+/* the trimmed In–Out range, under the scrub track */
+.trim-band {
+  position: absolute;
+  top: 50%;
+  height: 5px;
+  transform: translateY(-50%);
+  background: var(--accent);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.transport .btn {
+  flex-shrink: 0; /* only the scrub bar gives up width */
 }
 
 .transport .icon {

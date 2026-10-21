@@ -77,6 +77,10 @@ window.addEventListener('keydown', (e) => {
     viewer.setZoom(1);
   } else if (e.key === 'k') {
     transport.toggle();
+  } else if (e.key === '[') {
+    transport.mark('in');
+  } else if (e.key === ']') {
+    transport.mark('out');
   } else if (e.key === 'd') {
     store.set('mode', 'dither');
   } else if (e.key === 'a') {

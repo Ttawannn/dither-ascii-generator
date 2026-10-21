@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULTS, sanitize } from './state';
+import { DEFAULTS, printLength, sanitize } from './state';
 
 describe('sanitize', () => {
   it('keeps valid values', () => {
@@ -75,5 +75,18 @@ describe('sanitize', () => {
 
   it('accepts every default as-is', () => {
     expect(sanitize(DEFAULTS)).toEqual(DEFAULTS);
+  });
+});
+
+describe('printLength', () => {
+  it('converts pixels at a resolution to centimetres or inches', () => {
+    expect(printLength(300, 300, 'in')).toBe(1);
+    expect(printLength(600, 300, 'cm')).toBeCloseTo(5.08);
+  });
+  it('sanitizes the print settings', () => {
+    const p = sanitize({ exportDpi: 5000, exportUnit: 'mm', exportPrint: 'yes' });
+    expect(p.exportDpi).toBe(1200);
+    expect(p.exportUnit).toBeUndefined(); // invalid values are dropped
+    expect(p.exportPrint).toBeUndefined();
   });
 });

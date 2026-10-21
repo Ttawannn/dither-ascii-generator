@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mergeLibrary, sanitizeLibrary } from './palette-library';
-import { readZip } from './zip';
+import { crc32 } from './crc32';
+import { readZip, writeZip } from './zip';
 
 const enc = new TextEncoder();
 
@@ -94,5 +95,25 @@ describe('palette library', () => {
     const b = { name: 'B', colors: ['#111111', '#eeeeee'] };
     const a2 = { name: 'A', colors: ['#ff0000', '#00ff00'] };
     expect(mergeLibrary([a, b], [a2])).toEqual([b, a2]);
+  });
+});
+
+describe('writeZip', () => {
+  it('round-trips through readZip with UTF-8 names, renaming repeats', async () => {
+    const files = [
+      { name: 'a.png', data: new Uint8Array([1, 2, 3]) },
+      { name: 'ภาพ.png', data: new Uint8Array([4]) },
+      { name: 'A.png', data: new Uint8Array([5]) },
+    ];
+    const out = await readZip(writeZip(files));
+    expect(out.map((e) => e.name)).toEqual(['a.png', 'ภาพ.png', 'A (2).png']);
+    expect(out.map((e) => [...e.data])).toEqual([[1, 2, 3], [4], [5]]);
+  });
+
+  it('stores the CRC-32 of each file', () => {
+    const data = enc.encode('123456789');
+    expect(crc32(data)).toBe(0xcbf43926);
+    const zip = writeZip([{ name: 'x', data }]);
+    expect(new DataView(zip.buffer).getUint32(14, true)).toBe(0xcbf43926);
   });
 });

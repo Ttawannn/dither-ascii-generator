@@ -1,14 +1,16 @@
 import { lfo } from './ascii/lfo';
+import { BAND_IDS, type Band } from './audio-levels';
 import type { NumericKey, Params, SliderSpec } from './state';
 
 /**
- * An animation lane drives one numeric setting over time, either with an oscillator ("lfo")
- * or between two keyframes ("keys"). Lanes are stored as a JSON string in `Params.animLanes`.
+ * An animation lane drives one numeric setting over time: with an oscillator ("lfo"), between two
+ * keyframes ("keys"), or by the loudness of a frequency band of the audio input ("audio").
+ * Lanes are stored as a JSON string in `Params.animLanes`.
  */
 export interface Lane {
   id: number;
   key: NumericKey;
-  mode: 'lfo' | 'keys';
+  mode: 'lfo' | 'keys' | 'audio';
   // lfo
   shape: string;
   hz: number;
@@ -19,10 +21,18 @@ export interface Lane {
   to: number;
   ease: 'linear' | 'smooth' | 'step';
   loop: 'repeat' | 'pingpong' | 'once';
+  // audio
+  band: Band;
+  /** Seconds of audio averaged, 0..1 (0 = follow every beat). */
+  smooth: number;
 }
 
+/** Loudness 0..1 of a band, averaged over `window` seconds (supplied by the app's audio input). */
+export type AudioLevel = (band: Band, window: number) => number;
+
 export const MAX_LANES = 8;
-export const LANE_MODES = ['lfo', 'keys'] as const;
+export const LANE_MODES = ['lfo', 'keys', 'audio'] as const;
+export const BAND_LABELS: Record<Band, string> = { bass: 'Bass', mid: 'Mids', high: 'Highs' };
 export const EASES = [
   { id: 'linear', label: 'Linear' },
   { id: 'smooth', label: 'Ease in-out' },
@@ -55,6 +65,8 @@ export function newLane(id: number, key: NumericKey, spec: SliderSpec, current: 
     to: clamp(current + (spec.max - spec.min) / 2, spec.min, spec.max),
     ease: 'smooth',
     loop: 'pingpong',
+    band: 'bass',
+    smooth: 0.1,
   };
 }
 
@@ -86,6 +98,8 @@ export function parseLanes(json: string, specFor: SpecFor): Lane[] {
       to: clamp(num(o.to, spec.max), spec.min, spec.max),
       ease: pick(o.ease, EASES.map((e) => e.id), 'smooth'),
       loop: pick(o.loop, LOOPS.map((l) => l.id), 'pingpong'),
+      band: pick(o.band, BAND_IDS, 'bass'),
+      smooth: clamp(num(o.smooth, 0.1), 0, 1),
     });
     if (lanes.length === MAX_LANES) break;
   }
@@ -109,10 +123,20 @@ export function keyProgress(lane: Pick<Lane, 'ease' | 'loop'>, t: number, durati
 }
 
 /** The lane's value at time `t`; `base` is the setting's own (slider) value. */
-export function laneValue(lane: Lane, base: number, spec: SliderSpec, t: number, duration: number): number {
+export function laneValue(
+  lane: Lane,
+  base: number,
+  spec: SliderSpec,
+  t: number,
+  duration: number,
+  audio?: AudioLevel,
+): number {
   let v: number;
   if (lane.mode === 'lfo') {
     v = base + (lfo(lane.shape, t, lane.hz) * lane.amount * (spec.max - spec.min)) / 2;
+  } else if (lane.mode === 'audio') {
+    // Louder pushes the value up from the slider by up to `amount` of the range.
+    v = base + (audio ? audio(lane.band, lane.smooth) : 0) * lane.amount * (spec.max - spec.min);
   } else {
     v = lane.from + (lane.to - lane.from) * keyProgress(lane, t, duration);
   }
@@ -121,12 +145,12 @@ export function laneValue(lane: Lane, base: number, spec: SliderSpec, t: number,
 }
 
 /** Params with every animated setting replaced by its value at time `t`. Unchanged when there are no lanes. */
-export function applyAnimation(p: Params, lanes: Lane[], t: number, specFor: SpecFor): Params {
+export function applyAnimation(p: Params, lanes: Lane[], t: number, specFor: SpecFor, audio?: AudioLevel): Params {
   if (!lanes.length) return p;
   const out = { ...p };
   for (const lane of lanes) {
     const spec = specFor(lane.key);
-    if (spec) out[lane.key] = laneValue(lane, p[lane.key], spec, t, p.animDuration);
+    if (spec) out[lane.key] = laneValue(lane, p[lane.key], spec, t, p.animDuration, audio);
   }
   return out;
 }

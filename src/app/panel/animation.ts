@@ -1,4 +1,16 @@
-import { EASES, LOOPS, MAX_LANES, newLane, serializeLanes, type Lane } from '../../anim';
+import { BAND_LABELS, EASES, LOOPS, MAX_LANES, newLane, serializeLanes, type Lane } from '../../anim';
+import { BAND_IDS } from '../../audio-levels';
+import {
+  audioKind,
+  audioName,
+  audioPlaying,
+  onAudioChange,
+  stopAudio,
+  toggleAudioPlayback,
+  useAudioFile,
+  useMicrophone,
+} from '../audio';
+import { flash } from '../shell';
 import { LFO_SHAPES } from '../../ascii/lfo';
 import { EFFECTS } from '../../pipeline/effects';
 import {
@@ -81,7 +93,27 @@ function laneCard(lane: Lane): HTMLElement {
   const range = { min: spec.min, max: spec.max, step: spec.step, format: spec.format };
 
   const body =
-    lane.mode === 'lfo'
+    lane.mode === 'audio'
+      ? [
+          freeSelect(
+            'Band',
+            BAND_IDS.map((b) => ({ value: b, label: BAND_LABELS[b] })),
+            lane.band,
+            (v) => updateLane(lane.id, { band: v as Lane['band'] }),
+          ),
+          freeSlider(
+            { label: 'Strength', min: 0, max: 100, step: 1, format: (v) => `+${v}%` },
+            Math.round(lane.amount * 100),
+            (v) => updateLane(lane.id, { amount: v / 100 }),
+          ),
+          freeSlider(
+            { label: 'Smoothing', min: 0, max: 1, step: 0.05, format: (v) => `${v.toFixed(2)} s` },
+            lane.smooth,
+            (v) => updateLane(lane.id, { smooth: v }),
+          ),
+          ...(audioKind() ? [] : [el('div', { class: 'note' }, 'Choose a microphone or an audio file above')]),
+        ]
+      : lane.mode === 'lfo'
       ? [
           freeSelect(
             'Shape',
@@ -126,6 +158,7 @@ function laneCard(lane: Lane): HTMLElement {
       el('span', { class: 'lane-title' }, targetLabel(lane.key)),
       modeBtn('lfo', 'LFO'),
       modeBtn('keys', 'Keys'),
+      modeBtn('audio', 'Audio'),
       remove,
     ),
     el('div', { class: 'lane-body' }, ...body),
@@ -142,6 +175,52 @@ store.subscribe((_, changed) => changed === 'animLanes' && !editingLanes && rend
 renderLanes();
 
 const hasKeyLanes = (p: Params) => lanesOf(p).some((l) => l.mode === 'keys');
+
+// ---------- audio input for audio lanes ----------
+
+const audioPicker = el('input', { type: 'file', accept: 'audio/*', hidden: '' });
+audioPicker.addEventListener('change', () => {
+  const file = audioPicker.files?.[0];
+  audioPicker.value = '';
+  if (file) {
+    useAudioFile(file)
+      .then(() => flash(`Audio: ${file.name}`))
+      .catch(() => flash(`Could not read ${file.name} as audio`));
+  }
+});
+const audioStatus = el('div', { class: 'note' });
+const playBtn = button('Pause', () => toggleAudioPlayback(), 'btn small');
+const stopBtn = button('Stop', () => stopAudio(), 'btn small');
+function syncAudio(): void {
+  const kind = audioKind();
+  audioStatus.textContent = kind
+    ? `${audioName()}${kind === 'file' ? ' · sound is added to WebM / MP4 exports' : ' · live only (exports use real time)'}`
+    : 'Audio lanes follow a microphone or an audio file';
+  playBtn.hidden = kind !== 'file';
+  playBtn.textContent = audioPlaying() ? 'Pause' : 'Play';
+  stopBtn.hidden = !kind;
+}
+onAudioChange(() => {
+  syncAudio();
+  renderLanes(); // the "choose an input" hint on audio lanes
+});
+syncAudio();
+
+const audioControls = el(
+  'div',
+  {},
+  el('div', { class: 'subhead' }, 'Audio input'),
+  el(
+    'div',
+    { class: 'pal-actions' },
+    button('Microphone', () => void useMicrophone().catch(() => flash('Microphone not available or not allowed')), 'btn small'),
+    button('Audio file…', () => audioPicker.click(), 'btn small'),
+    playBtn,
+    stopBtn,
+  ),
+  audioStatus,
+  audioPicker,
+);
 
 export const animationSection = section(
   'Animation',
@@ -167,5 +246,6 @@ export const animationSection = section(
     store,
     hasKeyLanes,
   ),
+  audioControls,
 );
 animationSection.head.append(button('Reset', () => store.reset(ANIM_KEYS), 'link'));

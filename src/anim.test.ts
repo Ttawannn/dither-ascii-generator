@@ -79,6 +79,24 @@ describe('lfo lanes', () => {
   });
 });
 
+describe('audio lanes', () => {
+  const lane = { ...keys(), mode: 'audio' as const, band: 'mid' as const, amount: 0.5, smooth: 0.2 };
+  it('push the value up by loudness × amount of the range, clamped', () => {
+    const level = (band: string, window: number) => (band === 'mid' && window === 0.2 ? 0.4 : 0);
+    expect(laneValue(lane, 0, contrast, 0, 4, level)).toBe(40); // 0 + 0.4 × 0.5 × 200
+    expect(laneValue(lane, 90, contrast, 0, 4, level)).toBe(100);
+  });
+  it('rest at the slider value without audio', () => {
+    expect(laneValue(lane, 10, contrast, 0, 4)).toBe(10);
+  });
+  it('repair band and smoothing', () => {
+    const [l] = parseLanes(JSON.stringify([{ ...lane, band: 'treble', smooth: 9 }]), animatableSpec);
+    expect(l.mode).toBe('audio');
+    expect(l.band).toBe('bass');
+    expect(l.smooth).toBe(1);
+  });
+});
+
 describe('applyAnimation', () => {
   it('returns the same object when nothing is animated', () => {
     expect(applyAnimation(DEFAULTS, [], 1, animatableSpec)).toBe(DEFAULTS);

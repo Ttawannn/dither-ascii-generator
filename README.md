@@ -13,7 +13,7 @@ A browser-based generator that turns images, videos and your webcam into **dithe
 - 8 palette options: retro systems, duotone colour picks, your own colours, or colours extracted from your image
 - ASCII mode with 48 character sets, depth and offset controls, palette colours and transparent backgrounds
 - A "boil" animation that brings still images to life
-- Export to PNG, SVG, GIF, WebM or MP4, or copy the ASCII as text
+- Export to PNG, SVG, GIF, WebM or MP4, or copy the ASCII as text; print sizes and whole folders of images in one go
 - Presets you can save and share as a link
 
 Your files never leave your device. All processing happens in the browser.
@@ -79,10 +79,10 @@ Copy the result to the clipboard, or save it as `.txt` or as a standalone colour
 
 ## Video, webcam and animation
 
-- **Video files:** play/pause (`K`), scrub, loop and sound in the bottom bar. Every frame is processed live.
+- **Video files:** play/pause (`K`), scrub, loop and sound in the bottom bar. Every frame is processed live. **In** / **Out** (`[` / `]`) trim the clip: playback stays inside the marks and exports render only that range; **×** clears them.
 - **Webcam:** a live feed with a **Mirror** toggle (on by default for the camera). The browser asks for camera permission first.
 - **Boil:** turn it on under **Animation** to make the dither pattern or ASCII characters shift over time (1–30 fps), even on a still image. For error diffusion and ASCII you can pick the jitter pattern (random or blue noise, which is more even) and its amount.
-- **Animate settings:** pick almost any slider and press **+ Animate**. Each lane is either an **LFO** (shape, speed, swing around the slider value) or **Keys**, going from one value to another with easing and repeat / ping-pong / once looping over a timeline of 1–30 s. Up to 8 lanes run at once, and still images with lanes export as GIF or video.
+- **Animate settings:** pick almost any slider and press **+ Animate**. Each lane is either an **LFO** (shape, speed, swing around the slider value) or **Keys**, going from one value to another with easing and repeat / ping-pong / once looping over a timeline of 1–30 s. A third kind, **Audio**, follows the loudness of the bass, mids or highs (strength, smoothing) of a **Microphone** (live) or an **Audio file** chosen under Audio input. An audio file is analysed up front, so exports move exactly with the music and WebM / MP4 exports include it as the soundtrack. Up to 8 lanes run at once, and still images with lanes export as GIF or video.
 
 ## Layer 2
 
@@ -112,12 +112,16 @@ Glitch and grain move when **Boil** is on. Effects are included in every export,
 | Format | What you get |
 |---|---|
 | PNG | The current frame, scaled 1–8× with crisp pixels |
-| SVG | A vector version of low-colour dither output (up to 32 colours) |
+| SVG | A vector version of low-colour dither output (up to 32 colours). With **Vector dots**, Halftone dot (2-colour palette) and Halftone CMYK become real circles, one per screen cell, ready for print |
 | GIF | An animation from a video, the webcam, or a still image with Boil or an ASCII LFO on |
 | WebM / MP4 | The same as GIF, encoded as video (needs WebCodecs, see below). WebM keeps a transparent background; MP4 fills it with the background colour |
 | Copy / .txt / .html | ASCII mode only: the characters as text |
 
-For animated formats, set the **duration** (up to 30 s) and **frame rate** (5–30 fps). Video files export from the current playhead, one frame at a time, so the result is smooth even when live preview is slow. Press the button again to cancel.
+For animated formats, set the **duration** (up to 30 s) and **frame rate** (5–30 fps). Video files export from the current playhead (or the trimmed In–Out range), one frame at a time, so the result is smooth even when live preview is slow. Press the button again to cancel.
+
+**Print size:** turn it on for PNG / SVG, pick a resolution (72–1200 dpi) and centimetres or inches. The export summary shows the printed size, PNG files carry the resolution so layout and print programs open them at that size, and SVG files get physical width and height.
+
+**Batch…** (PNG / SVG): choose several images and each one is rendered with the current look and saved, all together in one `.zip`. The image on screen stays as it was.
 
 ## Presets and sharing
 
@@ -139,6 +143,7 @@ For animated formats, set the **duration** (up to 30 s) and **frame rate** (5–
 | Wheel / drag | Zoom / pan |
 | `D` / `A` | Dither / ASCII mode |
 | `K` | Play / pause video |
+| `[` / `]` | Trim video: In / Out |
 | `B` | Toggle boil |
 | `T` | Dark / parchment theme |
 | `O` | Open file |

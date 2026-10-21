@@ -1,3 +1,5 @@
+import type { SvgSize } from './halftone-svg';
+
 const MAX_COLORS = 32;
 
 /** Read a canvas (WebGL or 2D) back as RGBA pixels. */
@@ -16,7 +18,7 @@ const hex = (r: number, g: number, b: number) => `#${((r << 16) | (g << 8) | b).
  * Vector version of a low-colour image: the most common colour becomes the background,
  * every other colour one <path> of horizontal runs. Returns null when the image has too many colours.
  */
-export function canvasToSvg(source: HTMLCanvasElement, scale: number): string | null {
+export function canvasToSvg(source: HTMLCanvasElement, scale: number, size?: SvgSize): string | null {
   const { data, width: w, height: h } = readPixels(source);
 
   const counts = new Map<number, number>();
@@ -49,7 +51,7 @@ export function canvasToSvg(source: HTMLCanvasElement, scale: number): string | 
 
   const color = (k: number) => hex((k >> 16) & 255, (k >> 8) & 255, k & 255);
   const body = [...paths.entries()].map(([k, d]) => `<path fill="${color(k)}" d="${d.join('')}"/>`).join('\n');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w * scale}" height="${h * scale}" shape-rendering="crispEdges">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${size?.width ?? w * scale}" height="${size?.height ?? h * scale}" shape-rendering="crispEdges">
 <rect width="${w}" height="${h}" fill="${color(bg)}"/>
 ${body}
 </svg>

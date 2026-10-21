@@ -1,4 +1,4 @@
-import { applyAnimation, parseLanes, type Lane } from '../anim';
+import { applyAnimation, parseLanes, type AudioLevel, type Lane } from '../anim';
 import { getAlgorithm } from '../pipeline/algorithms';
 import type { Source } from '../source/source';
 import type { Layer } from '../layers';
@@ -30,6 +30,8 @@ export const actions = {
   openSample: async (): Promise<void> => {},
   toggleWebcam: async (): Promise<void> => {},
   exportClick: async (): Promise<void> => {},
+  /** Render each image file with the current look and save them in one .zip. */
+  batchExport: async (_files: File[]): Promise<void> => {},
   copyText: async (): Promise<void> => {},
   exportText: (): void => {},
   exportHtml: (): void => {},
@@ -79,8 +81,12 @@ export function activeLayer(p: Params): { layer: Layer; params: Params } | null 
   return layer?.on ? { layer, params: layerParams(p, layer) } : null;
 }
 
+/** Audio input for audio lanes; app/audio.ts replaces `level` when a microphone or file is in use. */
+export const audioInput: { level: AudioLevel } = { level: () => 0 };
+
 /** The params to render with: slider values, with animated settings at the current clock. */
-export const animatedParams = (p: Params) => applyAnimation(p, lanesOf(p), clock(), animatableSpec);
+export const animatedParams = (p: Params) =>
+  applyAnimation(p, lanesOf(p), clock(), animatableSpec, (band, window) => audioInput.level(band, window));
 
 export const group = (p: Params) => getAlgorithm(p.algorithm).group;
 export const notBraille = (p: Params) => p.asciiCharset !== 'braille';
