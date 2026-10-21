@@ -59,8 +59,8 @@ describe('smoothLuma', () => {
 });
 
 describe('error-diffusion kernels', () => {
-  it('exist for every diffusion algorithm', () => {
-    for (const a of ALGORITHMS.filter((a) => a.group === 'diffusion')) expect(KERNELS[a.id], a.id).toBeDefined();
+  it('has a fixed kernel or an explicitly tested traversal for every diffusion algorithm', () => {
+    for (const a of ALGORITHMS.filter((a) => a.group === 'diffusion')) expect(!!KERNELS[a.id] || ['ostromoukhov', 'riemersma', 'dot-diffusion'].includes(a.id), a.id).toBe(true);
   });
 
   it('only push error forward and never add energy', () => {

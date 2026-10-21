@@ -16,6 +16,7 @@ export const LANGS: { id: Lang; label: string }[] = [
 export const KEEP = [
   'ASCII', 'ANSI', 'LFO', 'Dither', 'DITHER', 'PNG', 'SVG', 'GIF', 'WebM', 'MP4', 'CMYK', 'RGB', 'JPEG',
   'Bayer 2×2', 'Bayer 4×4', 'Bayer 8×8', 'Floyd–Steinberg', 'Atkinson', 'Jarvis–Judice–Ninke', 'Stucki',
+  'Ostromoukhov', 'Riemersma',
   'Burkes', 'Sierra', 'Sierra Lite', 'Sierra two-row', 'Halftone CMYK',
   'CGA', 'PICO-8', 'Game Boy', 'Commodore 64', 'Mac',
   'JetBrains Mono', 'IBM Plex Mono', 'Courier', 'VT323 (pixel)', 'Truecolor',
@@ -25,6 +26,15 @@ export const KEEP = [
 ];
 
 const TH: Record<string, string> = {
+  'Dots': 'จำนวนจุด', 'Relaxation': 'รอบจัดตำแหน่ง', 'Dot size': 'ขนาดจุด', 'Seed': 'ค่าเริ่มสุ่ม',
+  'Shape matching': 'จับคู่รูปทรง', 'Sort from': 'เรียงตั้งแต่', 'Sort to': 'เรียงถึง', 'Max length': 'ความยาวสูงสุด',
+  'Dot diffusion': 'กระจายตามกลุ่มจุด', 'Stippling': 'ภาพจุด', 'Pixel sorting': 'เรียงพิกเซล',
+  'Reverse sort': 'เรียงย้อนกลับ', 'Palette mixing': 'การผสมพาเลต', 'Nearest': 'สีใกล้สุด',
+  'Linear light': 'แสงเชิงเส้น', 'Dot shape': 'รูปจุด', 'Round': 'กลม', 'Ellipse': 'วงรี', 'Square': 'สี่เหลี่ยม', 'Diamond': 'ข้าวหลามตัด',
+  'Generate dots': 'สร้างจุด', 'Stippling progress': 'ความคืบหน้าการสร้างจุด',
+  'Still images only · press Generate after changing settings': 'ภาพนิ่งเท่านั้น · กดสร้างจุดหลังปรับค่า',
+  'Stippling needs a still image': 'การสร้างภาพจุดต้องใช้ภาพนิ่ง', 'Stippling cancelled': 'ยกเลิกการสร้างจุดแล้ว', 'Stippling failed': 'สร้างจุดไม่สำเร็จ',
+
   // ---------- page frame ----------
   'Hold Space — original': 'กด Space ค้าง — ดูต้นฉบับ',
   'Hold to compare with the original (Space)': 'กดค้างเพื่อเทียบกับต้นฉบับ (Space)',

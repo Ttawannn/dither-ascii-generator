@@ -1,8 +1,8 @@
 import { ALGORITHMS, FOLLOWS_IMAGE, GROUP_LABELS } from '../../pipeline/algorithms';
 import { getPaletteDef, MONO_PRESETS, PALETTES } from '../../pipeline/palettes';
-import { DITHER_SLIDERS, type ParamStore, type Params } from '../../state';
-import { colorInput, colorPresets, el, select, showWhen, slider, swatches, toggle } from '../../ui/controls';
-import { group, store } from '../core';
+import { DITHER_SLIDERS, HALFTONE_SHAPES, PALETTE_MIXING, type ParamStore, type Params } from '../../state';
+import { button, colorInput, colorPresets, el, select, showWhen, slider, swatches, toggle } from '../../ui/controls';
+import { actions, group, stippleProgress, store } from '../core';
 import { customPaletteEditor } from './custom-palette';
 
 const cmyk = (p: Params) => p.algorithm === 'halftone-cmyk';
@@ -23,6 +23,21 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
     s.set('paper', paper);
   });
 
+  const generate = button(
+    'Generate dots',
+    () => {
+      if (stippleProgress.busy) actions.cancelStipple();
+      else void actions.generateStipple(s.params);
+    },
+    'btn wide',
+  );
+  const progress = el('progress', { max: '1', value: '0', 'aria-label': 'Stippling progress', hidden: '' });
+  stippleProgress.listeners.add((busy, value) => {
+    generate.textContent = busy ? 'Cancel' : 'Generate dots';
+    progress.hidden = !busy;
+    progress.value = value;
+  });
+
   return showWhen(
     el(
       'div',
@@ -33,21 +48,62 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
         ALGORITHMS.map((a) => ({ value: a.id, label: a.label, group: GROUP_LABELS[a.group] })),
         s,
       ),
-      ditherSlider('strength', (p) => (group(p) === 'ordered' || group(p) === 'pattern' || p.algorithm === 'noise') && !cmyk(p)),
+      showWhen(
+        el(
+          'div',
+          {},
+          ...['stippleCount', 'stippleIterations', 'stippleSize', 'stippleSeed'].map((key) =>
+            slider(DITHER_SLIDERS[key], s),
+          ),
+          el('div', { class: 'color-row' }, colorInput('ink', 'Ink', s), colorInput('paper', 'Paper', s)),
+          generate,
+          progress,
+          el('div', { class: 'note' }, 'Still images only · press Generate after changing settings'),
+        ),
+        s,
+        (p) => p.algorithm === 'stippling',
+      ),
+      ditherSlider(
+        'strength',
+        (p) => (group(p) === 'ordered' || group(p) === 'pattern' || p.algorithm === 'noise') && !cmyk(p),
+      ),
       ditherSlider('cellSize', (p) => group(p) === 'pattern' && p.algorithm !== 'orbs'),
       ditherSlider('angle', (p) => group(p) === 'pattern' && p.algorithm !== 'orbs' && !cmyk(p)),
       ditherSlider('hexRings', (p) => p.algorithm === 'honeycomb'),
       ditherSlider('patternFollow', (p) => FOLLOWS_IMAGE.includes(p.algorithm)),
-      ...(['orbSize', 'orbCount', 'orbIntensity', 'orbRandom'] as const).map((k) => ditherSlider(k, (p) => p.algorithm === 'orbs')),
-      showWhen(toggle('orbVertical', 'Vertical', s), s, (p) => p.algorithm === 'orbs'),
-      ...(['cmykAngleC', 'cmykAngleM', 'cmykAngleY', 'cmykAngleK', 'cmykDotGain', 'cmykGcr', 'cmykSupersample'] as const).map(
-        (k) => ditherSlider(k, cmyk),
+      ...(['orbSize', 'orbCount', 'orbIntensity', 'orbRandom'] as const).map((k) =>
+        ditherSlider(k, (p) => p.algorithm === 'orbs'),
       ),
+      showWhen(toggle('orbVertical', 'Vertical', s), s, (p) => p.algorithm === 'orbs'),
+      ...(
+        ['cmykAngleC', 'cmykAngleM', 'cmykAngleY', 'cmykAngleK', 'cmykDotGain', 'cmykGcr', 'cmykSupersample'] as const
+      ).map((k) => ditherSlider(k, cmyk)),
+      showWhen(
+        select(
+          'halftoneShape',
+          'Dot shape',
+          HALFTONE_SHAPES.map((x) => ({ value: x.id, label: x.label })),
+          s,
+        ),
+        s,
+        (p) => p.algorithm === 'halftone' || cmyk(p),
+      ),
+      showWhen(toggle('linearLight', 'Linear light', s), s, (p) => !cmyk(p) && p.algorithm !== 'stippling'),
       ditherSlider('threshold', (p) => p.algorithm === 'threshold'),
       ditherSlider('diffusion', (p) => group(p) === 'diffusion'),
-      showWhen(toggle('serpentine', 'Serpentine', s), s, (p) => group(p) === 'diffusion'),
+      showWhen(
+        toggle('serpentine', 'Serpentine', s),
+        s,
+        (p) => group(p) === 'diffusion' && !['ostromoukhov', 'riemersma', 'dot-diffusion'].includes(p.algorithm),
+      ),
       ...(['waveStrength', 'waveLength', 'waveBias', 'waveFollow'] as const).map((k) =>
-        ditherSlider(k, (p) => group(p) === 'diffusion' && (k === 'waveStrength' || p.waveStrength > 0)),
+        ditherSlider(
+          k,
+          (p) =>
+            group(p) === 'diffusion' &&
+            !['riemersma', 'dot-diffusion'].includes(p.algorithm) &&
+            (k === 'waveStrength' || p.waveStrength > 0),
+        ),
       ),
       // Halftone CMYK prints its own inks, so the palette doesn't apply.
       showWhen(
@@ -68,6 +124,19 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
             s,
             (p) => !!getPaletteDef(p.palette).uses.nearest && !(p.palette === 'custom' && p.customRamp),
           ),
+          showWhen(
+            select(
+              'paletteMixing',
+              'Palette mixing',
+              PALETTE_MIXING.map((x) => ({ value: x.id, label: x.label })),
+              s,
+            ),
+            s,
+            (p) =>
+              !!getPaletteDef(p.palette).uses.nearest &&
+              !(p.palette === 'custom' && p.customRamp) &&
+              (group(p) === 'ordered' || group(p) === 'pattern'),
+          ),
           ditherSlider('levels', (p) => !!getPaletteDef(p.palette).uses.levels),
           showWhen(
             el(
@@ -81,7 +150,7 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
           ),
         ),
         s,
-        (p) => !cmyk(p),
+        (p) => !cmyk(p) && p.algorithm !== 'stippling',
       ),
     ),
     s,

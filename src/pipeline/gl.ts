@@ -14,6 +14,8 @@ import asciiFrag from './shaders/ascii.frag?raw';
 import postFrag from './shaders/post.frag?raw';
 import filterFrag from './shaders/filter.frag?raw';
 import compositeFrag from './shaders/composite.frag?raw';
+import sortFrag from './shaders/sort.frag?raw';
+import sortOutputFrag from './shaders/sort-output.frag?raw';
 import type { PostEffect } from './effects';
 
 /** How layer 2 is blended over layer 1 (see composite.frag). */
@@ -90,6 +92,12 @@ export class Renderer {
   private ascii!: Program;
   private post!: Program;
   private filter!: Program;
+  private sort!: Program;
+  private sortOutput!: Program;
+  private sortTex: WebGLTexture[] = [];
+  private sortFbo: WebGLFramebuffer[] = [];
+  private sortW = 0;
+  private sortH = 0;
   private tmpTex!: WebGLTexture;
   private tmpFbo!: WebGLFramebuffer;
   /** Blurred adjusted image for patterns that follow the image (Follow image). */
@@ -167,6 +175,11 @@ export class Renderer {
     this.ascii = program(gl, fullscreenVert, asciiFrag);
     this.post = program(gl, fullscreenVert, postFrag);
     this.filter = program(gl, fullscreenVert, filterFrag);
+    this.sort = program(gl, fullscreenVert, sortFrag);
+    this.sortOutput = program(gl, fullscreenVert, sortOutputFrag);
+    this.sortTex = [texture(gl, gl.NEAREST), texture(gl, gl.NEAREST)];
+    this.sortFbo = [gl.createFramebuffer()!, gl.createFramebuffer()!];
+    this.sortW = this.sortH = 0;
 
     // Mipmaps give a clean box-filtered downsample when pixel size > 1.
     this.srcTex = texture(gl, gl.LINEAR_MIPMAP_LINEAR);
@@ -427,6 +440,12 @@ export class Renderer {
     gl.uniform1i(u('u_algo'), algo.shader ?? 0);
     gl.uniform1f(u('u_spread'), (p.strength / 100) * baseSpread(palette));
     gl.uniform1f(u('u_threshold'), p.threshold / 100);
+    gl.uniform1i(u('u_linear'), p.linearLight ? 1 : 0);
+    gl.uniform1i(
+      u('u_mixing'),
+      p.paletteMixing === 'pattern' && p.strength > 0 && (algo.group === 'ordered' || algo.group === 'pattern') ? 1 : 0,
+    );
+    gl.uniform1i(u('u_shape'), Math.max(0, ['round', 'ellipse', 'square', 'diamond'].indexOf(p.halftoneShape)));
     gl.uniform1f(u('u_cell'), p.cellSize);
     gl.uniform1f(u('u_angle'), (p.angle * Math.PI) / 180);
     gl.uniform1ui(u('u_seed'), seed + 1);
@@ -459,7 +478,10 @@ export class Renderer {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, result.width, result.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, result.data);
       this.hasResult[layer] = true;
     }
-    this.blitToCanvas(this.hasResult[layer] ? this.resultTex[layer] : this.adjTex);
+    this.blitToCanvas(
+      this.hasResult[layer] ? this.resultTex[layer] : this.adjTex,
+      result ? [result.width, result.height] : undefined,
+    );
   }
 
   /** Show the adjusted image as-is. */
@@ -468,7 +490,15 @@ export class Renderer {
   }
 
   /** ASCII pass: glyph grid + atlas → canvas at cols×cellW by rows×cellH. Each layer keeps its own atlas texture. */
-  renderAscii(grid: AsciiGrid, atlas: Atlas, mode: string, fg: string, bg: string, transparent = false, layer = 0): void {
+  renderAscii(
+    grid: AsciiGrid,
+    atlas: Atlas,
+    mode: string,
+    fg: string,
+    bg: string,
+    transparent = false,
+    layer = 0,
+  ): void {
     const gl = this.gl;
     if (this.atlasKey[layer] !== atlas.key) {
       gl.bindTexture(gl.TEXTURE_2D, this.atlasTex[layer]);
@@ -499,9 +529,9 @@ export class Renderer {
     this.endOutput();
   }
 
-  private blitToCanvas(tex: WebGLTexture): void {
+  private blitToCanvas(tex: WebGLTexture, size?: [number, number]): void {
     const gl = this.gl;
-    this.beginOutput();
+    this.beginOutput(...(size ?? [this.adjW, this.adjH]));
     const { prog, u } = this.blit;
     gl.useProgram(prog);
     gl.activeTexture(gl.TEXTURE0);
@@ -577,6 +607,17 @@ export class Renderer {
     gl.uniform1i(u('u_srcMirror'), this.mirror ? 1 : 0);
     let src = 0;
     this.effects.forEach((fx, i) => {
+      if (fx.kind === 8) {
+        this.sortPixels(this.postTex[src], i === n - 1 ? null : this.postFbo[1 - src], fx);
+        src = 1 - src;
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.glowTex);
+        // sortPixels uses its own programs, viewport and units.
+        gl.useProgram(prog);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.viewport(0, 0, this.postW, this.postH);
+        return;
+      }
       gl.uniform4fv(u('u_p'), fx.params);
       gl.uniform4fv(u('u_q'), fx.extra);
       if (fx.mask) {
@@ -604,6 +645,68 @@ export class Renderer {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       src = 1 - src;
     });
+  }
+
+  /** Segmented bitonic sort. RGBA32UI records retain the exact premultiplied colour and stable ties. */
+  private sortPixels(input: WebGLTexture, output: WebGLFramebuffer | null, fx: PostEffect): void {
+    const gl = this.gl;
+    const [w, h] = [this.postW, this.postH];
+    const vertical = fx.params[3] > 0;
+    const length = Math.max(2, Math.min(512, Math.round(fx.params[2])));
+    const padded = 2 ** Math.ceil(Math.log2(length));
+    const sw = vertical ? w : Math.ceil(w / length) * padded;
+    const sh = vertical ? Math.ceil(h / length) * padded : h;
+    if (this.sortW !== sw || this.sortH !== sh) {
+      for (let i = 0; i < 2; i++) {
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.sortTex[i]);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32UI, sw, sh, 0, gl.RGBA_INTEGER, gl.UNSIGNED_INT, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.sortFbo[i]);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.sortTex[i], 0);
+      }
+      this.sortW = sw;
+      this.sortH = sh;
+    }
+    const { prog, u } = this.sort;
+    gl.useProgram(prog);
+    gl.viewport(0, 0, sw, sh);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, input);
+    gl.uniform1i(u('u_color'), 0);
+    gl.uniform1i(u('u_records'), 1);
+    gl.uniform2i(u('u_size'), w, h);
+    gl.uniform1i(u('u_length'), length);
+    gl.uniform1i(u('u_padded'), padded);
+    gl.uniform1i(u('u_vertical'), vertical ? 1 : 0);
+    gl.uniform1i(u('u_reverse'), fx.extra[0] > 0 ? 1 : 0);
+    gl.uniform2f(u('u_range'), Math.min(fx.params[0], fx.params[1]), Math.max(fx.params[0], fx.params[1]));
+    let src = 0;
+    const pass = (mode: number, step = 0, stage = 0) => {
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.sortTex[src]);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.sortFbo[1 - src]);
+      gl.uniform1i(u('u_mode'), mode);
+      gl.uniform1i(u('u_step'), step);
+      gl.uniform1i(u('u_stage'), stage);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      src = 1 - src;
+    };
+    pass(0);
+    for (let step = 1; step < padded; step *= 2) pass(1, step);
+    for (let stage = 2; stage <= padded; stage *= 2)
+      for (let step = stage / 2; step >= 1; step /= 2) pass(2, step, stage);
+    gl.useProgram(this.sortOutput.prog);
+    const su = this.sortOutput.u;
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.sortTex[src]);
+    gl.uniform1i(su('u_records'), 1);
+    gl.uniform1i(su('u_length'), length);
+    gl.uniform1i(su('u_padded'), padded);
+    gl.uniform1i(su('u_vertical'), vertical ? 1 : 0);
+    gl.uniform1i(su('u_height'), h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, output);
+    gl.viewport(0, 0, w, h);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
   private setPalette(u: Program['u'], p: Palette, perceptual: boolean): void {

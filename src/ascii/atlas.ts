@@ -1,4 +1,5 @@
 import { EDGE_CHARS, FALLBACK_FONTS, getFont } from './charsets';
+import { SHAPE_H, SHAPE_W, SHAPE_SAMPLES } from './shape';
 
 export const ATLAS_COLUMNS = 16;
 
@@ -14,6 +15,7 @@ export interface Atlas {
   /** Glyphs dropped because no available font could draw them. */
   missing: string[];
   fontCss: string;
+  shapes: Float32Array;
 }
 
 /** Braille bit → (column, row) within the 2×4 dot cell, following Unicode dot numbering. */
@@ -36,7 +38,13 @@ const SHADES: Record<string, (x: number, y: number) => boolean> = {
   '█': () => true,
 };
 
-export function atlasKey(ramp: string[] | null, fontId: string, size: number, lineHeight: number, bold = false): string {
+export function atlasKey(
+  ramp: string[] | null,
+  fontId: string,
+  size: number,
+  lineHeight: number,
+  bold = false,
+): string {
   return JSON.stringify([ramp ?? 'braille', fontId, size, lineHeight, bold]);
 }
 
@@ -50,7 +58,8 @@ interface Metrics {
 function drawGlyph(g: CanvasRenderingContext2D, ch: string, x0: number, y0: number, m: Metrics): void {
   const shade = SHADES[ch];
   if (shade) {
-    for (let y = 0; y < m.cellH; y++) for (let x = 0; x < m.cellW; x++) if (shade(x, y)) g.fillRect(x0 + x, y0 + y, 1, 1);
+    for (let y = 0; y < m.cellH; y++)
+      for (let x = 0; x < m.cellW; x++) if (shade(x, y)) g.fillRect(x0 + x, y0 + y, 1, 1);
     return;
   }
   g.save();
@@ -153,6 +162,27 @@ export async function buildAtlas(
     else drawGlyph(g, ch, x0, y0, m);
   });
 
+  const small = document.createElement('canvas');
+  small.width = SHAPE_W;
+  small.height = SHAPE_H;
+  const sg = small.getContext('2d', { willReadFrequently: true })!;
+  const shapes = new Float32Array(glyphs.length * SHAPE_SAMPLES);
+  glyphs.forEach((_, i) => {
+    sg.clearRect(0, 0, SHAPE_W, SHAPE_H);
+    sg.drawImage(
+      g.canvas,
+      (i % ATLAS_COLUMNS) * cellW,
+      Math.floor(i / ATLAS_COLUMNS) * cellH,
+      cellW,
+      cellH,
+      0,
+      0,
+      SHAPE_W,
+      SHAPE_H,
+    );
+    const px = sg.getImageData(0, 0, SHAPE_W, SHAPE_H).data;
+    for (let j = 0; j < SHAPE_SAMPLES; j++) shapes[i * SHAPE_SAMPLES + j] = px[j * 4 + 3] / 255;
+  });
   return {
     key: atlasKey(ramp, fontId, size, lineHeight, bold),
     canvas: g.canvas,
@@ -162,5 +192,6 @@ export async function buildAtlas(
     rampSize: ramp ? rampGlyphs.length : 0,
     missing,
     fontCss,
+    shapes,
   };
 }

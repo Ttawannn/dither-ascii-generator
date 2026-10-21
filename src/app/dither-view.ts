@@ -7,6 +7,7 @@ import { group, rt, store } from './core';
 import { diffusers, mainTarget, type RenderTarget } from './gpu';
 import { paletteSwatches } from './panel/dither';
 import { info, setStatus } from './shell';
+import { drawStipple } from './stippling';
 
 const MAX_SWATCHES = 32;
 
@@ -48,6 +49,10 @@ export function drawDither(p: Params, layer = 0, t: RenderTarget = mainTarget())
   const [ow, oh] = renderer.adjustedSize;
   if (layer === 0 && !t.thumb) info.out.textContent = `OUT ${ow}×${oh}`;
 
+  if (p.algorithm === 'stippling') {
+    drawStipple(p, layer, t);
+    return;
+  }
   if (group(p) === 'diffusion') {
     const pal = currentPalette(p);
     const job: Omit<DiffusionJob, 'id'> = {
@@ -61,6 +66,7 @@ export function drawDither(p: Params, layer = 0, t: RenderTarget = mainTarget())
       colors: new Float32Array(pal.colors.flat()),
       levels: pal.levels,
       perceptual: p.perceptual,
+      linearLight: p.linearLight,
       noise: t.seed ? 0.12 * (p.boilAmount / 100) : 0,
       noiseTile: p.boilPattern === 'blue' ? blueNoiseTile() : null,
       wave: p.waveStrength ? [p.waveStrength / 100, p.waveLength, p.waveBias / 100, p.waveFollow / 100] : null,

@@ -145,6 +145,7 @@ export function asciiControlsFor(s: ParamStore, withPreview = false): HTMLElemen
       showWhen(textInput('asciiInject', `Add characters (up to ${MAX_INJECT})`, s, MAX_INJECT), s, notBraille),
       showWhen(toggle('asciiSpace', 'Include space', s), s, notBraille),
       asciiSlider('depth', notBraille),
+      asciiSlider('shape', notBraille),
       asciiSlider('offset', notBraille),
       asciiSlider('columns'),
       fontPicker(s),

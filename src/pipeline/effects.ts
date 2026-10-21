@@ -61,6 +61,11 @@ export const TINT_MODES = [
 
 export const EFFECTS: EffectDef[] = [
   {
+    id: 'sort', label: 'Pixel sorting', enabled: 'fxSort', kind: 8,
+    uniforms: (p) => [p.fxSortLow / 100, p.fxSortHigh / 100, p.fxSortLength, p.fxSortVertical ? 1 : 0],
+    extra: (p) => [p.fxSortReverse ? 1 : 0, 0, 0, 0],
+  },
+  {
     id: 'glow',
     label: 'Glow',
     enabled: 'fxGlow',

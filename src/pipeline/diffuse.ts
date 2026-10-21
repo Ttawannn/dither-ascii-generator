@@ -1,4 +1,7 @@
 import { KERNELS } from './algorithms';
+import { OSTROMOUKHOV } from './ostromoukhov';
+import { advancedDiffuse } from './advanced-diffuse';
+import { linearPalette, linearToSrgb, srgbToLinear } from './color-space';
 import { nearestIndex, paletteLab } from './oklab';
 import type { PaletteKind } from './palettes';
 
@@ -16,6 +19,7 @@ export interface DiffusionJob {
   levels: number;
   /** Nearest colour in OKLab instead of weighted RGB (`set` palettes only). */
   perceptual?: boolean;
+  linearLight?: boolean;
   /** Per-pixel input jitter amplitude (0 = none); used for the boil animation. */
   noise: number;
   /** 64×64 blue-noise tile to take the jitter from instead of white noise. */
@@ -54,7 +58,13 @@ export function smoothLuma(data: Uint8Array, w: number, h: number, r: number): F
   const a = new Float32Array(n);
   for (let i = 0; i < n; i++) a[i] = (LR * data[i * 4] + LG * data[i * 4 + 1] + LB * data[i * 4 + 2]) / 255;
   const b = new Float32Array(n);
-  const pass = (src: Float32Array, dst: Float32Array, len: number, lines: number, at: (line: number, k: number) => number) => {
+  const pass = (
+    src: Float32Array,
+    dst: Float32Array,
+    len: number,
+    lines: number,
+    at: (line: number, k: number) => number,
+  ) => {
     const span = 2 * r + 1;
     for (let line = 0; line < lines; line++) {
       const get = (k: number) => src[at(line, Math.min(len - 1, Math.max(0, k)))];
@@ -73,8 +83,13 @@ export function smoothLuma(data: Uint8Array, w: number, h: number, r: number): F
 
 /** Error-diffuse one frame. Pure function, shared by the worker and the tests. */
 export function diffuse(job: DiffusionJob): Uint8Array {
+  if (job.kernel === 'riemersma' || job.kernel === 'dot-diffusion') return advancedDiffuse(job);
   const { width: w, height: h, data, kind, colors, strength } = job;
-  const kernel = KERNELS[job.kernel] ?? KERNELS['floyd-steinberg'];
+  const variable = job.kernel === 'ostromoukhov';
+  let kernel = KERNELS[job.kernel] ?? KERNELS['floyd-steinberg'];
+  const linear = !!job.linearLight;
+  const pal = linear ? linearPalette(colors) : colors;
+  const convert = (v: number) => (linear ? srgbToLinear(Math.min(1, Math.max(0, v))) : v);
   const n = w * h;
   const out = new Uint8Array(n * 4);
   const ch = kind === 'ramp' ? 1 : 3;
@@ -94,9 +109,9 @@ export function diffuse(job: DiffusionJob): Uint8Array {
 
   for (let i = 0; i < n; i++) {
     const j = job.noise ? jitter(i) : 0;
-    const r = data[i * 4] / 255 + j;
-    const g = data[i * 4 + 1] / 255 + j;
-    const b = data[i * 4 + 2] / 255 + j;
+    const r = convert(data[i * 4] / 255 + j);
+    const g = convert(data[i * 4 + 1] / 255 + j);
+    const b = convert(data[i * 4 + 2] / 255 + j);
     if (ch === 1) buf[i] = LR * r + LG * g + LB * b;
     else {
       buf[i * 3] = r;
@@ -106,6 +121,10 @@ export function diffuse(job: DiffusionJob): Uint8Array {
   }
 
   const palSize = colors.length / 3;
+  const rampLuma =
+    linear && kind === 'ramp'
+      ? Array.from({ length: palSize }, (_, i) => LR * pal[i * 3] + LG * pal[i * 3 + 1] + LB * pal[i * 3 + 2])
+      : null;
   const [waveAmp, waveLen, waveBias, waveFollow = 0] = job.wave ?? [0, 1, 0];
   const waveK = (2 * Math.PI) / Math.max(1, waveLen);
   const wavePhase = job.seed * 1.7; // boil moves the waves
@@ -121,10 +140,14 @@ export function diffuse(job: DiffusionJob): Uint8Array {
   // Walk in visual order (top row first). Buffer rows are bottom-up, so visual row vy is buffer row h-1-vy.
   for (let vy = 0; vy < h; vy++) {
     const row = h - 1 - vy;
-    const reverse = job.serpentine && (vy & 1) === 1;
+    const reverse = (job.serpentine || variable) && (vy & 1) === 1;
     for (let k = 0; k < w; k++) {
       const x = reverse ? w - 1 - k : k;
       const i = row * w + x;
+      if (variable) {
+        const level = Math.round(LR * data[i * 4] + LG * data[i * 4 + 1] + LB * data[i * 4 + 2]);
+        kernel = OSTROMOUKHOV[level];
+      }
       let ci = 0; // palette index for output colour (ramp/set)
       // Threshold modulation: the wave shifts which level is picked, the error still uses the true value.
       const bend = follow ? follow[i] * followK : 0;
@@ -133,7 +156,9 @@ export function diffuse(job: DiffusionJob): Uint8Array {
       if (ch === 1) {
         const v = Math.min(1, Math.max(0, buf[i]));
         ci = Math.min(palSize - 1, Math.max(0, Math.round((v + m) * (palSize - 1))));
-        err[0] = (v - ci / (palSize - 1)) * strength;
+        if (rampLuma)
+          ci = rampLuma.reduce((best, l, i) => (Math.abs(l - v - m) < Math.abs(rampLuma[best] - v - m) ? i : best), 0);
+        err[0] = (v - (rampLuma ? rampLuma[ci] : ci / (palSize - 1))) * strength;
       } else {
         const r = Math.min(1, Math.max(0, buf[i * 3]));
         const g = Math.min(1, Math.max(0, buf[i * 3 + 1]));
@@ -143,10 +168,19 @@ export function diffuse(job: DiffusionJob): Uint8Array {
           q[1] = Math.min(1, Math.max(0, Math.round((g + m) * steps) / steps));
           q[2] = Math.min(1, Math.max(0, Math.round((b + m) * steps) / steps));
         } else {
-          ci = nearestIndex(colors, lab, r + m, g + m, b + m);
-          q[0] = colors[ci * 3];
-          q[1] = colors[ci * 3 + 1];
-          q[2] = colors[ci * 3 + 2];
+          ci =
+            linear && lab
+              ? nearestIndex(
+                  colors,
+                  lab,
+                  linearToSrgb(Math.max(0, r + m)),
+                  linearToSrgb(Math.max(0, g + m)),
+                  linearToSrgb(Math.max(0, b + m)),
+                )
+              : nearestIndex(pal, lab, r + m, g + m, b + m);
+          q[0] = pal[ci * 3];
+          q[1] = pal[ci * 3 + 1];
+          q[2] = pal[ci * 3 + 2];
         }
         err[0] = (r - q[0]) * strength;
         err[1] = (g - q[1]) * strength;
@@ -168,9 +202,9 @@ export function diffuse(job: DiffusionJob): Uint8Array {
 
       const o = i * 4;
       if (kind === 'rgb') {
-        out[o] = q[0] * 255 + 0.5;
-        out[o + 1] = q[1] * 255 + 0.5;
-        out[o + 2] = q[2] * 255 + 0.5;
+        out[o] = (linear ? linearToSrgb(q[0]) : q[0]) * 255 + 0.5;
+        out[o + 1] = (linear ? linearToSrgb(q[1]) : q[1]) * 255 + 0.5;
+        out[o + 2] = (linear ? linearToSrgb(q[2]) : q[2]) * 255 + 0.5;
       } else {
         out[o] = colors[ci * 3] * 255 + 0.5;
         out[o + 1] = colors[ci * 3 + 1] * 255 + 0.5;

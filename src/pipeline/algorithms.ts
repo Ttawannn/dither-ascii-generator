@@ -1,4 +1,4 @@
-export type AlgorithmGroup = 'ordered' | 'pattern' | 'diffusion' | 'other';
+export type AlgorithmGroup = 'ordered' | 'pattern' | 'diffusion' | 'stipple' | 'other';
 
 export interface Algorithm {
   id: string;
@@ -27,6 +27,10 @@ export const ALGORITHMS: Algorithm[] = [
   { id: 'sierra', label: 'Sierra', group: 'diffusion' },
   { id: 'sierra2', label: 'Sierra two-row', group: 'diffusion' },
   { id: 'sierra-lite', label: 'Sierra Lite', group: 'diffusion' },
+  { id: 'ostromoukhov', label: 'Ostromoukhov', group: 'diffusion' },
+  { id: 'riemersma', label: 'Riemersma', group: 'diffusion' },
+  { id: 'dot-diffusion', label: 'Dot diffusion', group: 'diffusion' },
+  { id: 'stippling', label: 'Stippling', group: 'stipple' },
   { id: 'noise', label: 'Random noise', group: 'other', shader: 7 },
   { id: 'threshold', label: 'Threshold', group: 'other', shader: 8 },
 ];
@@ -38,6 +42,7 @@ export const GROUP_LABELS: Record<AlgorithmGroup, string> = {
   ordered: 'Ordered',
   pattern: 'Pattern',
   diffusion: 'Error diffusion',
+  stipple: 'Stippling',
   other: 'Other',
 };
 

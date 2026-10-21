@@ -39,7 +39,12 @@ export function importPreset(data: unknown): ImportResult | null {
   if (!looksLikePreset(data)) return null;
   const root = data as Obj;
   if (isObj(root.params)) {
-    return { name: str(root.name)?.slice(0, 40) || 'Imported', params: sanitize(root.params), approximated: [], skipped: [] };
+    return {
+      name: str(root.name)?.slice(0, 40) || 'Imported',
+      params: sanitize(root.params),
+      approximated: [],
+      skipped: [],
+    };
   }
   return importExternal(isObj(root.preset) ? root.preset : root);
 }
@@ -55,6 +60,9 @@ export function importPresetList(data: unknown): ImportResult[] | null {
 // ---------- external presets ----------
 
 const KERNELS: [RegExp, string][] = [
+  [/ostrom/, 'ostromoukhov'],
+  [/riemersma/, 'riemersma'],
+  [/dot.?diffusion/, 'dot-diffusion'],
   [/floyd/, 'floyd-steinberg'],
   [/atkinson/, 'atkinson'],
   [/jarvis|jjn/, 'jjn'],
@@ -66,6 +74,7 @@ const KERNELS: [RegExp, string][] = [
 ];
 
 const PATTERNS: [RegExp, string][] = [
+  [/stippl/, 'stippling'],
   [/cmyk/, 'halftone-cmyk'],
   [/bee|hex|honey/, 'honeycomb'],
   [/orb/, 'orbs'],
@@ -93,6 +102,7 @@ function mapStyle(style: string): { algorithm: string; wave: boolean } | null {
 /** Which of our sections an effect instance's type belongs to. */
 function kindOf(type: string): string | null {
   const t = type.toLowerCase();
+  if (/pixel.?sort/.test(t)) return 'sort';
   if (/adjust/.test(t)) return 'adjust';
   if (/halftone/.test(t)) return 'halftone';
   if (/dither/.test(t)) return 'dither';
@@ -129,13 +139,26 @@ function instances(p: Obj): Instance[] {
       const type = `${str(v.type) ?? ''} ${str(v.subtype) ?? ''}`;
       const kind = str(v.type) === 'dither' ? 'dither' : kindOf(type);
       const enabled = v.enabled !== false && settings.enabled !== false;
-      out.push({ id: `${i}`, kind, label: str(v.label) ?? type.trim(), enabled, settings: { style: v.subtype, ...settings } });
+      out.push({
+        id: `${i}`,
+        kind,
+        label: str(v.label) ?? type.trim(),
+        enabled,
+        settings: { style: v.subtype, ...settings },
+      });
     });
   }
   return out;
 }
 
-const FX_ID: Record<string, string> = { glow: 'glow', glitch: 'glitch', chroma: 'chroma', tint: 'tint', finish: 'finish' };
+const FX_ID: Record<string, string> = {
+  sort: 'sort',
+  glow: 'glow',
+  glitch: 'glitch',
+  chroma: 'chroma',
+  tint: 'tint',
+  finish: 'finish',
+};
 
 function importExternal(p: Obj): ImportResult {
   const out: Record<string, unknown> = {};
@@ -155,6 +178,9 @@ function importExternal(p: Obj): ImportResult {
     out.customPalette = serializeColorList(colors);
     out.customRamp = colors.length === 2; // duotones read best as a dark → light ramp
   }
+  if (typeof ds.linearLight === 'boolean') out.linearLight = ds.linearLight;
+  if (typeof ds.paletteMixing === 'string') out.paletteMixing = ds.paletteMixing;
+  if (typeof ds.halftoneShape === 'string') out.halftoneShape = ds.halftoneShape;
   if (ds.perceptualMatch === true || cp.perceptualMatch === true) out.perceptual = true;
   if (ds.orderedCycling === true || cp.orderedCycling === true) skipped.push('Ordered colour cycling');
 
@@ -164,7 +190,8 @@ function importExternal(p: Obj): ImportResult {
   if (style && !mapped) skipped.push(`Dither style “${style}” (kept the default)`);
   if (mapped) {
     out.algorithm = mapped.algorithm;
-    if (style!.toLowerCase() !== mapped.algorithm) approximated.push(`Dither style “${style}” → ${ALGORITHMS.find((a) => a.id === mapped.algorithm)!.label}`);
+    if (style!.toLowerCase() !== mapped.algorithm)
+      approximated.push(`Dither style “${style}” → ${ALGORITHMS.find((a) => a.id === mapped.algorithm)!.label}`);
   }
   const scale = num(ds.scale);
   if (scale && scale > 0) {
@@ -175,15 +202,40 @@ function importExternal(p: Obj): ImportResult {
   if (threshold !== undefined) out.threshold = threshold;
 
   const controls = isObj(ds.controls) ? ds.controls : {};
+  for (const key of [
+    'linearLight',
+    'paletteMixing',
+    'halftoneShape',
+    'stippleCount',
+    'stippleIterations',
+    'stippleSize',
+    'stippleSeed',
+  ]) {
+    if (ds[key] !== undefined) out[key] = ds[key];
+    if (controls[key] !== undefined) out[key] = controls[key];
+  }
   for (const [key, value] of Object.entries(controls)) {
     const v = num(value);
+    if (
+      [
+        'linearLight',
+        'paletteMixing',
+        'halftoneShape',
+        'stippleCount',
+        'stippleIterations',
+        'stippleSize',
+        'stippleSeed',
+      ].includes(key)
+    )
+      continue;
     if (key === 'cellSize' && v !== undefined) out.cellSize = v;
     else if (key === 'orbSize' && v !== undefined) out.orbSize = v;
     else if (key === 'orbCount' && v !== undefined) out.orbCount = v;
     else if (key === 'orbIntensity' && v !== undefined) out.orbIntensity = v;
     else if (key === 'orbRandom' && v !== undefined) out.orbRandom = v;
     else if (key === 'orbVertical' && typeof value === 'boolean') out.orbVertical = value;
-    else if (/modulation|strength/i.test(key) && v !== undefined && mapped?.wave) out.waveStrength = clamp(v * 10, 0, 100);
+    else if (/modulation|strength/i.test(key) && v !== undefined && mapped?.wave)
+      out.waveStrength = clamp(v * 10, 0, 100);
     else if (/bias|tilt/i.test(key) && v !== undefined && mapped?.wave) out.waveBias = clamp(v * 10, -100, 100);
     else skipped.push(`Dither control “${key}”`);
   }
@@ -198,6 +250,7 @@ function importExternal(p: Obj): ImportResult {
     const h = p.halftone;
     out.algorithm = str(h.mode) === 'grayscale' ? 'halftone' : 'halftone-cmyk';
     const set = (key: string, v: number | undefined, f = (x: number) => x) => v !== undefined && (out[key] = f(v));
+    if (typeof h.shape === 'string') out.halftoneShape = h.shape;
     set('cellSize', num(h.cellSize));
     set('angle', num(h.grayAngle));
     set('cmykAngleC', num(h.cyanAngle));
@@ -214,6 +267,15 @@ function importExternal(p: Obj): ImportResult {
     const s = inst.settings;
     const n = (key: string) => num(s[key]);
     switch (inst.kind) {
+      case 'sort': {
+        out.fxSort = inst.enabled;
+        if (n('low') !== undefined) out.fxSortLow = n('low');
+        if (n('high') !== undefined) out.fxSortHigh = n('high');
+        if (n('maxLength') !== undefined) out.fxSortLength = n('maxLength');
+        if (typeof s.vertical === 'boolean') out.fxSortVertical = s.vertical;
+        if (typeof s.reverse === 'boolean') out.fxSortReverse = s.reverse;
+        break;
+      }
       case 'dither':
       case 'halftone':
         break;
@@ -227,7 +289,8 @@ function importExternal(p: Obj): ImportResult {
         if (n('hue') !== undefined) out.hue = n('hue');
         if (n('sharpen') !== undefined) out.sharpen = n('sharpen');
         approximated.push('Brightness and contrast (100 read as unchanged)');
-        for (const key of ['midtones', 'highlights']) if (n(key) !== undefined) skipped.push(`Adjust “${key}” (scale unknown)`);
+        for (const key of ['midtones', 'highlights'])
+          if (n(key) !== undefined) skipped.push(`Adjust “${key}” (scale unknown)`);
         break;
       }
       case 'boil': {
@@ -251,7 +314,18 @@ function importExternal(p: Obj): ImportResult {
         if (n('falloff') !== undefined) out.fxGlowFalloff = n('falloff')! / 10;
         approximated.push(`${inst.label} → Glow`);
         for (const key of Object.keys(s)) {
-          if (!['enabled', 'threshold', 'thresholdSmoothing', 'radius', 'intensity', 'aspectRatio', 'direction', 'falloff'].includes(key)) {
+          if (
+            ![
+              'enabled',
+              'threshold',
+              'thresholdSmoothing',
+              'radius',
+              'intensity',
+              'aspectRatio',
+              'direction',
+              'falloff',
+            ].includes(key)
+          ) {
             skipped.push(`${inst.label} “${key}”`);
           }
         }
@@ -307,7 +381,12 @@ function importExternal(p: Obj): ImportResult {
         const sharpen = n('sharpen') ?? 0;
         const hue = n('hue') ?? 0;
         if (blur || sharpen || hue) {
-          Object.assign(out, { fxFinish: true, fxFinishBlur: clamp(blur, 0, 10), fxFinishSharpen: sharpen, fxFinishHue: hue });
+          Object.assign(out, {
+            fxFinish: true,
+            fxFinishBlur: clamp(blur, 0, 10),
+            fxFinishSharpen: sharpen,
+            fxFinishHue: hue,
+          });
           approximated.push(`${inst.label} → Finish`);
         }
         break;
@@ -318,7 +397,9 @@ function importExternal(p: Obj): ImportResult {
   }
 
   // Effect order, from the instance order when given.
-  const order = Array.isArray(p.pipelineOrder) ? p.pipelineOrder.filter((id): id is string => typeof id === 'string') : [];
+  const order = Array.isArray(p.pipelineOrder)
+    ? p.pipelineOrder.filter((id): id is string => typeof id === 'string')
+    : [];
   const fxOrder = order
     .map((id) => all.find((i) => i.id === id))
     .map((i) => (i?.kind ? FX_ID[i.kind] : undefined))
@@ -338,6 +419,7 @@ function importExternal(p: Obj): ImportResult {
 function importAscii(p: Obj, out: Record<string, unknown>, approximated: string[], skipped: string[]): void {
   if (!isObj(p.ascii) || p.ascii.enabled !== true) return;
   const a = p.ascii;
+  if (num(a.shape) !== undefined) out.asciiShape = num(a.shape);
   out.mode = 'ascii';
   const depth = num(a.depth);
   if (depth !== undefined) out.asciiDepth = depth;

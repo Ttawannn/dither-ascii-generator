@@ -41,6 +41,13 @@ export interface Params {
   /** Timeline length in seconds for keyframe lanes. */
   animDuration: number;
   // dither
+  paletteMixing: string;
+  linearLight: boolean;
+  halftoneShape: string;
+  stippleCount: number;
+  stippleIterations: number;
+  stippleSize: number;
+  stippleSeed: number;
   algorithm: string;
   strength: number;
   threshold: number;
@@ -92,6 +99,7 @@ export interface Params {
   asciiColor: string;
   asciiFg: string;
   asciiBg: string;
+  asciiShape: number;
   asciiEdges: boolean;
   asciiEdgeThreshold: number;
   asciiDither: boolean;
@@ -144,6 +152,12 @@ export interface Params {
   fxTintColor: string;
   fxTintMode: string;
   fxTintOpacity: number;
+  fxSort: boolean;
+  fxSortLow: number;
+  fxSortHigh: number;
+  fxSortLength: number;
+  fxSortVertical: boolean;
+  fxSortReverse: boolean;
   fxFinish: boolean;
   fxFinishBlur: number;
   fxFinishSharpen: number;
@@ -200,6 +214,13 @@ export const DEFAULTS: Params = {
   boilAmount: 50,
   animLanes: '[]',
   animDuration: 4,
+  paletteMixing: 'nearest',
+  linearLight: false,
+  halftoneShape: 'round',
+  stippleCount: 10000,
+  stippleIterations: 8,
+  stippleSize: 100,
+  stippleSeed: 1,
   algorithm: 'atkinson',
   strength: 100,
   threshold: 50,
@@ -242,6 +263,7 @@ export const DEFAULTS: Params = {
   asciiColor: 'mono',
   asciiFg: '#f2f2f2',
   asciiBg: '#0a0a0a',
+  asciiShape: 0,
   asciiEdges: false,
   asciiEdgeThreshold: 50,
   asciiDither: false,
@@ -293,6 +315,12 @@ export const DEFAULTS: Params = {
   fxTintColor: '#ff7a3d',
   fxTintMode: 'overlay',
   fxTintOpacity: 60,
+  fxSort: false,
+  fxSortLow: 10,
+  fxSortHigh: 90,
+  fxSortLength: 64,
+  fxSortVertical: false,
+  fxSortReverse: false,
   fxFinish: false,
   fxFinishBlur: 0,
   fxFinishSharpen: 0,
@@ -380,7 +408,17 @@ export const ADJUST_SLIDERS: SliderSpec[] = [
   { key: 'denoise', label: 'Denoise', min: 0, max: 100, step: 1 },
 ];
 
+export const PALETTE_MIXING = [{ id: 'nearest', label: 'Nearest' }, { id: 'pattern', label: 'Pattern' }];
+export const HALFTONE_SHAPES = [
+  { id: 'round', label: 'Round' }, { id: 'ellipse', label: 'Ellipse' },
+  { id: 'square', label: 'Square' }, { id: 'diamond', label: 'Diamond' },
+];
+
 export const DITHER_SLIDERS: Record<string, SliderSpec> = {
+  stippleCount: { key: 'stippleCount', label: 'Dots', min: 100, max: 30000, step: 100 },
+  stippleIterations: { key: 'stippleIterations', label: 'Relaxation', min: 0, max: 20, step: 1 },
+  stippleSize: { key: 'stippleSize', label: 'Dot size', min: 10, max: 200, step: 1, format: pct },
+  stippleSeed: { key: 'stippleSeed', label: 'Seed', min: 1, max: 9999, step: 1 },
   strength: { key: 'strength', label: 'Strength', min: 0, max: 200, step: 1, format: pct },
   threshold: { key: 'threshold', label: 'Threshold', min: 0, max: 100, step: 1, format: pct },
   cellSize: { key: 'cellSize', label: 'Cell size', min: 2, max: 32, step: 1, format: (v) => `${v}px` },
@@ -407,6 +445,7 @@ export const DITHER_SLIDERS: Record<string, SliderSpec> = {
 };
 
 export const ASCII_SLIDERS: Record<string, SliderSpec> = {
+  shape: { key: 'asciiShape', label: 'Shape matching', min: 0, max: 100, step: 1, format: pct },
   columns: { key: 'asciiColumns', label: 'Columns', min: 20, max: 300, step: 1 },
   fontSize: { key: 'asciiFontSize', label: 'Font size', min: 6, max: 24, step: 1, format: (v) => `${v}px` },
   lineHeight: {
@@ -464,6 +503,11 @@ export const FX_SLIDERS: Record<string, SliderSpec[]> = {
     { key: 'fxGrainSize', label: 'Size', min: 1, max: 4, step: 1, format: (v) => `${v}px` },
   ],
   tint: [{ key: 'fxTintOpacity', label: 'Opacity', min: 0, max: 100, step: 1, format: pct }],
+  sort: [
+    { key: 'fxSortLow', label: 'Sort from', min: 0, max: 100, step: 1, format: pct },
+    { key: 'fxSortHigh', label: 'Sort to', min: 0, max: 100, step: 1, format: pct },
+    { key: 'fxSortLength', label: 'Max length', min: 2, max: 512, step: 1, format: (v) => `${v}px` },
+  ],
   finish: [
     { key: 'fxFinishBlur', label: 'Soften', min: 0, max: 10, step: 0.5, format: (v) => `${v}px` },
     { key: 'fxFinishSharpen', label: 'Sharpen', min: 0, max: 100, step: 1, format: pct },
@@ -524,6 +568,8 @@ export const BOIL_SLIDER: SliderSpec = {
 
 export const ADJUST_KEYS: (keyof Params)[] = [...ADJUST_SLIDERS.map((s) => s.key), 'invert'];
 export const DITHER_KEYS: (keyof Params)[] = [
+  'paletteMixing', 'linearLight', 'halftoneShape',
+  'stippleCount', 'stippleIterations', 'stippleSize', 'stippleSeed',
   'algorithm',
   'strength',
   'threshold',
@@ -570,6 +616,7 @@ export const ANIM_DURATION_SLIDER: SliderSpec = {
 export const ANIM_KEYS: (keyof Params)[] = ['animate', 'boilFps', 'boilPattern', 'boilAmount', 'animLanes', 'animDuration'];
 
 export const FX_KEYS: (keyof Params)[] = [
+  'fxSort', 'fxSortVertical', 'fxSortReverse',
   'fxOrder',
   'fxGlow',
   'fxGlitch',
@@ -585,6 +632,7 @@ export const FX_KEYS: (keyof Params)[] = [
 ];
 
 export const ASCII_KEYS: (keyof Params)[] = [
+  'asciiShape',
   'asciiCharset',
   'asciiCustom',
   'asciiColumns',
@@ -635,6 +683,8 @@ export function layerParams(p: Params, layer: Layer): Params {
 
 /** Allowed values for string params that come from a fixed list. */
 const ENUMS: Partial<Record<keyof Params, string[]>> = {
+  paletteMixing: PALETTE_MIXING.map((x) => x.id),
+  halftoneShape: HALFTONE_SHAPES.map((x) => x.id),
   mode: ['dither', 'ascii'],
   algorithm: ALGORITHMS.map((a) => a.id),
   palette: PALETTES.map((p) => p.id),
@@ -680,7 +730,7 @@ const RANGES = new Map(
  */
 export const ANIMATABLE: SliderSpec[] = [
   ...ADJUST_SLIDERS,
-  ...Object.values(DITHER_SLIDERS),
+  ...Object.values(DITHER_SLIDERS).filter((s) => !s.key.startsWith('stipple')),
   ...Object.values(ASCII_SLIDERS).filter((s) => s.key !== 'asciiFontSize' && s.key !== 'asciiLineHeight'),
   ...Object.values(FX_SLIDERS).flat(),
   ...Object.values(MASK_SLIDERS),

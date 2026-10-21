@@ -9,7 +9,7 @@ A browser-based generator that turns images, videos and your webcam into **dithe
 ## Highlights
 
 - Real-time preview of every setting, including on video and webcam
-- 17 dither algorithms, from ordered Bayer and blue noise to classic error diffusion
+- 23 dither algorithms, including palette mixing, Ostromoukhov, Riemersma and dot diffusion, plus weighted Voronoi stippling
 - 8 palette options: retro systems, duotone colour picks, your own colours, or colours extracted from your image
 - ASCII mode with 48 character sets, depth and offset controls, palette colours and transparent backgrounds
 - A "boil" animation that brings still images to life
@@ -52,6 +52,14 @@ New to it? Start from one of the **Presets** (Mac 1-bit, Game Boy, Newsprint, Te
 - RGB levels: per-channel colour steps
 - From image: median-cut extraction of 2–16 colours
 
+**Palette mixing:** choose **Pattern** for ordered / pattern dithers with a nearest-colour palette. Sixteen colour candidates combine to approximate the input colour, with the selected threshold pattern distributing them. **Perceptual match** also works with mixing.
+
+**Linear light** processes quantisation and diffusion in linear RGB, then writes sRGB output. It is off by default. **Ostromoukhov** uses brightness-dependent coefficients and always scans serpentine. **Riemersma** carries a short decaying error history along a Hilbert curve; **Dot diffusion** distributes error by an 8×8 class matrix. All three support the existing palettes and seeded Boil.
+
+**Dot shape:** Halftone dot and Halftone CMYK offer Round, Ellipse, Square and Diamond. Their vector exports use the corresponding SVG primitives.
+
+**Stippling:** choose it under Algorithm, set Dots, Relaxation, Dot size and Seed, then press **Generate dots**. It runs weighted Lloyd relaxation in a worker with progress and cancellation, and caches the result until the image or settings change. It supports still images; Boil and video exports are unavailable for this algorithm. Plain stippling exports to SVG as real circles. With layers, a mask or post-effects, use PNG for the complete composition (SVG falls back to the usual low-colour pixel export).
+
 **Pixel size** (1–16) sets how chunky the result is.
 
 Ordered and pattern dithers run on the GPU. Error diffusion runs in a Web Worker, so the UI stays responsive.
@@ -67,6 +75,7 @@ Ordered and pattern dithers run on the GPU. Error diffusion runs in a Web Worker
 - **Depth:** how many brightness levels to use, from 2 up to every glyph in the set
 - **Offset:** shifts which character each brightness gets, wrapping around the set
 - **Add characters:** mix up to 10 of your own into any set. **Include space** controls the blank glyph.
+- **Shape matching:** compares 4×8 samples inside each cell with glyph shapes, blending shape and density. At 0 it keeps the original mapping; Braille uses its existing dot mapping. Matching runs in a worker and exports wait for the complete grid.
 - **Edge glyphs:** draws `- / | \` along edges for a hand-drawn look
 - **Dither:** ordered dither applied before choosing characters
 - **Layout:** column count, font (JetBrains Mono, IBM Plex Mono, VT323, Courier, or your own: **Add font…** takes a .ttf, .otf, .woff or .woff2 file and keeps it in this browser), bold, font size and line height. A look that names a font you added is shared by name; where that font isn't added, a fallback is used and you are told so.
@@ -100,6 +109,7 @@ Limit the result to part of the picture. **Mask by** a brightness range (from / 
 
 Stack post-effects on top of either mode. Turn each one on or off, and use ↑ ↓ to change the order they're applied in:
 
+- **Pixel sorting:** sorts contiguous pixels within a brightness range, horizontally or vertically, with reverse order and a maximum segment length of 2–512 px. Runs on the GPU and keeps transparency.
 - **Glow:** bright areas bloom, up to 200 px wide (radius, intensity, threshold, softness, stretch, angle, falloff)
 - **JPEG glitch:** an overall amount and block size, plus a share for each kind: block shift, colour crush, channel swap, scanline offset, block scramble, interlace
 - **Chromatic aberration:** red, green and blue each pushed outwards or inwards by their own share of the max shift

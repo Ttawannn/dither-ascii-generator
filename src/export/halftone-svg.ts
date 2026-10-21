@@ -1,3 +1,6 @@
+import { dotThreshold } from '../pipeline/halftone-shape';
+import { srgbToLinear } from '../pipeline/color-space';
+import { hexToRgb } from '../pipeline/palettes';
 /**
  * Halftone as true vector dots for print: one circle per screen cell, sized by the brightness under
  * it, instead of the pixel runs canvasToSvg produces. The screen matches dither.frag (cell size,
@@ -32,17 +35,30 @@ const SCREEN = (() => {
   }
   return t.sort();
 })();
+const SHAPE_SCREENS = new Map<string, Float32Array>();
+function shapeScreen(shape: string): Float32Array {
+  if (shape === 'round') return SCREEN;
+  let screen = SHAPE_SCREENS.get(shape);
+  if (!screen) {
+    screen = Float32Array.from({ length: 4096 }, (_, i) =>
+      dotThreshold(((i % 64) + 0.5) / 64, (Math.floor(i / 64) + 0.5) / 64, shape),
+    ).sort();
+    SHAPE_SCREENS.set(shape, screen);
+  }
+  return screen;
+}
 
 /** Fraction of a cell the shader inks when the value compared against its threshold is `x`. */
-export function screenCoverage(x: number): number {
+export function screenCoverage(x: number, shape = 'round'): number {
+  const screen = shapeScreen(shape);
   let lo = 0;
-  let hi = SCREEN.length;
+  let hi = screen.length;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    if (SCREEN[mid] < x) lo = mid + 1;
+    if (screen[mid] < x) lo = mid + 1;
     else hi = mid;
   }
-  return lo / SCREEN.length;
+  return lo / screen.length;
 }
 
 /**
@@ -106,12 +122,27 @@ function circles(
   cell: number,
   angle: number,
   coverAt: (rgb: [number, number, number]) => number,
+  shape = 'round',
 ): string {
   const out: string[] = [];
   for (const [x, y] of lattice(px.width, px.height, cell, angle)) {
-    const r = dotRadius(coverAt(sample(px, x, y, cell))) * cell;
+    const cover = coverAt(sample(px, x, y, cell));
+    const r = dotRadius(cover) * cell;
     if (r < 0.01 * cell) continue;
-    out.push(`<circle cx="${num(x)}" cy="${num(px.height - y)}" r="${num(r)}"/>`);
+    if (shape === 'round') out.push(`<circle cx="${num(x)}" cy="${num(px.height - y)}" r="${num(r)}"/>`);
+    else {
+      const screen = shapeScreen(shape);
+      const threshold = cover >= 1 ? 1 : screen[Math.min(screen.length - 1, Math.round(cover * screen.length))];
+      const a = (threshold * cell) / 2;
+      const rotation = (-angle * 180) / Math.PI;
+      let dot: string;
+      if (shape === 'ellipse')
+        dot = `<ellipse cx="0" cy="0" rx="${num((a * 1.6347783) / 0.65)}" ry="${num((a * 1.6347783) / 1.5)}"/>`;
+      else if (shape === 'square')
+        dot = `<rect x="${num(-a)}" y="${num(-a)}" width="${num(2 * a)}" height="${num(2 * a)}"/>`;
+      else dot = `<path d="M ${num(-2 * a)} 0 L 0 ${num(-2 * a)} L ${num(2 * a)} 0 L 0 ${num(2 * a)} Z"/>`;
+      out.push(`<g transform="translate(${num(x)} ${num(px.height - y)}) rotate(${num(rotation)})">${dot}</g>`);
+    }
   }
   return out.join('');
 }
@@ -136,14 +167,27 @@ ${body}
  */
 export function monoHalftoneSvg(
   px: Pixels,
-  opts: { cell: number; angle: number; spread: number; ink: string; paper: string; scale: number; size?: SvgSize },
+  opts: {
+    cell: number;
+    angle: number;
+    spread: number;
+    ink: string;
+    paper: string;
+    scale: number;
+    size?: SvgSize;
+    shape?: string;
+    linearLight?: boolean;
+  },
 ): string {
   const spread = Math.max(1e-4, opts.spread);
+  const lightness = (hex: string) => hexToRgb(hex).reduce((sum, v, i) => sum + srgbToLinear(v) * LUMA[i], 0);
+  const cutoff = opts.linearLight ? (lightness(opts.ink) + lightness(opts.paper)) / 2 : 0.5;
   const cover = ([r, g, b]: [number, number, number]) => {
-    const l = r * LUMA[0] + g * LUMA[1] + b * LUMA[2];
-    return screenCoverage(0.5 + (0.5 - l) / spread);
+    const convert = (v: number) => (opts.linearLight ? srgbToLinear(v) : v);
+    const l = convert(r) * LUMA[0] + convert(g) * LUMA[1] + convert(b) * LUMA[2];
+    return screenCoverage(0.5 + (cutoff - l) / spread, opts.shape);
   };
-  const dots = circles(px, opts.cell, (opts.angle * Math.PI) / 180, cover);
+  const dots = circles(px, opts.cell, (opts.angle * Math.PI) / 180, cover, opts.shape);
   return wrap(px, opts.scale, opts.size, opts.paper, `<g fill="${opts.ink}">${dots}</g>`);
 }
 
@@ -163,19 +207,22 @@ export function cmykHalftoneSvg(
     gcr: number;
     scale: number;
     size?: SvgSize;
+    shape?: string;
   },
 ): string {
   const inks = ['#00ffff', '#ff00ff', '#ffff00', '#000000'];
-  const amount = (ch: number) => ([r, g, b]: [number, number, number]) => {
-    const k = (1 - Math.max(r, g, b)) * opts.gcr;
-    const rgb = [r, g, b];
-    let v = ch === 3 ? k : clamp01((1 - rgb[ch] - k) / Math.max(1 - k, 1e-4));
-    v = clamp01(v + opts.dotGain * v * (1 - v));
-    return screenCoverage(v);
-  };
+  const amount =
+    (ch: number) =>
+    ([r, g, b]: [number, number, number]) => {
+      const k = (1 - Math.max(r, g, b)) * opts.gcr;
+      const rgb = [r, g, b];
+      let v = ch === 3 ? k : clamp01((1 - rgb[ch] - k) / Math.max(1 - k, 1e-4));
+      v = clamp01(v + opts.dotGain * v * (1 - v));
+      return screenCoverage(v, opts.shape);
+    };
   const body = inks
     .map((ink, ch) => {
-      const dots = circles(px, opts.cell, (opts.angles[ch] * Math.PI) / 180, amount(ch));
+      const dots = circles(px, opts.cell, (opts.angles[ch] * Math.PI) / 180, amount(ch), opts.shape);
       return `<g fill="${ink}" style="mix-blend-mode:multiply">${dots}</g>`;
     })
     .join('\n');

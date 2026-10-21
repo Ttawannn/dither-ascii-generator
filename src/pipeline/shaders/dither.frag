@@ -26,6 +26,9 @@ uniform vec3 u_palLab[32];  // u_pal in OKLab, set when u_perceptual
 uniform bool u_perceptual;
 uniform int u_palSize;
 uniform float u_levels;
+uniform bool u_linear;
+uniform bool u_mixing;
+uniform int u_shape;
 
 out vec4 outColor;
 
@@ -58,6 +61,24 @@ float hash1(uint n) {
   h = ((h >> ((h >> 28u) + 4u)) ^ h) * 277803737u;
   h = (h >> 22u) ^ h;
   return float(h) / 4294967295.0;
+}
+
+vec3 linearize(vec3 c) {
+  return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
+}
+vec3 encode(vec3 c) {
+  c = max(c, vec3(0.0));
+  return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+}
+vec3 working(vec3 c) { return u_linear ? linearize(c) : c; }
+
+// Round retains the original cosine screen. Other shapes use centred geometric distances.
+float dotScreen(vec2 r) {
+  if (u_shape == 0) return 0.5 - 0.25 * (cos(TAU * r.x) + cos(TAU * r.y));
+  vec2 q = abs(fract(r + 0.5) - 0.5) * 2.0;
+  if (u_shape == 1) return clamp(length(q * vec2(0.65, 1.5)) / 1.6347783, 0.0, 1.0);
+  if (u_shape == 2) return max(q.x, q.y);
+  return (q.x + q.y) * 0.5;
 }
 
 // Honeycomb: distance from the centre of the nearest hexagonal cell (0 centre … 1 wall), optionally
@@ -109,7 +130,7 @@ float pattern(vec2 fc) {
   if (u_follow > 0.0) r += u_follow * 2.0 * dot(texelFetch(u_smooth, ivec2(gl_FragCoord.xy), 0).rgb, LUMA);
   if (u_algo == 9) return honeycomb(r);
   float lineA = 0.5 - 0.5 * cos(TAU * r.y);
-  if (u_algo == 4) return 0.5 - 0.25 * (cos(TAU * r.x) + cos(TAU * r.y));
+  if (u_algo == 4) return dotScreen(r);
   if (u_algo == 5) return lineA;
   float lineB = 0.5 - 0.5 * cos(TAU * r.x);
   return min(lineA, 0.25 + 0.75 * lineB); // crosshatch: second direction joins in the shadows
@@ -142,7 +163,7 @@ vec3 nearest(vec3 c) {
       vec3 d = cl - u_palLab[i];
       e = dot(d, d);
     } else {
-      vec3 d = c - u_pal[i];
+      vec3 d = c - working(u_pal[i]);
       e = dot(d * d, vec3(2.0, 4.0, 3.0));
     }
     if (e < best) { best = e; res = u_pal[i]; }
@@ -150,11 +171,35 @@ vec3 nearest(vec3 c) {
   return res;
 }
 
+// The candidate list is built in the working colour space; perceptual matching compares OKLab.
+vec3 mixedPalette(vec3 c, float threshold) {
+  vec3 candidates[16];
+  float lumas[16];
+  vec3 error = vec3(0.0);
+  for (int k = 0; k < 16; k++) {
+    vec3 t = u_perceptual ? clamp(c + error, 0.0, 1.0) : c + error;
+    vec3 q = nearest(u_perceptual && u_linear ? encode(t) : t);
+    candidates[k] = q;
+    lumas[k] = dot(working(q), LUMA);
+    error += c - working(q);
+  }
+  // Stable insertion sort keeps equal-luminance colours deterministic.
+  for (int k = 1; k < 16; k++) {
+    vec3 q = candidates[k]; float l = lumas[k]; int j = k;
+    for (int p = 0; p < 15; p++) {
+      if (j <= 0 || lumas[j - 1] <= l) break;
+      candidates[j] = candidates[j - 1]; lumas[j] = lumas[j - 1]; j--;
+    }
+    candidates[j] = q; lumas[j] = l;
+  }
+  return candidates[clamp(int(floor(threshold * 16.0)), 0, 15)];
+}
+
 // Halftone dot threshold for one ink screen at `angle`: 0 at dot centres.
 float screen(vec2 p, float angle) {
   float s = sin(angle), c = cos(angle);
   vec2 r = mat2(c, s, -s, c) * p / u_cell;
-  return 0.5 - 0.25 * (cos(TAU * r.x) + cos(TAU * r.y));
+  return dotScreen(r);
 }
 
 // Halftone CMYK: separate the colour into inks, screen each at its own angle, print them over
@@ -183,18 +228,30 @@ void main() {
     outColor = vec4(cmyk(c, gl_FragCoord.xy + u_offset), 1.0);
     return;
   }
-  float off = u_algo == 8 ? 0.5 - u_threshold : u_spread * (pattern(gl_FragCoord.xy + u_offset) - 0.5);
+  c = working(c);
+  float t = u_algo == 8 ? 0.5 : pattern(gl_FragCoord.xy + u_offset);
+  float off = u_algo == 8 ? 0.5 - u_threshold : u_spread * (t - 0.5);
 
   vec3 q;
   if (u_kind == 0) {
     float l = dot(c, LUMA) + off;
     int idx = clamp(int(floor(l * float(u_palSize - 1) + 0.5)), 0, u_palSize - 1);
+    if (u_linear) {
+      float best = 1e9;
+      for (int i=0; i<32; i++) {
+        if (i>=u_palSize) break;
+        float error=abs(dot(working(u_pal[i]),LUMA)-l);
+        if(error<best){best=error;idx=i;}
+      }
+    }
     q = u_pal[idx];
   } else if (u_kind == 2) {
     float steps = u_levels - 1.0;
     q = clamp(floor((c + off) * steps + 0.5) / steps, 0.0, 1.0);
+    if (u_linear) q = encode(q);
   } else {
-    q = nearest(c + off);
+    q = u_mixing ? mixedPalette(c, mix(0.5, t, clamp(u_spread * sqrt(float(u_palSize)), 0.0, 1.0)))
+      : nearest(u_linear && u_perceptual ? encode(max(c + off, 0.0)) : c + off);
   }
   outColor = vec4(q, 1.0);
 }

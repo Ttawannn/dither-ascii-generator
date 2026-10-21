@@ -1,14 +1,24 @@
+import { SHAPE_H, SHAPE_W } from '../ascii/shape';
+import { ShapeMatcher } from '../ascii/matcher';
 import { atlasKey, buildAtlas, type Atlas } from '../ascii/atlas';
 import { isUserFontId, pickLevels, rampFor, userFontName } from '../ascii/charsets';
 import { onUserFontsChange, userFonts } from '../user-fonts';
-import { buildGrid, gridToAnsi, gridToHtml, gridToText, type AnsiDepth, type AsciiGrid } from '../ascii/grid';
+import {
+  buildGrid,
+  gridToAnsi,
+  gridToHtml,
+  gridToText,
+  type AnsiDepth,
+  type AsciiGrid,
+  type GridOptions,
+} from '../ascii/grid';
 import { modulatedDepth, modulatedOffset } from '../ascii/lfo';
 import { blueNoiseTile } from '../pipeline/bluenoise';
 import { download } from '../export/png';
 import { extractPalette, hexToRgb, resolvePalette, type RGB } from '../pipeline/palettes';
 import type { Source } from '../source/source';
 import type { Params } from '../state';
-import { actions, clock, requestRender, rt, store } from './core';
+import { actions, activeLayer, animatedParams, clock, requestRender, rt, store } from './core';
 import { mainTarget, type RenderTarget } from './gpu';
 import { glyphInfo, glyphPreview } from './panel/ascii';
 import { flash, info } from './shell';
@@ -21,6 +31,7 @@ const MAX_ATLASES = 16; // preset thumbnails need one per ASCII look
 let atlas: Atlas | null = null;
 // The grid is paired with the atlas it was built for, so exports never mix glyph sets.
 let lastAscii: { grid: AsciiGrid; atlas: Atlas } | null = null;
+export const shapeMatchers = [new ShapeMatcher(), new ShapeMatcher()];
 
 /** Effective depth and offset (fraction of the ramp) at the current clock. */
 function asciiModulation(p: Params): { depth: number; offset: number } {
@@ -63,7 +74,9 @@ function syncGlyphPreview(p: Params): void {
   const ramp = atlas.glyphs.slice(0, atlas.rampSize);
   const used = pickLevels(ramp.length, p.asciiDepth).map((i) => ramp[i]);
   glyphPreview.textContent = used.join('');
-  const missing = atlas.missing.length ? ` · ${atlas.missing.length} skipped (can’t be drawn at this size or font)` : '';
+  const missing = atlas.missing.length
+    ? ` · ${atlas.missing.length} skipped (can’t be drawn at this size or font)`
+    : '';
   glyphInfo.textContent = `${used.length} of ${ramp.length} glyphs, sparse → dense${missing}`;
 }
 store.subscribe((p, changed) => (changed === 'asciiDepth' || changed === 'mode') && syncGlyphPreview(p));
@@ -87,7 +100,9 @@ export function checkUserFont(): void {
   const id = store.params.asciiFont;
   if (store.params.mode === 'ascii' && isUserFontId(id) && !userFonts().includes(userFontName(id))) {
     // After the current task, so a "Loaded shared settings" message doesn't hide it.
-    setTimeout(() => flash(`Font “${userFontName(id)}” isn’t in this browser — add it under ASCII › Font, or a fallback is used`));
+    setTimeout(() =>
+      flash(`Font “${userFontName(id)}” isn’t in this browser — add it under ASCII › Font, or a fallback is used`),
+    );
   }
 }
 export function userFontsLoaded(): void {
@@ -135,7 +150,11 @@ export function drawAscii(p: Params, layer = 0, t: RenderTarget = mainTarget()):
   const cols = t.thumb ? Math.min(p.asciiColumns, 40) : p.asciiColumns;
   const rows = Math.max(1, Math.round(cols * (sh / sw) * (a.cellW / a.cellH)));
   const braille = a.rampSize === 0;
-  renderer.renderAdjust(p, false, braille ? [cols * 2, rows * 4] : [cols, rows]);
+  renderer.renderAdjust(
+    p,
+    false,
+    braille ? [cols * 2, rows * 4] : p.asciiShape > 0 ? [cols * SHAPE_W, rows * SHAPE_H] : [cols, rows],
+  );
 
   // Dense glyphs go where the image is closest to the glyph colour.
   const lightOnDark =
@@ -145,7 +164,8 @@ export function drawAscii(p: Params, layer = 0, t: RenderTarget = mainTarget()):
         ? luma(p.asciiFg) >= 0.5
         : luma(p.asciiFg) > luma(p.asciiBg);
   const { depth, offset } = asciiModulation(p);
-  const grid = buildGrid(renderer.readAdjusted(), cols, rows, {
+  const opts: GridOptions = {
+    shape: !braille && p.asciiShape > 0 ? { amount: p.asciiShape / 100, masks: a.shapes } : undefined,
     levels: braille ? null : pickLevels(a.rampSize, depth),
     edgeBase: a.rampSize,
     offset,
@@ -158,24 +178,45 @@ export function drawAscii(p: Params, layer = 0, t: RenderTarget = mainTarget()):
     seed: t.seed,
     boilAmount: p.boilAmount / 50,
     noiseTile: p.boilPattern === 'blue' ? blueNoiseTile() : null,
-  });
-  renderer.renderAscii(grid, a, p.asciiColor, p.asciiFg, p.asciiBg, p.asciiTransparent, layer);
-  if (layer !== 0 || t.thumb) return true;
-  lastAscii = { grid, atlas: a };
-  info.out.textContent = `${cols}×${rows} chars`;
+  };
+  const source = rt.current;
+  const renderGrid = (grid: AsciiGrid) => {
+    const lp = layer === 0 ? store.params : activeLayer(store.params)?.params;
+    if (!t.thumb) {
+      if (rt.showOriginal || source !== rt.current || renderer.contextLost || !lp || lp.mode !== 'ascii') return;
+      const latest = animatedParams(lp);
+      if ((opts.shape && latest.asciiShape <= 0) || currentAtlas(latest, layer, false)?.key !== a.key) return;
+    }
+    const layered = !t.thumb && !!activeLayer(store.params);
+    if (layered) renderer.setLayerTarget(layer, true);
+    renderer.renderAscii(grid, a, p.asciiColor, p.asciiFg, p.asciiBg, p.asciiTransparent, layer);
+    if (layered) {
+      renderer.setLayerTarget(null);
+      renderer.recomposite();
+    }
+    if (layer === 0 && !t.thumb) {
+      lastAscii = { grid, atlas: a };
+      info.out.textContent = `${cols}×${rows} chars`;
+      actions.drawSplit();
+      actions.afterDraw();
+    }
+  };
+  const data = renderer.readAdjusted();
+  if (opts.shape && !t.thumb) shapeMatchers[layer].request(data, cols, rows, opts, renderGrid);
+  else renderGrid(buildGrid(data, cols, rows, opts));
   return true;
 }
 
 // ---------- text exports ----------
 
-function asciiText(): string | null {
-  actions.renderFull(); // the grid at the set columns, not a fast playback preview
+async function asciiText(): Promise<string | null> {
+  await actions.renderReady();
   return lastAscii ? gridToText(lastAscii.grid, lastAscii.atlas.glyphs) : null;
 }
 
 /** The last grid as ANSI text, in the colours of the current settings. */
-function asciiAnsi(): string | null {
-  actions.renderFull();
+async function asciiAnsi(): Promise<string | null> {
+  await actions.renderReady();
   if (!lastAscii) return null;
   const p = store.params;
   return gridToAnsi(lastAscii.grid, lastAscii.atlas.glyphs, {
@@ -197,23 +238,23 @@ async function copy(text: string | null): Promise<void> {
   }
 }
 
-actions.copyText = () => copy(asciiText());
-actions.copyAnsi = () => copy(asciiAnsi());
+actions.copyText = async () => copy(await asciiText());
+actions.copyAnsi = async () => copy(await asciiAnsi());
 
-actions.exportAnsi = () => {
-  const text = asciiAnsi();
+actions.exportAnsi = async () => {
+  const text = await asciiAnsi();
   if (!text || !rt.current) return;
   download(new Blob([`${text}\n`], { type: 'text/plain;charset=utf-8' }), `${rt.current.name}-ascii.ans`);
 };
 
-actions.exportText = () => {
-  const text = asciiText();
+actions.exportText = async () => {
+  const text = await asciiText();
   if (!text || !rt.current) return;
   download(new Blob([`${text}\n`], { type: 'text/plain;charset=utf-8' }), `${rt.current.name}-ascii.txt`);
 };
 
-actions.exportHtml = () => {
-  actions.renderFull();
+actions.exportHtml = async () => {
+  await actions.renderReady();
   if (!lastAscii || !rt.current) return;
   const p = store.params;
   const html = gridToHtml(lastAscii.grid, lastAscii.atlas.glyphs, {

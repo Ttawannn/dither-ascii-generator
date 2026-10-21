@@ -1,5 +1,6 @@
 import { nearestIndex, paletteLab } from '../pipeline/oklab';
 import { BRAILLE_DOTS } from './atlas';
+import { shapeGlyph, SHAPE_H, SHAPE_W, SHAPE_SAMPLES } from './shape';
 
 export interface GridOptions {
   /** Atlas glyph ids used as brightness levels, sparse → dense (see pickLevels). null means braille. */
@@ -24,6 +25,8 @@ export interface GridOptions {
   boilAmount?: number;
   /** 64×64 blue-noise tile to take the boil jitter from instead of a hash. */
   noiseTile?: Uint8Array | null;
+  /** Sub-cell image and atlas masks only supplied when shape matching is enabled. */
+  shape?: { amount: number; masks: Float32Array };
 }
 
 export interface AsciiGrid {
@@ -47,8 +50,9 @@ export function buildGrid(data: Uint8Array, cols: number, rows: number, opts: Gr
   const levels = opts.levels ?? [];
   const lab = opts.palette && opts.perceptual ? paletteLab(opts.palette) : null;
   const shift = Math.round(opts.offset * levels.length);
-  const gw = braille ? cols * 2 : cols;
-  const gh = braille ? rows * 4 : rows;
+  const shape = !braille && opts.shape && opts.shape.amount > 0 ? opts.shape : null;
+  const gw = braille ? cols * 2 : shape ? cols * SHAPE_W : cols;
+  const gh = braille ? rows * 4 : shape ? rows * SHAPE_H : rows;
 
   // Luma, top row first.
   const luma = new Float32Array(gw * gh);
@@ -70,13 +74,23 @@ export function buildGrid(data: Uint8Array, cols: number, rows: number, opts: Gr
     if (!opts.seed) return 0;
     const v = tile
       ? tile[((y + ty) & 63) * 64 + ((x + tx) & 63)] / 255
-      : (Math.imul(x * 73856093 ^ y * 19349663, opts.seed * 83492791 + 1) >>> 0) / 4294967296;
+      : (Math.imul((x * 73856093) ^ (y * 19349663), opts.seed * 83492791 + 1) >>> 0) / 4294967296;
     return (v - 0.5) * amount;
   };
   const pixel = (x: number, y: number) => (gh - 1 - y) * gw * 4 + x * 4;
 
   const cells = new Uint8Array(cols * rows * 4);
   const glyphIds = new Uint16Array(cols * rows);
+  const target = new Float32Array(SHAPE_SAMPLES);
+  const cellLuma = shape ? new Float32Array(cols * rows) : luma;
+  if (shape)
+    for (let y = 0; y < rows; y++)
+      for (let x = 0; x < cols; x++) {
+        let sum = 0;
+        for (let sy = 0; sy < SHAPE_H; sy++)
+          for (let sx = 0; sx < SHAPE_W; sx++) sum += luma[(y * SHAPE_H + sy) * gw + x * SHAPE_W + sx];
+        cellLuma[y * cols + x] = sum / SHAPE_SAMPLES;
+      }
 
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
@@ -105,19 +119,38 @@ export function buildGrid(data: Uint8Array, cols: number, rows: number, opts: Gr
         r = data[p];
         g = data[p + 1];
         b = data[p + 2];
+        if (shape) {
+          r = g = b = 0;
+          for (let sy = 0; sy < SHAPE_H; sy++)
+            for (let sx = 0; sx < SHAPE_W; sx++) {
+              const x = col * SHAPE_W + sx,
+                y = row * SHAPE_H + sy,
+                p = pixel(x, y);
+              target[sy * SHAPE_W + sx] = density(luma[y * gw + x]);
+              r += data[p] / SHAPE_SAMPLES;
+              g += data[p + 1] / SHAPE_SAMPLES;
+              b += data[p + 2] / SHAPE_SAMPLES;
+            }
+        }
         const n = levels.length;
-        let d = density(luma[c]);
+        let d = density(cellLuma[c]);
         if (opts.dither) d += (bayer(col + ox, row + oy) - 0.5) / (n - 1);
         d += (shake(col, row) * 0.7) / (n - 1);
         let k = Math.min(n - 1, Math.max(0, Math.round(d * (n - 1))));
         if (shift) k = (((k + shift) % n) + n) % n;
         glyph = levels[k];
+        if (shape) glyph = shapeGlyph(target, shape.masks, levels, glyph, shape.amount);
         if (opts.edges) {
-          const edge = edgeGlyph(luma, cols, rows, col, row, opts.edgeThreshold);
+          const edge = edgeGlyph(cellLuma, cols, rows, col, row, opts.edgeThreshold);
           if (edge >= 0) glyph = opts.edgeBase + edge;
         }
       }
 
+      if (shape) {
+        r = Math.round(r);
+        g = Math.round(g);
+        b = Math.round(b);
+      }
       if (opts.palette) {
         const at = nearestIndex(opts.palette, lab, r / 255, g / 255, b / 255) * 3;
         [r, g, b] = [opts.palette[at] * 255 + 0.5, opts.palette[at + 1] * 255 + 0.5, opts.palette[at + 2] * 255 + 0.5];
@@ -161,7 +194,8 @@ export type AnsiDepth = 'truecolor' | '256';
 
 // The 6 levels of each axis of the 256-colour palette's colour cube.
 const CUBE = [0, 95, 135, 175, 215, 255];
-const nearestLevel = (v: number) => CUBE.reduce((best, c, i) => (Math.abs(c - v) < Math.abs(CUBE[best] - v) ? i : best), 0);
+const nearestLevel = (v: number) =>
+  CUBE.reduce((best, c, i) => (Math.abs(c - v) < Math.abs(CUBE[best] - v) ? i : best), 0);
 
 /** Nearest entry of the 256-colour terminal palette: the 6×6×6 cube (16–231) or the grey ramp (232–255). */
 export function ansi256(r: number, g: number, b: number): number {
@@ -232,7 +266,12 @@ export function gridToHtml(
     for (let col = 0; col < grid.cols; col++) {
       const c = row * grid.cols + col;
       const color = hex(grid.cells[c * 4], grid.cells[c * 4 + 1], grid.cells[c * 4 + 2]);
-      const style = opts.mode === 'color' || opts.mode === 'palette' ? `color:${color}` : opts.mode === 'colorBg' ? `background:${color}` : '';
+      const style =
+        opts.mode === 'color' || opts.mode === 'palette'
+          ? `color:${color}`
+          : opts.mode === 'colorBg'
+            ? `background:${color}`
+            : '';
       if (style !== runStyle) {
         flush();
         runStyle = style;

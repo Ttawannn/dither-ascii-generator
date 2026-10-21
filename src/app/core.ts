@@ -20,6 +20,8 @@ export const rt = {
   /** Frame time in seconds while exporting; null means real time. */
   clockOverride: null as number | null,
   exporting: null as { cancelled: boolean } | null,
+  /** Suppress queued/live redraws while an export waits for a complete full-resolution frame. */
+  renderingFull: false,
 };
 
 /**
@@ -27,12 +29,22 @@ export const rt = {
  * draw → export summary). Each feature module assigns its functions here when it loads, which
  * keeps the imports one-directional.
  */
+export const stippleProgress = {
+  busy: false,
+  value: 0,
+  listeners: new Set<(busy: boolean, progress: number) => void>(),
+};
+
 export const actions = {
+  generateStipple: async (_p: Params): Promise<void> => {},
+  cancelStipple: (): void => {},
   openSample: async (): Promise<void> => {},
   toggleWebcam: async (): Promise<void> => {},
   exportClick: async (): Promise<void> => {},
   /** Draw now at full resolution (ends a fast playback preview), for exports that read the result. */
   renderFull: (): void => {},
+  /** Render at full resolution and wait for all asynchronous glyph and diffusion work. */
+  renderReady: async (): Promise<void> => {},
   /** Render each image file with the current look and save them in one .zip. */
   batchExport: async (_files: File[]): Promise<void> => {},
   copyText: async (): Promise<void> => {},
@@ -61,10 +73,11 @@ export function setDrawer(fn: () => void): void {
 
 /** Draw on the next animation frame; repeated calls before then coalesce into one draw. */
 export function requestRender(): void {
+  if (rt.renderingFull) return;
   if (frame) return;
   frame = requestAnimationFrame(() => {
     frame = 0;
-    drawFn();
+    if (!rt.renderingFull) drawFn();
   });
 }
 
@@ -74,7 +87,8 @@ export const clock = () => rt.clockOverride ?? performance.now() / 1000;
 // Parsed animation lanes, cached per stored string.
 let lanesCache: { json: string; lanes: Lane[] } = { json: '', lanes: [] };
 export function lanesOf(p: Params): Lane[] {
-  if (lanesCache.json !== p.animLanes) lanesCache = { json: p.animLanes, lanes: parseLanes(p.animLanes, animatableSpec) };
+  if (lanesCache.json !== p.animLanes)
+    lanesCache = { json: p.animLanes, lanes: parseLanes(p.animLanes, animatableSpec) };
   return lanesCache.lanes;
 }
 

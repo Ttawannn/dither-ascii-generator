@@ -46,7 +46,7 @@ export function randomLook(random: () => number): Partial<Params> {
 
   if (chance(0.7)) {
     look.mode = 'dither';
-    look.algorithm = pick(ALGORITHMS.filter((a) => a.id !== 'noise')).id;
+    look.algorithm = pick(ALGORITHMS.filter((a) => a.id !== 'noise' && a.group !== 'stipple')).id;
     look.pixelSize = pick([1, 2, 2, 3, 3, 4]);
     if (/halftone|lines|crosshatch|honeycomb/.test(look.algorithm)) look.cellSize = int(4, 10);
     if (look.algorithm !== 'halftone-cmyk') {

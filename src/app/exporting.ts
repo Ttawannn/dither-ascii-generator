@@ -1,14 +1,28 @@
+import { stippleSvg } from '../export/stipple-svg';
+import { currentStipple, generateStipple } from './stippling';
 import type { AnimationFormat, FrameSequence } from '../export/animation';
 import { cmykHalftoneSvg, monoHalftoneSvg, type SvgSize } from '../export/halftone-svg';
 import { download, pngBlob } from '../export/png';
 import { canvasToSvg } from '../export/svg';
+import { activeEffects } from '../pipeline/effects';
 import { baseSpread } from '../pipeline/palettes';
 import { loadImageFile } from '../source/image';
 import { EXPORT_FORMATS, printLength, type Params } from '../state';
 import { writeZip, type ZipEntry } from '../zip';
 import { exportAudio } from './audio';
-import { actions, activeLayer, autoScale, lanesOf, lfoActive, requestRender, rt, store, transparentAscii, transparentOutput } from './core';
-import { currentAtlas } from './ascii-view';
+import {
+  actions,
+  activeLayer,
+  autoScale,
+  lanesOf,
+  lfoActive,
+  requestRender,
+  rt,
+  store,
+  transparentAscii,
+  transparentOutput,
+} from './core';
+import { currentAtlas, shapeMatchers } from './ascii-view';
 import { currentPalette, syncSwatches } from './dither-view';
 import { diffusers, renderer } from './gpu';
 import { batchBtn, exportBtn, exportInfo } from './panel/export';
@@ -73,6 +87,8 @@ function animationLength(): { count: number; fps: number } | string {
   const src = rt.current;
   const fps = p.exportFps;
   if (!src) return 'Load a source first';
+  if ([p, activeLayer(p)?.params].some((lp) => lp?.mode === 'dither' && lp.algorithm === 'stippling'))
+    return 'Stippling needs a still image';
   if (src.kind === 'image' && !p.animate && !lfoActive(p) && !lanesOf(p).length) {
     return 'Static image — animate a setting, turn on Boil, or load a video';
   }
@@ -99,7 +115,21 @@ actions.renderFull = () => {
 };
 
 /** Draw synchronously and wait until the canvas really shows the result (atlas built, worker done). */
-async function renderNow(): Promise<void> {
+let pendingFullRender: Promise<void> | null = null;
+function renderNow(): Promise<void> {
+  if (pendingFullRender) return pendingFullRender;
+  rt.renderingFull = true;
+  pendingFullRender = renderCompleteFrame().finally(() => {
+    rt.renderingFull = false;
+    pendingFullRender = null;
+    if (!rt.exporting) requestRender();
+  });
+  return pendingFullRender;
+}
+
+async function renderCompleteFrame(): Promise<void> {
+  for (const p of [store.params, activeLayer(store.params)?.params])
+    if (p?.mode === 'dither' && p.algorithm === 'stippling') await generateStipple(p);
   // Both layers' atlases must be ready (layer 2 only when it is on and in ASCII mode).
   const atlasesPending = () => {
     const layer = activeLayer(store.params);
@@ -111,7 +141,9 @@ async function renderNow(): Promise<void> {
   for (let tries = 0; atlasesPending() && tries < 100; tries++) await sleep(20);
   actions.renderFull();
   await Promise.all(diffusers.map((d) => d.idle()));
+  await Promise.all(shapeMatchers.map((d) => d.idle()));
 }
+actions.renderReady = renderNow;
 
 function seek(v: HTMLVideoElement, t: number): Promise<void> {
   if (Math.abs(v.currentTime - t) < 1e-4) return Promise.resolve();
@@ -173,7 +205,16 @@ function frameSequence(): FrameSequence | string {
 
 /** SVG of Halftone dot / CMYK as vector circles (one ink colour for Halftone dot, so a 2-colour palette). */
 function vectorDots(p: Params): boolean {
-  if (p.exportFormat !== 'svg' || p.mode !== 'dither' || !p.exportVectorDots) return false;
+  if (
+    p.exportFormat !== 'svg' ||
+    p.mode !== 'dither' ||
+    !p.exportVectorDots ||
+    activeLayer(p) ||
+    activeEffects(p).length ||
+    p.maskMode !== 'off'
+  )
+    return false;
+  if (p.animate || p.patternFollow > 0) return false;
   return p.algorithm === 'halftone-cmyk' || (p.algorithm === 'halftone' && currentPalette(p).colors.length === 2);
 }
 
@@ -191,13 +232,25 @@ function svgSize(p: Params, w: number, h: number): SvgSize | undefined {
 function svgOf(p: Params): string {
   if (p.mode !== 'dither') return 'SVG export is for dither mode';
   const size = svgSize(p, canvas.width, canvas.height);
+  if (p.algorithm === 'stippling' && !activeLayer(p) && !p.fxSort && !activeEffects(p).length && p.maskMode === 'off') {
+    const cached = currentStipple(p);
+    if (cached) return stippleSvg(cached.result, p.ink, p.paper, p.exportScale, size);
+  }
   if (vectorDots(p)) {
     const [width, height] = renderer.adjustedSize;
     const px = { data: renderer.readAdjusted(), width, height };
-    const rgb = (c: number[]) => `#${c.map((v) => Math.round(v * 255).toString(16).padStart(2, '0')).join('')}`;
+    const rgb = (c: number[]) =>
+      `#${c
+        .map((v) =>
+          Math.round(v * 255)
+            .toString(16)
+            .padStart(2, '0'),
+        )
+        .join('')}`;
     if (p.algorithm === 'halftone-cmyk') {
       return cmykHalftoneSvg(px, {
         cell: p.cellSize,
+        shape: p.halftoneShape,
         angles: [p.cmykAngleC, p.cmykAngleM, p.cmykAngleY, p.cmykAngleK],
         dotGain: p.cmykDotGain / 100,
         gcr: p.cmykGcr / 100,
@@ -212,6 +265,8 @@ function svgOf(p: Params): string {
     return monoHalftoneSvg(px, {
       cell: p.cellSize,
       angle: p.angle,
+      shape: p.halftoneShape,
+      linearLight: p.linearLight,
       spread: (p.strength / 100) * baseSpread(pal),
       ink: rgb(ink),
       paper: rgb(paper),
@@ -245,7 +300,12 @@ actions.exportClick = async () => {
   setOriginal(false);
 
   if (p.exportFormat === 'png' || p.exportFormat === 'svg') {
-    await renderNow();
+    try {
+      await renderNow();
+    } catch (error) {
+      flash((error as Error).message);
+      return;
+    }
     const blob = await stillBlob(p);
     if (typeof blob === 'string') return flash(blob);
     download(blob, `${name}.${p.exportFormat}`);

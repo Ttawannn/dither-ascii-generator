@@ -5,9 +5,15 @@ import { store } from '../core';
 
 /** Controls an effect needs besides its sliders. */
 const EXTRA_CONTROLS: Record<string, () => HTMLElement[]> = {
+  sort: () => [toggle('fxSortVertical', 'Vertical', store), toggle('fxSortReverse', 'Reverse sort', store)],
   tint: () => [
     el('div', { class: 'color-row single' }, colorInput('fxTintColor', 'Colour', store)),
-    select('fxTintMode', 'Blend', TINT_MODES.map((m) => ({ value: m.id, label: m.label })), store),
+    select(
+      'fxTintMode',
+      'Blend',
+      TINT_MODES.map((m) => ({ value: m.id, label: m.label })),
+      store,
+    ),
   ],
 };
 
