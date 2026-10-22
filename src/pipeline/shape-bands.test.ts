@@ -8,6 +8,10 @@ import {
 } from './shape-bands';
 
 describe('Luma Shapes bands', () => {
+  it('splits the default set into the rounded ranges 0–42, 43–84, 85–127, 128–170, 171–212, 213–255', () => {
+    expect(shapeSet().map((b) => b.end)).toEqual([42, 84, 127, 170, 212, 255]);
+  });
+
   it('covers all 256 brightness values with each supplied set', () => {
     for (const set of SHAPE_SETS) {
       const bands = shapeSet(set.id);
@@ -89,7 +93,7 @@ describe('Luma Shapes bands', () => {
 
   it('clamps dragged boundaries and keeps every band at least one level wide', () => {
     const bands = shapeSet();
-    expect(moveShapeBoundary(bands, 1, -999)[1].end).toBe(42);
+    expect(moveShapeBoundary(bands, 1, -999)[1].end).toBe(43);
     expect(moveShapeBoundary(bands, 1, 999)[1].end).toBe(126);
     expect(moveShapeBoundary(bands, 1, 90.6)[1].end).toBe(91);
     expect(moveShapeBoundary(bands, 5, 100)).toBe(bands);
@@ -104,13 +108,13 @@ describe('Luma Shapes bands', () => {
   it('resizes the final band by moving its left edge while preserving 255', () => {
     const bands = shapeSet();
     expect(shapeBandWidthLimit(bands, 0)).toBe(84);
-    expect(shapeBandWidthLimit(bands, 5)).toBe(85);
+    expect(shapeBandWidthLimit(bands, 5)).toBe(84);
     expect(resizeShapeBand(bands, 0, 20)[0].end).toBe(19);
     const final = resizeShapeBand(bands, 5, 70);
     expect(final[4].end).toBe(185);
     expect(final[5].end).toBe(255);
     expect(parseShapeBands(JSON.stringify(final))).not.toBeNull();
-    expect(resizeShapeBand(bands, 5, 999)[4].end).toBe(170);
+    expect(resizeShapeBand(bands, 5, 999)[4].end).toBe(171);
     expect(resizeShapeBand(bands, 5, -2)[4].end).toBe(254);
   });
 

@@ -23,6 +23,20 @@ export function lumaShapesEditor(store: ParamStore): HTMLElement {
     el('option', { value: '', disabled: '' }, 'Custom shapes'),
     ...SHAPE_SETS.map((s) => el('option', { value: s.id }, s.label)));
   setPicker.addEventListener('change', () => { selected = 0; write(shapeSet(setPicker.value)); });
+  // ‹ › step through the supplied sets (from custom shapes, › starts at the first and ‹ at the last).
+  const stepSet = (dir: number) => {
+    const i = SHAPE_SETS.findIndex((s) => s.id === setPicker.value);
+    const next = i < 0 ? (dir > 0 ? 0 : SHAPE_SETS.length - 1) : (i + dir + SHAPE_SETS.length) % SHAPE_SETS.length;
+    selected = 0;
+    write(shapeSet(SHAPE_SETS[next].id));
+  };
+  const prevSet = button('‹', () => stepSet(-1), 'btn small luma-step');
+  prevSet.setAttribute('aria-label', 'Previous shape set');
+  prevSet.title = 'Previous shape set';
+  const nextSet = button('›', () => stepSet(1), 'btn small luma-step');
+  nextSet.setAttribute('aria-label', 'Next shape set');
+  nextSet.title = 'Next shape set';
+  const count = el('span', { class: 'luma-count', title: 'Number of bands' });
   const shapePicker = el('select', { 'aria-label': 'Band shape' },
     ...BAND_SHAPES.map((s) => el('option', { value: s.id }, s.label)));
   shapePicker.addEventListener('change', () => {
@@ -31,8 +45,6 @@ export function lumaShapesEditor(store: ParamStore): HTMLElement {
       imageFile.click();
     } else edit({ shape: shapePicker.value as ShapeBand['shape'] });
   });
-  const color = el('input', { type: 'color', 'aria-label': 'Band colour' });
-  color.addEventListener('input', () => edit({ color: color.value }));
   const size = el('input', { type: 'range', min: '0', max: '100', step: '1', 'aria-label': 'Band size' });
   const sizeValue = el('span', { class: 'control-value' });
   size.addEventListener('input', () => edit({ size: Number(size.value) }));
@@ -72,15 +84,17 @@ export function lumaShapesEditor(store: ParamStore): HTMLElement {
   });
   const title = el('span', { class: 'control-label' });
   const split = button('Split band', () => write(splitShapeBand(bands(), selected)), 'btn small');
-  const remove = button('Remove band', () => {
+  /** Remove band i; the band below takes its range (the last band's neighbour takes it up to 255). */
+  const removeBand = (i: number) => {
     const next = bands();
     if (next.length <= 2) return;
-    const end = next[selected].end;
-    next.splice(selected, 1);
-    if (selected === next.length) next[next.length - 1].end = end;
+    const end = next[i].end;
+    next.splice(i, 1);
+    if (i === next.length) next[next.length - 1].end = end;
+    if (selected >= i && selected > 0) selected--;
     selected = Math.min(selected, next.length - 1);
     write(next);
-  }, 'btn small');
+  };
   const file = el('input', { type: 'file', accept: '.json,application/json', hidden: '' });
   file.addEventListener('change', async () => {
     const imported = file.files?.[0];
@@ -97,7 +111,15 @@ export function lumaShapesEditor(store: ParamStore): HTMLElement {
       status.textContent = 'Invalid shape set: use an exported JSON file';
     }
   });
-  let rows: { button: HTMLButtonElement; icon: HTMLElement; label: HTMLElement; range: HTMLElement }[] = [];
+  let rows: {
+    root: HTMLElement;
+    button: HTMLButtonElement;
+    icon: HTMLElement;
+    label: HTMLElement;
+    range: HTMLElement;
+    swatch: HTMLInputElement;
+    remove: HTMLButtonElement;
+  }[] = [];
   let segments: HTMLButtonElement[] = [];
   let handles: HTMLButtonElement[] = [];
   const previewKeys = new WeakMap<HTMLElement, string>();
@@ -160,11 +182,17 @@ export function lumaShapesEditor(store: ParamStore): HTMLElement {
         const icon = el('span', { class: 'luma-icon', 'aria-hidden': 'true' });
         const label = el('span', {});
         const range = el('span', { class: 'control-value', translate: 'no' });
-        const row = button('', () => { selected = i; sync(); }, 'luma-band');
-        row.append(icon, label, range);
-        return { button: row, icon, label, range };
+        const pick = button('', () => { selected = i; sync(); }, 'luma-band-pick');
+        pick.append(el('span', { class: 'luma-index', translate: 'no' }, `${i + 1}`), icon, label, range);
+        const swatch = el('input', { type: 'color', class: 'luma-swatch', 'aria-label': `Band ${i + 1} colour` });
+        swatch.addEventListener('input', () => write(bands().map((b, k) => (k === i ? { ...b, color: swatch.value } : b))));
+        const remove = button('×', () => removeBand(i), 'luma-band-x');
+        remove.setAttribute('aria-label', `Remove band ${i + 1}`);
+        remove.title = `Remove band ${i + 1}`;
+        const root = el('div', { class: 'luma-band' }, pick, swatch, remove);
+        return { root, button: pick, icon, label, range, swatch, remove };
       });
-      list.replaceChildren(...rows.map((r) => r.button));
+      list.replaceChildren(...rows.map((r) => r.root));
       segments = current.map((_, i) => {
         const segment = button('', () => { selected = i; sync(); }, 'luma-segment');
         segment.append(el('span', { class: 'luma-icon', 'aria-hidden': 'true' }));
@@ -178,8 +206,11 @@ export function lumaShapesEditor(store: ParamStore): HTMLElement {
       const start = i ? current[i - 1].end + 1 : 0;
       const shape = BAND_SHAPES.find((s) => s.id === band.shape)!;
       const row = rows[i];
-      row.button.classList.toggle('active', i === selected);
+      row.root.classList.toggle('active', i === selected);
       row.button.setAttribute('aria-pressed', `${i === selected}`);
+      row.swatch.value = band.color;
+      row.swatch.disabled = band.shape === 'empty';
+      row.remove.disabled = current.length <= 2;
       preview(row.icon, band);
       row.label.textContent = shape.label;
       row.range.textContent = `${start}–${band.end}`;
@@ -205,7 +236,7 @@ export function lumaShapesEditor(store: ParamStore): HTMLElement {
     const start = selected ? current[selected - 1].end + 1 : 0;
     title.textContent = `Band ${selected + 1}`;
     shapePicker.value = band.shape;
-    color.value = band.color;
+    count.textContent = `${current.length}`;
     size.value = `${band.size}`;
     size.style.setProperty('--fill', `${band.size}%`);
     sizeValue.textContent = `${band.size}%`;
@@ -221,31 +252,30 @@ export function lumaShapesEditor(store: ParamStore): HTMLElement {
     imageName.textContent = band.imageName ?? '';
     if (band.image) preview(selectedImage, { ...band, shape: 'image' });
     split.disabled = current.length >= MAX_SHAPE_BANDS || band.end <= start;
-    remove.disabled = current.length <= 2;
     setPicker.value = SHAPE_SETS.find((s) => JSON.stringify(shapeSet(s.id)) === store.params.shapeBands)?.id ?? '';
   }
   store.subscribe((_, key) => { if (key === 'shapeBands' || key === 'shapeBackground') sync(); });
   sync();
   return el('div', { class: 'luma-editor' },
     el('label', { class: 'control' }, el('span', { class: 'control-label' }, 'Shape set'),
-      el('div', { class: 'select' }, setPicker)),
+      el('div', { class: 'luma-set-row' }, el('div', { class: 'select' }, setPicker), prevSet, nextSet)),
     el('div', { class: 'pal-actions' },
       button('Import shapes', () => file.click(), 'btn small'),
       button('Export shapes', () => download(new Blob([JSON.stringify(bands(), null, 2)],
         { type: 'application/json' }), 'luma-shapes.json'), 'btn small')),
     file,
-    el('div', { class: 'subhead' }, 'Brightness bands'), strip,
-    el('div', { class: 'luma-scale', translate: 'no' }, '0', el('span', {}, '128'), '255'),
+    el('div', { class: 'luma-head' }, el('div', { class: 'subhead' }, 'Brightness bands'), count), strip,
+    el('div', { class: 'luma-scale', translate: 'no', 'aria-hidden': 'true' },
+      ...[0, 64, 128, 192, 255].map((v) => el('span', { style: `left: ${(v / 255) * 100}%` }, `${v}`))),
     el('div', { class: 'note' }, 'Drag a divider to change brightness ranges'),
     el('div', { class: 'pal-actions' }, split,
       button('Distribute', () => write(distributeShapeBands(bands())), 'btn small'),
       button('Reverse bands', () => write(reverseShapeBands(bands())), 'btn small')),
     list,
     el('div', { class: 'luma-selected' },
-      el('div', { class: 'control-row' }, title, remove),
+      el('div', { class: 'control-row' }, title),
       el('label', { class: 'control' }, el('span', { class: 'control-label' }, 'Band shape'),
         el('div', { class: 'select' }, shapePicker)),
-      el('label', { class: 'color-input' }, color, el('span', { class: 'control-label' }, 'Band colour')),
       el('div', { class: 'luma-upload' }, selectedImage, imageName,
         el('div', { class: 'pal-actions' }, button('Upload shape image', () => imageFile.click(), 'btn small'), clearImage),
         el('div', { class: 'note' }, 'PNG keeps transparency · images fit inside a 64×64 tile'), imageFile),

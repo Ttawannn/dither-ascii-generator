@@ -31,13 +31,16 @@ export const SHAPE_SETS = [
   { id: 'lines', label: 'Lines' },
 ];
 
+/** Upper boundary of band i of n equal bands (rounded: 0–42, 43–84, 85–127… for six). */
+const evenEnd = (i: number, n: number) => Math.round(((i + 1) * 256) / n) - 1;
+
 export function shapeSet(id = 'dots'): ShapeBand[] {
   const shapes: ShapeBand['shape'][] = id === 'geometric'
     ? ['empty', 'circle', 'diamond', 'square', 'cross', 'ring']
     : id === 'lines' ? ['empty', 'line', 'line', 'cross', 'cross', 'square']
       : ['empty', 'circle', 'circle', 'circle', 'circle', 'circle'];
   return shapes.map((shape, i) => ({
-    end: Math.floor((i + 1) * 256 / 6) - 1,
+    end: evenEnd(i, 6),
     shape,
     size: [0, 22, 38, 55, 72, 90][i],
     color: ['#171923', '#b8ac7d', '#8bbdc6', '#c6e7ed', '#e7f4f6', '#ffffff'][i],
@@ -110,7 +113,7 @@ export function splitShapeBand(bands: ShapeBand[], index: number): ShapeBand[] {
 }
 
 export function distributeShapeBands(bands: ShapeBand[]): ShapeBand[] {
-  return bands.map((band, i) => ({ ...band, end: Math.floor((i + 1) * 256 / bands.length) - 1 }));
+  return bands.map((band, i) => ({ ...band, end: evenEnd(i, bands.length) }));
 }
 
 /** Reverse the appearances while keeping the existing brightness boundaries. */

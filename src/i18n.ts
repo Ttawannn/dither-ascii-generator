@@ -39,6 +39,8 @@ const TH: Record<string, string> = {
   'Brightness bands': 'ช่วงความสว่าง', 'Band {n}': 'ช่วงที่ {n}',
   'Band {n}: {range}': 'ช่วงที่ {n}: {range}',
   'Band shape': 'รูปทรงของช่วง', 'Band colour': 'สีของช่วง', 'Band size': 'ขนาดรูปทรง',
+  'Band {n} colour': 'สีของช่วงที่ {n}', 'Remove band {n}': 'ลบช่วงที่ {n}',
+  'Previous shape set': 'ชุดรูปทรงก่อนหน้า', 'Next shape set': 'ชุดรูปทรงถัดไป', 'Number of bands': 'จำนวนช่วง',
   'Band upper limit': 'ขอบบนของช่วง', 'Band feather': 'ความนุ่มรอยต่อช่วง',
   'Feather pattern': 'รูปแบบรอยต่อ', 'Scatter': 'กระจายสุ่ม',
   'Split band': 'แบ่งช่วง', 'Remove band': 'ลบช่วง', 'Distribute': 'กระจายช่วงเท่ากัน',
@@ -539,8 +541,11 @@ const templates = new Map<Lang, Template[]>();
 function templatesFor(lang: Exclude<Lang, 'en'>): Template[] {
   let list = templates.get(lang);
   if (!list) {
+    // Most specific first: "Band {n} colour" must win over "Band {n}", which would also match it.
+    const literal = (k: string) => k.replace(PLACEHOLDER, '').length;
     list = Object.entries(DICTIONARIES[lang])
       .filter(([k]) => k.includes('{'))
+      .sort(([a], [b]) => literal(b) - literal(a))
       .map(([k, out]) => {
         const names = [...k.matchAll(PLACEHOLDER)].map((m) => m[1]);
         const re = new RegExp(`^${k.split(PLACEHOLDER).map((part, i) => (i % 2 ? '(.+?)' : escapeRe(part))).join('')}$`);

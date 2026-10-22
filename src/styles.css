@@ -1544,11 +1544,28 @@ html:lang(th) body * {
 .luma-boundary::after { content: ''; position: absolute; width: 9px; height: 9px; left: 7px; top: 19px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 2px var(--bg); }
 .luma-boundary:hover::after, .luma-boundary:focus-visible::after { background: var(--accent); box-shadow: 0 0 0 3px var(--bg), 0 0 0 4px var(--accent); }
 .luma-boundary:focus-visible { outline: 1px dashed var(--accent); outline-offset: 2px; }
-.luma-scale { display: flex; justify-content: space-between; color: var(--faint); font-size: 10px; margin: 7px 0 12px; }
+/* Ticks at 0 / 64 / 128 / 192 / 255; the end labels stay inside the strip. */
+.luma-scale { position: relative; height: 12px; color: var(--faint); font-size: 10px; margin: 7px 0 12px; }
+.luma-scale span { position: absolute; transform: translateX(-50%); }
+.luma-scale span:first-child { transform: none; }
+.luma-scale span:last-child { transform: translateX(-100%); }
+.luma-set-row { display: grid; grid-template-columns: 1fr auto auto; gap: 4px; }
+.luma-step { width: 28px; padding: 0; font-size: 14px; }
+.luma-head { display: flex; align-items: center; justify-content: space-between; }
+.luma-count { display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border: 1px solid var(--line-strong); border-radius: 10px; color: var(--muted); font-size: 10px; }
 .luma-bands { display: grid; gap: 4px; margin: 12px 0; }
-.luma-band { display: flex; gap: 9px; align-items: center; width: 100%; padding: 7px; border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; text-align: left; font: inherit; }
+.luma-band { display: flex; gap: 6px; align-items: center; padding: 0 6px 0 0; border: 1px solid var(--line); }
 .luma-band.active { border-color: var(--accent); }
-.luma-band .control-value { margin-left: auto; }
+.luma-band-pick { display: flex; flex: 1; min-width: 0; gap: 9px; align-items: center; padding: 7px; border: 0; background: transparent; color: var(--text); cursor: pointer; text-align: left; font: inherit; }
+.luma-band-pick .control-value { margin-left: auto; }
+.luma-index { width: 14px; color: var(--faint); font-size: 10px; }
+.luma-swatch { flex: none; width: 22px; height: 22px; padding: 0; border: 1px solid var(--line-strong); background: none; cursor: pointer; }
+.luma-swatch::-webkit-color-swatch-wrapper { padding: 0; }
+.luma-swatch::-webkit-color-swatch { border: 0; }
+.luma-swatch:disabled { opacity: 0.3; cursor: default; }
+.luma-band-x { flex: none; width: 22px; height: 22px; padding: 0; border: 0; background: none; color: var(--faint); cursor: pointer; font-size: 14px; }
+.luma-band-x:hover:not(:disabled) { color: var(--text); }
+.luma-band-x:disabled { opacity: 0.3; cursor: default; }
 .luma-icon { display: grid; place-items: center; width: 25px; height: 25px; font-size: 19px; }
 .luma-selected { border: 1px solid var(--accent); padding: 10px; margin-bottom: 12px; }
 .luma-editor .pal-actions { flex-wrap: wrap; }
