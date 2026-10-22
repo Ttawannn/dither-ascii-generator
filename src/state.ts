@@ -218,6 +218,10 @@ export interface Params {
   exportVectorDots: boolean;
   /** ANSI text export colours: 'truecolor' or '256'. */
   exportAnsi: string;
+  /** JPEG / WebP quality, 10–100. */
+  exportQuality: number;
+  /** File name template: {name} {mode} {algo} {date} {time}. */
+  exportName: string;
 }
 
 export const DEFAULTS: Params = {
@@ -382,15 +386,21 @@ export const DEFAULTS: Params = {
   exportUnit: 'cm',
   exportVectorDots: true,
   exportAnsi: 'truecolor',
+  exportQuality: 92,
+  exportName: '{name}-{mode}',
 };
 
 export const EXPORT_FORMATS = [
   { id: 'png', label: 'PNG image', animated: false },
   { id: 'svg', label: 'SVG vector (dither)', animated: false },
+  { id: 'jpg', label: 'JPEG image', animated: false },
+  { id: 'webp', label: 'WebP image', animated: false },
   { id: 'gif', label: 'GIF animation', animated: true },
   { id: 'webm', label: 'WebM video', animated: true },
   { id: 'mp4', label: 'MP4 video', animated: true },
 ];
+
+export const MAX_EXPORT_NAME = 80;
 
 export const isAnimatedFormat = (id: string) => EXPORT_FORMATS.some((f) => f.id === id && f.animated);
 
@@ -399,6 +409,7 @@ export const EXPORT_SLIDERS: Record<string, SliderSpec> = {
   duration: { key: 'exportDuration', label: 'Duration', min: 1, max: 30, step: 1, format: (v) => `${v} s` },
   fps: { key: 'exportFps', label: 'Frame rate', min: 5, max: 30, step: 1, format: (v) => `${v} fps` },
   dpi: { key: 'exportDpi', label: 'Resolution', min: 72, max: 1200, step: 1, format: (v) => `${v} dpi` },
+  quality: { key: 'exportQuality', label: 'Quality', min: 10, max: 100, step: 1, format: (v) => `${v}%` },
 };
 
 export const ANSI_DEPTHS = [
@@ -811,6 +822,7 @@ export function sanitize(data: unknown): Partial<Params> {
     if (ENUMS[key] && !ENUMS[key]!.includes(v as string)) continue;
     if (COLOR_KEYS.includes(key) && !HEX.test(v as string)) continue;
     if (key === 'asciiCustom' && (v as string).length > 64) continue;
+    if (key === 'exportName' && (v as string).length > MAX_EXPORT_NAME) continue;
     if (key === 'asciiInject' && [...(v as string)].length > MAX_INJECT) continue;
     if (key === 'asciiFont') {
       // Built-in ids, or a font the user added ('user:<name>'), which may only exist in their browser.

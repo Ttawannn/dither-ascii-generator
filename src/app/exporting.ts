@@ -5,12 +5,13 @@ import { hexToRgb } from '../pipeline/palettes';
 import { currentStipple, generateStipple } from './stippling';
 import type { AnimationFormat, FrameSequence } from '../export/animation';
 import { cmykHalftoneSvg, monoHalftoneSvg, type SvgSize } from '../export/halftone-svg';
-import { download, pngBlob } from '../export/png';
+import { exportFileName } from '../export/file-name';
+import { download, imageBlob } from '../export/png';
 import { canvasToSvg } from '../export/svg';
 import { activeEffects } from '../pipeline/effects';
 import { baseSpread } from '../pipeline/palettes';
 import { loadImageFile } from '../source/image';
-import { EXPORT_FORMATS, printLength, type Params } from '../state';
+import { EXPORT_FORMATS, isAnimatedFormat, printLength, type Params } from '../state';
 import { writeZip, type ZipEntry } from '../zip';
 import { exportAudio } from './audio';
 import {
@@ -49,7 +50,13 @@ function syncExportInfo(): void {
       ? ` · ${[canvas.width, canvas.height].map((n) => printLength(n * p.exportScale, p.exportDpi, p.exportUnit).toFixed(1)).join(' × ')} ${p.exportUnit} at ${p.exportDpi} dpi`
       : '';
     const dots = vectorDots(p) ? ' · vector dots' : '';
-    exportInfo.textContent = `→ ${size}${print}${dots}`;
+    const note =
+      p.exportFormat === 'jpg' && transparentOutput(p)
+        ? ' · JPEG can’t keep transparency: the background colour is used'
+        : p.exportFormat === 'webp' && p.exportPrint
+          ? ' · WebP files don’t store a print resolution'
+          : '';
+    exportInfo.textContent = `→ ${size}${print}${dots}${note}`;
     return;
   }
   const plan = animationLength();
@@ -299,14 +306,33 @@ function svgOf(p: Params): string {
 }
 const isSvg = (s: string) => s.startsWith('<svg');
 
-/** The current frame as a still file (PNG, or SVG when that is the format). */
+const IMAGE_TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp' };
+
+/** Background for formats without transparency: the ASCII background, or the mask colour outside a mask. */
+const matteOf = (p: Params) => (p.mode === 'ascii' && transparentAscii(p) ? p.asciiBg : p.maskColor);
+
+/** The current frame as a still file in the chosen format (PNG, SVG, JPEG or WebP). */
 async function stillBlob(p: Params): Promise<Blob | string> {
   if (p.exportFormat === 'svg') {
     const svg = svgOf(animatedParams(p));
     return isSvg(svg) ? new Blob([svg], { type: 'image/svg+xml' }) : svg;
   }
-  return pngBlob(canvas, p.exportScale, p.exportPrint ? p.exportDpi : undefined);
+  const type = IMAGE_TYPES[p.exportFormat];
+  try {
+    return await imageBlob(canvas, p.exportScale, {
+      type,
+      quality: p.exportQuality / 100,
+      dpi: p.exportPrint ? p.exportDpi : undefined,
+      matte: type === 'image/jpeg' && transparentOutput(p) ? matteOf(p) : undefined,
+    });
+  } catch (error) {
+    return (error as Error).message;
+  }
 }
+
+/** File name for an export of `src` with the current template. */
+const fileName = (p: Params, name: string, ext: string) =>
+  exportFileName(p.exportName, { name, mode: p.mode, algo: p.mode === 'ascii' ? p.asciiCharset : p.algorithm, date: new Date() }, ext);
 
 /** The Export button: saves a still, or renders an animation (clicking again cancels). */
 actions.exportClick = async () => {
@@ -317,10 +343,10 @@ actions.exportClick = async () => {
   const src = rt.current;
   if (!src) return;
   const p = store.params;
-  const name = `${src.name}-${p.mode}`;
+  const name = fileName(p, src.name, p.exportFormat);
   setOriginal(false);
 
-  if (p.exportFormat === 'png' || p.exportFormat === 'svg') {
+  if (!isAnimatedFormat(p.exportFormat)) {
     try {
       await renderNow();
     } catch (error) {
@@ -329,7 +355,7 @@ actions.exportClick = async () => {
     }
     const blob = await stillBlob(p);
     if (typeof blob === 'string') return flash(blob);
-    download(blob, `${name}.${p.exportFormat}`);
+    download(blob, name);
     return;
   }
 
@@ -357,12 +383,12 @@ actions.exportClick = async () => {
       isCancelled: () => job.cancelled,
       transparent: transparentOutput(p),
       // Transparent ASCII backgrounds fill with the background colour, masked-out areas with the mask colour.
-      matte: p.mode === 'ascii' && transparentAscii(p) ? p.asciiBg : p.maskColor,
+      matte: matteOf(p),
       onNote: flash,
       // An audio file driving audio lanes becomes the soundtrack.
       audio: p.exportFormat === 'gif' ? null : exportAudio(frames.count / frames.fps, video ? videoRange(video).start : 0),
     });
-    download(blob, `${name}.${p.exportFormat}`);
+    download(blob, name);
     flash(`Saved ${(blob.size / 1e6).toFixed(1)} MB`);
   } catch (err) {
     if (err instanceof ExportCancelled) flash('Export cancelled');
@@ -387,7 +413,7 @@ actions.batchExport = async (files) => {
   const images = files.filter((f) => f.type.startsWith('image/'));
   if (!images.length) return flash('Choose image files for a batch');
   const p = store.params;
-  const ext = p.exportFormat === 'svg' ? 'svg' : 'png';
+  const ext = isAnimatedFormat(p.exportFormat) ? 'png' : p.exportFormat;
   if (ext === 'svg' && p.mode !== 'dither') return flash('SVG export is for dither mode');
 
   const job = { cancelled: false };
@@ -414,13 +440,13 @@ actions.batchExport = async (files) => {
       renderer.setSource(src.element, src.width, src.height);
       if (p.palette === 'image') syncSwatches();
       await renderNow();
-      const blob = await stillBlob(store.params);
+      const blob = await stillBlob({ ...store.params, exportFormat: ext });
       src.dispose();
       if (typeof blob === 'string') {
         flash(blob);
         break;
       }
-      entries.push({ name: `${src.name}-${p.mode}.${ext}`, data: new Uint8Array(await blob.arrayBuffer()) });
+      entries.push({ name: fileName(p, src.name, ext), data: new Uint8Array(await blob.arrayBuffer()) });
     }
     if (entries.length && !job.cancelled) {
       download(new Blob([writeZip(entries).slice()], { type: 'application/zip' }), `batch-${p.mode}.zip`);

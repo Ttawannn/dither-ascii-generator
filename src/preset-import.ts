@@ -1,6 +1,7 @@
 import { ALGORITHMS } from './pipeline/algorithms';
 import { TINT_MODES } from './pipeline/effects';
 import { parseColorList, serializeColorList } from './pipeline/palettes';
+import { shapeSet, type ShapeBand } from './pipeline/shape-bands';
 import { sanitize, type Params } from './state';
 
 /**
@@ -89,14 +90,122 @@ const PATTERNS: [RegExp, string][] = [
   [/noise|random/, 'noise'],
 ];
 
-/** Our algorithm for a style name, and whether its lines come from threshold modulation. */
-function mapStyle(style: string): { algorithm: string; wave: boolean } | null {
+interface StyleMatch {
+  algorithm: string;
+  /** Lines from threshold modulation (Wave). */
+  wave: boolean;
+  /** A close equivalent rather than the same method. */
+  approx: boolean;
+  /** Shape for Luma Shapes grids. */
+  shape?: ShapeBand['shape'];
+}
+
+/** Known style ids. `~` marks a close equivalent; `+wave` adds threshold modulation. */
+const STYLES: Record<string, string> = {
+  'floyd-steinberg': 'floyd-steinberg',
+  atkinson: 'atkinson',
+  burkes: 'burkes',
+  stucki: 'stucki',
+  sierra: 'sierra',
+  'two-row-sierra': 'sierra2',
+  'sierra-lite': 'sierra-lite',
+  'jarvis-judice-ninke': 'jjn',
+  ostromukhov: 'ostromoukhov',
+  'fractal-diffuse': 'riemersma',
+  'random-ordered': 'noise',
+  noise: 'noise',
+  crosshatch: 'crosshatch',
+  stippling: 'stippling',
+  'color-separation': 'threshold',
+  none: 'threshold',
+  original: 'threshold',
+  'bayer-matrix': 'bayer4',
+  'stevenson-arce': '~jjn',
+  gaussian: '~floyd-steinberg',
+  'cracked-diffuse': '~floyd-steinberg',
+  'artifact-modulation': '~floyd-steinberg',
+  'vortex-diffusion': '~floyd-steinberg',
+  'bayer-void': '~bayer4',
+  checkers: '',
+  diamond: '',
+  'gridlock-traffic': '',
+  glitch: '',
+  diagonal: '',
+  mosaic: '~threshold',
+  'bit-tone': '~halftone',
+  'block-tone': '~halftone',
+  'pop-tone': '~halftone',
+  'print-pattern': '~halftone-cmyk',
+  beehive: '~honeycomb',
+  'orb-diffuse': '~orbs',
+  'orb-diffuse-x': '~orbs',
+  'orb-diffuse-y': '~orbs',
+  'orb-matrix': '~orbs',
+  'circle-grid': '~luma-shapes:circle',
+  'diamond-grid': '~luma-shapes:diamond',
+  'square-mosaic': '~luma-shapes:square',
+  'heart-grid': '~luma-shapes:circle',
+  'hexa-poly': '~honeycomb',
+  'tri-poly': '~honeycomb',
+  'penta-poly': '~honeycomb',
+  'low-poly': '~honeycomb',
+  camo: '~honeycomb',
+  'displace-contour': '~lines',
+  topography: '~lines',
+  'dotted-lines': '~lines',
+  'sine-distort': '~modulation',
+  'sine-wave-modulation': '~modulation',
+  thresholder: '~modulation',
+  wave: '~modulation',
+  waveform: '~modulation',
+  'waveform-alt': '~modulation',
+  'radial-burst': '~modulation',
+  'radial-peaks': '~modulation',
+  vortex: '~modulation',
+  'atkinson-line-modulation': '~atkinson+wave',
+  'atkinson-vhs': '~atkinson+wave',
+  'stucki-diffusion-lines': '~stucki+wave',
+  'artifact-modulation-glitch': '~floyd-steinberg+wave',
+  'contrast-aware-x': '~floyd-steinberg+wave',
+  'contrast-aware-y': '~floyd-steinberg+wave',
+  'modulated-diffuse-x': '~floyd-steinberg+wave',
+  'modulated-diffuse-y': '~floyd-steinberg+wave',
+  'ordered-modulation': '~floyd-steinberg+wave',
+  'smooth-diffuse': '~floyd-steinberg+wave',
+  'uniform-modulation-x': '~floyd-steinberg+wave',
+  'uniform-modulation-y': '~floyd-steinberg+wave',
+  'wave-modulation-x': '~floyd-steinberg+wave',
+  'wave-modulation-y': '~floyd-steinberg+wave',
+};
+
+export const KNOWN_STYLES = Object.keys(STYLES);
+
+/** Our algorithm for a style name; null when there is no equivalent. */
+function mapStyle(style: string): StyleMatch | null {
   const s = style.toLowerCase();
-  if (ALGORITHMS.some((a) => a.id === s)) return { algorithm: s, wave: false };
+  if (ALGORITHMS.some((a) => a.id === s)) return { algorithm: s, wave: false, approx: false };
+  const known = STYLES[s];
+  if (known !== undefined) {
+    if (!known) return null;
+    const m = /^(~?)([a-z0-9-]+)(?::([a-z]+))?(\+wave)?$/.exec(known)!;
+    return { algorithm: m[2], approx: !!m[1], shape: m[3] as ShapeBand['shape'] | undefined, wave: !!m[4] };
+  }
   const kernel = KERNELS.find(([re]) => re.test(s));
-  if (kernel) return { algorithm: kernel[1], wave: /modulat|wave/.test(s) };
+  if (kernel) return { algorithm: kernel[1], wave: /modulat|wave/.test(s), approx: true };
   const pattern = PATTERNS.find(([re]) => re.test(s));
-  return pattern ? { algorithm: pattern[1], wave: false } : null;
+  return pattern ? { algorithm: pattern[1], wave: false, approx: true } : null;
+}
+
+const BAYER_SIZES: Record<string, string> = { '2x2': 'bayer2', '4x4': 'bayer4', '8x8': 'bayer8', '16x16': 'bayer8' };
+
+/** A Luma Shapes set drawing every non-empty band as `shape`, coloured from the palette when there is one. */
+function shapeGrid(shape: ShapeBand['shape'], colors: string[]): string {
+  const bands = shapeSet().map((b, i) => ({
+    ...b,
+    shape: b.shape === 'empty' ? b.shape : shape,
+    color: colors.length >= 2 ? colors[Math.round((i * (colors.length - 1)) / 5)] : b.color,
+  }));
+  return JSON.stringify(bands);
 }
 
 /** Which of our sections an effect instance's type belongs to. */
@@ -188,20 +297,28 @@ function importExternal(p: Obj): ImportResult {
   const style = str(ds.style);
   const mapped = style ? mapStyle(style) : null;
   if (style && !mapped) skipped.push(`Dither style “${style}” (kept the default)`);
-  if (mapped) {
-    out.algorithm = mapped.algorithm;
-    if (style!.toLowerCase() !== mapped.algorithm)
-      approximated.push(`Dither style “${style}” → ${ALGORITHMS.find((a) => a.id === mapped.algorithm)!.label}`);
-  }
-  const scale = num(ds.scale);
-  if (scale && scale > 0) {
-    out.pixelSize = clamp(Math.round(100 / scale), 1, 16);
-    approximated.push('Scale → pixel size');
-  }
-  const threshold = num(ds.luminanceThreshold);
-  if (threshold !== undefined) out.threshold = threshold;
-
   const controls = isObj(ds.controls) ? ds.controls : {};
+  if (mapped) {
+    const bayer = style!.toLowerCase() === 'bayer-matrix' ? BAYER_SIZES[str(controls.matrixSize) ?? '4x4'] : undefined;
+    out.algorithm = bayer ?? mapped.algorithm;
+    if (mapped.approx || controls.matrixSize === '16x16')
+      approximated.push(`Dither style “${style}” → ${ALGORITHMS.find((a) => a.id === out.algorithm)!.label}`);
+    if (mapped.algorithm === 'threshold') out.threshold = 50; // nearest colour, no dithering
+    if (mapped.shape) {
+      out.shapeBands = shapeGrid(mapped.shape, colors);
+      if (colors.length >= 2) out.shapeBackground = colors[0];
+    }
+  }
+  // Block size in px is 51 − scale (50 when missing). Stacked lists use their own scale, read as a percentage.
+  const stacked = !isObj(p.effectInstances) && Array.isArray(p.fxStack);
+  const scale = num(ds.scale);
+  const block = stacked ? clamp(Math.round(100 / (scale || 100)), 1, 16) : Math.max(1, Math.round(51 - (scale || 50)));
+  if (stacked && scale && scale > 0) approximated.push('Scale → pixel size');
+  if (style || scale !== undefined) {
+    out.pixelSize = clamp(block, 1, 16);
+    if (block > 16) approximated.push('Scale → pixel size (capped at 16 px)');
+  }
+  if (num(ds.luminanceThreshold) !== undefined) skipped.push('Luminance threshold (shadow cut-off)');
   for (const key of [
     'linearLight',
     'paletteMixing',
@@ -228,7 +345,19 @@ function importExternal(p: Obj): ImportResult {
       ].includes(key)
     )
       continue;
-    if (key === 'cellSize' && v !== undefined) out.cellSize = v;
+    if (key === 'matrixSize' && style?.toLowerCase() === 'bayer-matrix') continue;
+    if (key === 'serpentine' && typeof value === 'boolean') out.serpentine = value;
+    else if (key === 'errorStrength' && v !== undefined) {
+      out.diffusion = clamp(v, 0, 100);
+      if (v > 100) approximated.push(`Error strength ${v}% (capped at 100%)`);
+    } else if (key === 'errorReduction' && v !== undefined && v > 0) out.diffusion = clamp(Math.round(100 / v), 0, 100);
+    else if (key === 'dotSize' && v !== undefined && style?.toLowerCase() === 'bit-tone')
+      out.cellSize = clamp(4 * Math.round(v) * block, 2, 32);
+    else if (key === 'blockSize' && v !== undefined && style?.toLowerCase() === 'mosaic') {
+      out.pixelSize = clamp(Math.round(v) * block, 1, 16);
+      if (Math.round(v) * block > 16) approximated.push('Mosaic block size (capped at 16 px)');
+    } else if (key === 'lineSpacing' && v !== undefined) out.cellSize = v;
+    else if (key === 'cellSize' && v !== undefined) out.cellSize = v;
     else if (key === 'orbSize' && v !== undefined) out.orbSize = v;
     else if (key === 'orbCount' && v !== undefined) out.orbCount = v;
     else if (key === 'orbIntensity' && v !== undefined) out.orbIntensity = v;
@@ -365,7 +494,12 @@ function importExternal(p: Obj): ImportResult {
         if (!inst.enabled) break;
         const color = parseColorList(str(s.color) ?? '')[0];
         if (color) out.fxTintColor = color;
-        const mode = str(s.blendMode);
+        // "colorDodge", "Colour Dodge" and "color_dodge" all read as color-dodge.
+        const mode = str(s.blendMode)
+          ?.replace(/([a-z])([A-Z])/g, '$1-$2')
+          .toLowerCase()
+          .replace(/colour/g, 'color')
+          .replace(/[\s_]+/g, '-');
         if (mode && TINT_MODES.some((m) => m.id === mode)) out.fxTintMode = mode;
         else if (mode) skipped.push(`Tint blend mode “${mode}”`);
         if (n('opacity') !== undefined) out.fxTintOpacity = n('opacity');

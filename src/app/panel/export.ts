@@ -1,5 +1,5 @@
-import { ANSI_DEPTHS, EXPORT_FORMATS, EXPORT_SLIDERS, EXPORT_UNITS, isAnimatedFormat } from '../../state';
-import { button, el, section, select, showWhen, slider, toggle } from '../../ui/controls';
+import { ANSI_DEPTHS, EXPORT_FORMATS, EXPORT_SLIDERS, EXPORT_UNITS, isAnimatedFormat, MAX_EXPORT_NAME } from '../../state';
+import { button, el, section, select, showWhen, slider, textInput, toggle } from '../../ui/controls';
 import { actions, store } from '../core';
 
 /** Size / frame-count summary under the export settings; filled by exporting.ts. */
@@ -17,6 +17,9 @@ batchPicker.addEventListener('change', () => {
 export const batchBtn = button('Batch…', () => batchPicker.click(), 'btn small');
 batchBtn.title = 'Choose several images: each is saved with this look, together in one .zip';
 
+const fileNameInput = textInput('exportName', 'File name', store, MAX_EXPORT_NAME);
+fileNameInput.title = 'Tags: {name} {mode} {algo} {date} {time}';
+
 export const exportSection = section(
   'Export',
   select(
@@ -26,6 +29,7 @@ export const exportSection = section(
     store,
   ),
   slider(EXPORT_SLIDERS.scale, store),
+  showWhen(slider(EXPORT_SLIDERS.quality, store), store, (p) => p.exportFormat === 'jpg' || p.exportFormat === 'webp'),
   showWhen(slider(EXPORT_SLIDERS.duration, store), store, (p) => isAnimatedFormat(p.exportFormat)),
   showWhen(slider(EXPORT_SLIDERS.fps, store), store, (p) => isAnimatedFormat(p.exportFormat)),
   showWhen(
@@ -40,6 +44,7 @@ export const exportSection = section(
     store,
     (p) => still(p) && p.exportPrint,
   ),
+  fileNameInput,
   exportInfo,
   showWhen(el('div', { class: 'pal-actions' }, batchBtn, batchPicker), store, still),
   showWhen(

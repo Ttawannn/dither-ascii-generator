@@ -49,14 +49,35 @@ vec3 hueRotate(vec3 c, float a) {
   return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca);
 }
 
-// Blend tint colour t over base b (both straight RGB) with TINT_MODES[mode].
+float sat(vec3 c) {
+  return max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
+}
+
+// Give `c` the saturation (max − min) `s`, keeping the order of its channels.
+vec3 setSat(vec3 c, float s) {
+  float lo = min(c.r, min(c.g, c.b));
+  float range = sat(c);
+  return range > 1e-5 ? (c - lo) * s / range : vec3(0.0);
+}
+
+// Blend tint colour t over base b (both straight RGB) with TINT_MODES[mode]. Mirrored in blend.ts.
 vec3 blend(vec3 b, vec3 t, int mode) {
   if (mode == 0) return b * t;
   if (mode == 1) return 1.0 - (1.0 - b) * (1.0 - t);
   if (mode == 2) return mix(2.0 * b * t, 1.0 - 2.0 * (1.0 - b) * (1.0 - t), step(0.5, b));
   if (mode == 3) return mix(b - (1.0 - 2.0 * t) * b * (1.0 - b), b + (2.0 * t - 1.0) * (sqrt(b) - b), step(0.5, t));
   if (mode == 4) return setLum(t, dot(b, LUMA));
-  return 1.0 - min(vec3(1.0), (1.0 - b) / max(t, vec3(1e-3)));
+  if (mode == 5) return 1.0 - min(vec3(1.0), (1.0 - b) / max(t, vec3(1e-3)));
+  if (mode == 6) return mix(2.0 * b * t, 1.0 - 2.0 * (1.0 - b) * (1.0 - t), step(0.5, t));
+  if (mode == 7) return abs(b - t);
+  if (mode == 8) return b + t - 2.0 * b * t;
+  if (mode == 9) return max(b, t);
+  if (mode == 10) return min(b, t);
+  if (mode == 11) return min(vec3(1.0), b / max(1.0 - t, vec3(1e-3)));
+  if (mode == 12) return setLum(setSat(t, sat(b)), dot(b, LUMA));
+  if (mode == 13) return setLum(setSat(b, sat(t)), dot(b, LUMA));
+  if (mode == 14) return setLum(b, dot(t, LUMA));
+  return t;
 }
 
 float hash(vec2 p) {

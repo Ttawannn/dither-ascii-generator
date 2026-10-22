@@ -57,6 +57,16 @@ export const TINT_MODES = [
   { id: 'soft-light', label: 'Soft light' },
   { id: 'color', label: 'Colour' },
   { id: 'color-burn', label: 'Colour burn' },
+  { id: 'hard-light', label: 'Hard light' },
+  { id: 'difference', label: 'Difference' },
+  { id: 'exclusion', label: 'Exclusion' },
+  { id: 'lighten', label: 'Lighten' },
+  { id: 'darken', label: 'Darken' },
+  { id: 'color-dodge', label: 'Colour dodge' },
+  { id: 'hue', label: 'Hue' },
+  { id: 'saturation', label: 'Saturation' },
+  { id: 'luminosity', label: 'Luminosity' },
+  { id: 'normal', label: 'Normal' },
 ];
 
 export const EFFECTS: EffectDef[] = [

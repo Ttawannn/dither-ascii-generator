@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { importPreset, importPresetList, looksLikePreset } from './preset-import';
+import { KNOWN_STYLES, importPreset, importPresetList, looksLikePreset } from './preset-import';
 import { presetFile, presetFileName, presetListFile } from './presets';
 import { normalizeOrder } from './pipeline/effects';
 
@@ -48,7 +48,7 @@ describe('importPreset', () => {
     expect(r.skipped).toEqual([]);
   });
 
-  it('maps the palette, style, scale and threshold', () => {
+  it('maps the palette, style and scale, and reports the shadow cut-off', () => {
     const r = importPreset(external())!;
     expect(r.name).toBe('Test look');
     expect(r.params).toMatchObject({
@@ -57,8 +57,66 @@ describe('importPreset', () => {
       customRamp: true,
       algorithm: 'atkinson',
       pixelSize: 2,
-      threshold: 60,
     });
+    expect(r.params.threshold).toBeUndefined();
+    expect(r.approximated).toEqual(['Brightness and contrast (100 read as unchanged)']);
+    expect(r.skipped).toContain('Luminance threshold (shadow cut-off)');
+  });
+
+  it('turns scale into a block size of 51 − scale', () => {
+    const px = (scale?: number) => importPreset(external({ dither: { scale } }))!.params.pixelSize;
+    expect(px(45)).toBe(6);
+    expect(px(50)).toBe(1);
+    expect(px(undefined)).toBe(1);
+    expect(px(60)).toBe(1);
+    expect(px(20)).toBe(16);
+    expect(importPreset(external({ dither: { scale: 20 } }))!.approximated).toContain('Scale → pixel size (capped at 16 px)');
+  });
+
+  it('converts diffusion controls by meaning', () => {
+    const p = (style: string, controls: object) => importPreset(external({ dither: { style, controls } }))!;
+    expect(p('atkinson', { serpentine: true, errorReduction: 2 }).params).toMatchObject({ serpentine: true, diffusion: 50 });
+    expect(p('burkes', { errorStrength: 80 }).params.diffusion).toBe(80);
+    const strong = p('sierra', { errorStrength: 150 });
+    expect(strong.params.diffusion).toBe(100);
+    expect(strong.approximated).toContain('Error strength 150% (capped at 100%)');
+  });
+
+  it('picks the Bayer size from the matrix size', () => {
+    const bayer = (matrixSize?: string) => importPreset(external({ dither: { style: 'bayer-matrix', controls: { matrixSize } } }))!;
+    expect(bayer('2x2').params.algorithm).toBe('bayer2');
+    expect(bayer(undefined).params.algorithm).toBe('bayer4');
+    expect(bayer('8x8').params.algorithm).toBe('bayer8');
+    expect(bayer('8x8').approximated).not.toContain('Dither style “bayer-matrix” → Bayer 8×8');
+    const big = bayer('16x16');
+    expect(big.params.algorithm).toBe('bayer8');
+    expect(big.approximated.some((a) => a.startsWith('Dither style “bayer-matrix”'))).toBe(true);
+    expect(big.skipped).not.toContain('Dither control “matrixSize”');
+  });
+
+  it('maps tile and dot sizes onto pixel and cell size', () => {
+    const mosaic = importPreset(external({ dither: { style: 'mosaic', scale: 49, controls: { blockSize: 4 } } }))!;
+    expect(mosaic.params).toMatchObject({ algorithm: 'threshold', threshold: 50, pixelSize: 8 });
+    const bit = importPreset(external({ dither: { style: 'bit-tone', scale: 50, controls: { dotSize: 3 } } }))!;
+    expect(bit.params).toMatchObject({ algorithm: 'halftone', cellSize: 12 });
+  });
+
+  it('draws shape grids with Luma Shapes in the palette colours', () => {
+    const r = importPreset(external({ dither: { style: 'diamond-grid' } }))!;
+    expect(r.params.algorithm).toBe('luma-shapes');
+    const bands = JSON.parse(r.params.shapeBands!) as { shape: string; color: string }[];
+    expect(bands.map((b) => b.shape)).toEqual(['empty', 'diamond', 'diamond', 'diamond', 'diamond', 'diamond']);
+    expect(bands[5].color).toBe('#0055ff');
+    expect(r.params.shapeBackground).toBe('#000000');
+  });
+
+  it('never drops a known style silently', () => {
+    for (const style of KNOWN_STYLES) {
+      const r = importPreset(external({ dither: { style } }))!;
+      const reported = r.approximated.some((a) => a.includes(`“${style}”`)) || r.skipped.some((s) => s.includes(`“${style}”`));
+      expect(r.params.algorithm !== undefined || reported, style).toBe(true);
+      if (r.params.algorithm === undefined) expect(reported, style).toBe(true);
+    }
   });
 
   it('maps adjustments around 100 as unchanged and skips the ones with no known scale', () => {
@@ -138,8 +196,8 @@ describe('importPreset', () => {
       boilAmount: 36,
       boilFps: 7,
     });
-    expect(r.params.fxTintMode).toBeUndefined();
-    expect(r.skipped).toEqual(expect.arrayContaining(['Tint blend mode “difference”', 'Glow “quality”']));
+    expect(r.params.fxTintMode).toBe('difference');
+    expect(r.skipped).toContain('Glow “quality”');
     expect(r.params.fxOrder).toBe(normalizeOrder('finish,glow,tint'));
   });
 
@@ -201,5 +259,18 @@ describe('preset files round-trip', () => {
     expect(presetFileName('Blue lines')).toBe('Blue-lines.json');
     expect(presetFileName('ลายเส้น/สีฟ้า?')).toBe('ลายเส้นสีฟ้า.json');
     expect(presetFileName('  ')).toBe('look.json');
+  });
+});
+
+describe('tint blend names', () => {
+  const tint = (blendMode: string) =>
+    importPreset({ preset: { dither: {}, effectInstances: { t: { type: 'tint', settings: { enabled: true, blendMode } } } } })!;
+
+  it('reads blend modes however they are written', () => {
+    expect(tint('colorDodge').params.fxTintMode).toBe('color-dodge');
+    expect(tint('Hard Light').params.fxTintMode).toBe('hard-light');
+    expect(tint('luminosity').params.fxTintMode).toBe('luminosity');
+    expect(tint('normal').params.fxTintMode).toBe('normal');
+    expect(tint('pinLight').skipped).toContain('Tint blend mode “pin-light”');
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { crc32 } from '../crc32';
-import { withDpi } from './png';
+import { withDpi, withJpegDpi } from './png';
 
 function chunk(type: string, data: number[]): number[] {
   const body = [...type].map((c) => c.charCodeAt(0)).concat(data);
@@ -43,5 +43,30 @@ describe('withDpi', () => {
 
   it('rejects other files', () => {
     expect(() => withDpi(new Uint8Array(20), 300)).toThrow();
+  });
+});
+
+describe('withJpegDpi', () => {
+  const jfif = [0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0];
+  const body = [0xff, 0xdb, 0, 3, 9, 0xff, 0xd9];
+
+  it('sets the density in an existing JFIF header', () => {
+    const out = withJpegDpi(Uint8Array.from([0xff, 0xd8, ...jfif, ...body]), 300);
+    expect(out[13]).toBe(1);
+    expect([...out.subarray(14, 18)]).toEqual([1, 44, 1, 44]);
+    expect(out.length).toBe(2 + jfif.length + body.length);
+    expect([...out.subarray(20)]).toEqual(body);
+  });
+
+  it('inserts a JFIF header when there is none', () => {
+    const out = withJpegDpi(Uint8Array.from([0xff, 0xd8, ...body]), 72);
+    expect([...out.subarray(0, 4)]).toEqual([0xff, 0xd8, 0xff, 0xe0]);
+    expect(String.fromCharCode(...out.subarray(6, 11))).toBe('JFIF\0');
+    expect([out[13], out[14], out[15]]).toEqual([1, 0, 72]);
+    expect([...out.subarray(20)]).toEqual(body);
+  });
+
+  it('refuses other files', () => {
+    expect(() => withJpegDpi(Uint8Array.from([137, 80, 78, 71]), 300)).toThrow('Not a JPEG');
   });
 });
