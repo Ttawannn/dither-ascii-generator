@@ -43,6 +43,11 @@ describe('translate', () => {
     expect(translate('→ 600×400 · 18 frames · 1.2 s', 'th')).toBe('→ 600×400 · 18 เฟรม · 1.2 s');
   });
 
+  it('prefers the most specific template', () => {
+    expect(translate('Band 3 colour', 'th')).toBe('สีของช่วงที่ 3');
+    expect(translate('Band 3', 'th')).toBe('ช่วงที่ 3');
+  });
+
   it('fills templates with the values from the English text', () => {
     expect(translate('Imported “Night”', 'th')).toBe('นำเข้า “Night” แล้ว');
     expect(translate('Saved 3 images in a .zip · couldn’t read a.png, b.png', 'th')).toBe(
