@@ -35,7 +35,7 @@ export async function loadImageFile(file: File, maxSize: number): Promise<Source
     });
     full.close();
   }
-  return imageSource(bitmap, baseName(file), width, height);
+  return { ...imageSource(bitmap, baseName(file), width, height), file };
 }
 
 /** Procedural test image: tonal ramps, colour and shapes — useful for judging dither quality. */

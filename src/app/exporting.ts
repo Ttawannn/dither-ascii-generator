@@ -1,4 +1,7 @@
 import { stippleSvg } from '../export/stipple-svg';
+import { lumaShapesSvg } from '../export/luma-shapes-svg';
+import { decodeBandImage, parseShapeBands, BAND_IMAGE_SIZE } from '../pipeline/shape-bands';
+import { hexToRgb } from '../pipeline/palettes';
 import { currentStipple, generateStipple } from './stippling';
 import type { AnimationFormat, FrameSequence } from '../export/animation';
 import { cmykHalftoneSvg, monoHalftoneSvg, type SvgSize } from '../export/halftone-svg';
@@ -13,6 +16,7 @@ import { exportAudio } from './audio';
 import {
   actions,
   activeLayer,
+  animatedParams,
   autoScale,
   lanesOf,
   lfoActive,
@@ -161,10 +165,10 @@ function frameSequence(): FrameSequence | string {
   const { fps, count } = plan;
   const { animate, boilFps } = store.params;
   // Boil keeps its own pace regardless of the export frame rate.
-  const boilSeed = (i: number) => (animate ? Math.floor((i * boilFps) / fps) + 1 : 0);
-  const at = (i: number) => {
+  const boilSeed = (i: number) => (animate && store.params.temporalPattern === 'off' ? Math.floor((i * boilFps) / fps) + 1 : 0);
+  const at = (i: number, start = 0) => {
     rt.seed = boilSeed(i);
-    rt.clockOverride = i / fps;
+    rt.clockOverride = start + i / fps;
   };
 
   if (src.kind === 'video') {
@@ -175,7 +179,7 @@ function frameSequence(): FrameSequence | string {
       fps,
       render: async (i) => {
         await seek(v, start + i / fps);
-        at(i);
+        at(i, start);
         await renderNow();
       },
     };
@@ -232,6 +236,23 @@ function svgSize(p: Params, w: number, h: number): SvgSize | undefined {
 function svgOf(p: Params): string {
   if (p.mode !== 'dither') return 'SVG export is for dither mode';
   const size = svgSize(p, canvas.width, canvas.height);
+  if (p.algorithm === 'luma-shapes') {
+    if (activeLayer(p) || activeEffects(p).length || p.maskMode !== 'off')
+      return 'Vector shapes need a single layer without effects or a mask — use PNG for the complete image';
+    const images = new Map<number, string>();
+    (parseShapeBands(p.shapeBands) ?? []).forEach((band, i) => {
+      if (!band.image) return;
+      const bytes = new Uint8ClampedArray(decodeBandImage(band.image));
+      const tint = hexToRgb(band.color);
+      for (let j = 0; j < bytes.length; j += 4) for (let c = 0; c < 3; c++) bytes[j + c] = Math.round(bytes[j + c] * tint[c]);
+      const tile = document.createElement('canvas'); tile.width = tile.height = BAND_IMAGE_SIZE;
+      tile.getContext('2d')!.putImageData(new ImageData(bytes, BAND_IMAGE_SIZE, BAND_IMAGE_SIZE), 0, 0);
+      images.set(i, tile.toDataURL('image/png'));
+    });
+    const [w, h] = renderer.adjustedSize;
+    try { return lumaShapesSvg(renderer.readAdjusted(), w, h, p, images, size, rt.seed); }
+    catch (error) { return (error as Error).message; }
+  }
   if (p.algorithm === 'stippling' && !activeLayer(p) && !p.fxSort && !activeEffects(p).length && p.maskMode === 'off') {
     const cached = currentStipple(p);
     if (cached) return stippleSvg(cached.result, p.ink, p.paper, p.exportScale, size);
@@ -281,7 +302,7 @@ const isSvg = (s: string) => s.startsWith('<svg');
 /** The current frame as a still file (PNG, or SVG when that is the format). */
 async function stillBlob(p: Params): Promise<Blob | string> {
   if (p.exportFormat === 'svg') {
-    const svg = svgOf(p);
+    const svg = svgOf(animatedParams(p));
     return isSvg(svg) ? new Blob([svg], { type: 'image/svg+xml' }) : svg;
   }
   return pngBlob(canvas, p.exportScale, p.exportPrint ? p.exportDpi : undefined);
@@ -339,7 +360,7 @@ actions.exportClick = async () => {
       matte: p.mode === 'ascii' && transparentAscii(p) ? p.asciiBg : p.maskColor,
       onNote: flash,
       // An audio file driving audio lanes becomes the soundtrack.
-      audio: p.exportFormat === 'gif' ? null : exportAudio(frames.count / frames.fps),
+      audio: p.exportFormat === 'gif' ? null : exportAudio(frames.count / frames.fps, video ? videoRange(video).start : 0),
     });
     download(blob, `${name}.${p.exportFormat}`);
     flash(`Saved ${(blob.size / 1e6).toFixed(1)} MB`);

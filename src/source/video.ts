@@ -28,11 +28,13 @@ function waitForFrame(v: HTMLVideoElement): Promise<void> {
   });
 }
 
-export async function loadVideoFile(file: File): Promise<Source> {
+export async function loadVideoFile(file: File, autoplay = true): Promise<Source> {
   const v = makeVideo();
   const url = URL.createObjectURL(file);
   v.src = url;
+  const palette: { frame?: ImageBitmap } = {};
   const dispose = () => {
+    palette.frame?.close();
     v.pause();
     v.removeAttribute('src');
     v.load();
@@ -45,7 +47,9 @@ export async function loadVideoFile(file: File): Promise<Source> {
     dispose();
     throw err;
   }
-  await v.play().catch(() => undefined); // autoplay may be refused; the play button still works
+  try { palette.frame = await createImageBitmap(v); }
+  catch (error) { dispose(); throw error; }
+  if (autoplay) await v.play().catch(() => undefined);
   return {
     kind: 'video',
     name: baseName(file),
@@ -54,6 +58,8 @@ export async function loadVideoFile(file: File): Promise<Source> {
     originalWidth: v.videoWidth,
     originalHeight: v.videoHeight,
     element: v,
+    file,
+    paletteElement: palette.frame,
     dispose,
   };
 }

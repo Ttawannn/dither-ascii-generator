@@ -12,9 +12,10 @@ import { flash, info, stage, transport } from './shell';
 const MAX_SOURCE_SIZE = 4096;
 
 export function setSource(src: Source): void {
+  rt.clockOverride = null;
+  renderer.setSource(src.element, src.width, src.height);
   rt.current?.dispose();
   rt.current = src;
-  renderer.setSource(src.element, src.width, src.height);
   if (store.params.palette === 'image') syncSwatches();
   stage.classList.remove('empty');
   info.name.textContent = src.name;

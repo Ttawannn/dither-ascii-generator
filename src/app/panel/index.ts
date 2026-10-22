@@ -11,6 +11,7 @@ import { layerSection } from './layer';
 import { maskSection } from './mask';
 import { presetsSection } from './presets';
 import { sourceSection } from './source';
+import { projectSection } from './project';
 
 // The settings panel, top to bottom. Each section lives in its own module.
 
@@ -26,6 +27,7 @@ export const panel = el(
     'div',
     { class: 'panel-scroll' },
     sourceSection.root,
+    projectSection.root,
     presetsSection.root,
     adjustSection.root,
     effectSection.root,

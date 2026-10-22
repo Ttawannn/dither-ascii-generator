@@ -1,5 +1,6 @@
-import { BAND_LABELS, EASES, LOOPS, MAX_LANES, newLane, serializeLanes, type Lane } from '../../anim';
+import { BAND_LABELS, LOOPS, MAX_LANES, newLane, serializeLanes, type Lane } from '../../anim';
 import { BAND_IDS } from '../../audio-levels';
+import { TEMPORAL_PATTERNS, TEMPORAL_SLIDERS } from '../../temporal';
 import {
   audioKind,
   audioName,
@@ -29,9 +30,11 @@ import {
 } from '../../state';
 import { button, el, freeSelect, freeSlider, section, select, showWhen, slider, toggle } from '../../ui/controls';
 import { lanesOf, store } from '../core';
+import { keyframeEditor, timelineControls } from './timeline';
 
 /** Settings a lane can drive, labelled with enough context to tell them apart. */
 const LANE_TARGETS = [
+  ...TEMPORAL_SLIDERS.map((s) => ({ group: 'Animation', key: s.key, label: s.label })),
   ...ADJUST_SLIDERS.map((s) => ({ group: 'Adjust', key: s.key, label: s.label })),
   ...Object.values(DITHER_SLIDERS).map((s) => ({ group: 'Dither', key: s.key, label: s.label })),
   ...Object.entries(ASCII_SLIDERS).map(([name, s]) => ({
@@ -77,7 +80,6 @@ function addLane(): void {
 }
 
 function laneCard(lane: Lane): HTMLElement {
-  const spec = animatableSpec(lane.key)!;
   const modeBtn = (mode: Lane['mode'], label: string) => {
     const b = button(label, () => updateLane(lane.id, { mode }, true), lane.mode === mode ? 'chip active' : 'chip');
     b.setAttribute('aria-pressed', `${lane.mode === mode}`);
@@ -85,12 +87,6 @@ function laneCard(lane: Lane): HTMLElement {
   };
   const remove = button('×', () => setLanes(lanesOf(store.params).filter((l) => l.id !== lane.id), true), 'chip chip-icon');
   remove.title = 'Stop animating';
-  const useCurrent = (field: 'from' | 'to') => {
-    const b = button('Use current', () => updateLane(lane.id, { [field]: store.params[lane.key] }, true), 'link');
-    b.title = 'Set to the slider’s current value';
-    return b;
-  };
-  const range = { min: spec.min, max: spec.max, step: spec.step, format: spec.format };
 
   const body =
     lane.mode === 'audio'
@@ -133,14 +129,7 @@ function laneCard(lane: Lane): HTMLElement {
           ),
         ]
       : [
-          el('div', { class: 'lane-key' }, freeSlider({ ...range, label: 'From' }, lane.from, (v) => updateLane(lane.id, { from: v })), useCurrent('from')),
-          el('div', { class: 'lane-key' }, freeSlider({ ...range, label: 'To' }, lane.to, (v) => updateLane(lane.id, { to: v })), useCurrent('to')),
-          freeSelect(
-            'Easing',
-            EASES.map((e) => ({ value: e.id, label: e.label })),
-            lane.ease,
-            (v) => updateLane(lane.id, { ease: v as Lane['ease'] }),
-          ),
+          keyframeEditor(lane, (patch, rebuild) => updateLane(lane.id, patch, rebuild)),
           freeSelect(
             'Loop',
             LOOPS.map((l) => ({ value: l.id, label: l.label })),
@@ -172,6 +161,7 @@ function renderLanes(): void {
   addLaneBtn.disabled = lanes.length >= MAX_LANES;
 }
 store.subscribe((_, changed) => changed === 'animLanes' && !editingLanes && renderLanes());
+store.subscribe((_, changed) => changed === 'animDuration' && renderLanes());
 renderLanes();
 
 const hasKeyLanes = (p: Params) => lanesOf(p).some((l) => l.mode === 'keys');
@@ -200,9 +190,12 @@ function syncAudio(): void {
   playBtn.textContent = audioPlaying() ? 'Pause' : 'Play';
   stopBtn.hidden = !kind;
 }
+let previousAudioKind = audioKind();
 onAudioChange(() => {
   syncAudio();
-  renderLanes(); // the "choose an input" hint on audio lanes
+  if (previousAudioKind !== audioKind()) {
+    previousAudioKind = audioKind(); renderLanes();
+  }
 });
 syncAudio();
 
@@ -232,6 +225,9 @@ export const animationSection = section(
       slider(BOIL_SLIDER, store),
       select('boilPattern', 'Pattern', BOIL_PATTERNS.map((b) => ({ value: b.id, label: b.label })), store),
       slider(BOIL_AMOUNT_SLIDER, store),
+      select('temporalPattern', 'Temporal pattern', TEMPORAL_PATTERNS.map((p) => ({ value: p.id, label: p.label })), store),
+      showWhen(el('div', {}, ...TEMPORAL_SLIDERS.map((s) => slider(s, store)),
+        toggle('temporalLoop', 'Loop temporal pattern', store)), store, (p) => p.temporalPattern !== 'off'),
       el('div', { class: 'note' }, 'Pattern and amount shape the jitter in error diffusion and ASCII'),
     ),
     store,
@@ -240,7 +236,8 @@ export const animationSection = section(
   el('div', { class: 'subhead' }, 'Animate settings'),
   el('div', { class: 'lane-add' }, el('div', { class: 'select' }, laneTarget), addLaneBtn),
   laneList,
-  showWhen(slider(ANIM_DURATION_SLIDER, store), store, hasKeyLanes),
+  timelineControls,
+  slider(ANIM_DURATION_SLIDER, store),
   showWhen(
     el('div', { class: 'note lane-tip' }, 'Export the same duration as the timeline for a seamless loop.'),
     store,

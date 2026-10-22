@@ -11,6 +11,10 @@ export interface Source {
   originalWidth: number;
   originalHeight: number;
   element: ImageBitmap | HTMLVideoElement;
+  /** Original encoded source, retained for portable projects. */
+  file?: File;
+  /** Stable palette sampling frame for video sources. */
+  paletteElement?: ImageBitmap;
   dispose(): void;
 }
 

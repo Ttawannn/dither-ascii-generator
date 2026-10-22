@@ -12,6 +12,9 @@ uniform vec3 u_tone;         // shadows, midtones, highlights: -1 .. 1
 uniform float u_hue;         // radians
 uniform bool u_invert;
 uniform bool u_bypass;
+uniform int u_temporal;
+uniform vec4 u_temporalParams; // amount, scale, angle, phase
+uniform float u_temporalSeed;
 
 in vec2 v_uv;
 out vec4 outColor;
@@ -57,6 +60,19 @@ void main() {
     if (u_hue != 0.0) c = clamp(hueRotate(c, u_hue), 0.0, 1.0);
 
     if (u_invert) c = 1.0 - c;
+    if (u_temporal > 0 && u_temporalParams.x > 0.0) {
+      float phase = u_temporalParams.w * 6.28318531 + u_temporalSeed * 2.399963;
+      vec2 p = v_uv * (100.0 / u_temporalParams.y);
+      vec2 dir = vec2(cos(u_temporalParams.z), sin(u_temporalParams.z));
+      float along = dot(p, dir);
+      float noise = sin(dot(p, vec2(12.9898, 78.233)) + u_temporalSeed * 3.17);
+      float f = sin(along * 6.28318531 - phase);
+      if (u_temporal == 1) f = sin(along * 3.1 + sin(dot(p, vec2(-dir.y, dir.x)) * 4.7 + phase) + u_temporalSeed);
+      if (u_temporal == 2) f = pow(0.5 + 0.5 * f, 8.0) * 2.0 - 0.25;
+      if (u_temporal == 4) f = sin(dot(floor(p), vec2(12.9898, 78.233)) + phase + u_temporalSeed);
+      if (u_temporal == 1) f = mix(f, noise * cos(phase), 0.3);
+      c += f * u_temporalParams.x * 0.25;
+    }
   }
 
   outColor = vec4(clamp(c, 0.0, 1.0), 1.0);

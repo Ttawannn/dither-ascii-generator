@@ -15,6 +15,7 @@ export interface ShapeBand {
   shape: typeof BAND_SHAPES[number]['id'];
   size: number;
   color: string;
+  rotation?: number;
   /** Straight-alpha RGBA, 64×64, base64. Embedded so presets remain portable. */
   image?: string;
   imageName?: string;
@@ -59,7 +60,8 @@ export function parseShapeBands(raw: string): ShapeBand[] | null {
     const bands: ShapeBand[] = [];
     for (const item of data) {
       if (!item || typeof item !== 'object') return null;
-      const { end, shape, size, color, image, imageName } = item as Record<string, unknown>;
+      const { end, shape, size, color, image, imageName, rotation } = item as Record<string, unknown>;
+      if (rotation !== undefined && (typeof rotation !== 'number' || !Number.isFinite(rotation) || rotation < -180 || rotation > 180)) return null;
       if (typeof end !== 'number' || !Number.isInteger(end) || end <= previous || end > 255 || end < 0 ||
           !BAND_SHAPES.some((s) => s.id === shape) ||
           typeof size !== 'number' || !Number.isFinite(size) || size < 0 || size > 100 ||
@@ -68,6 +70,7 @@ export function parseShapeBands(raw: string): ShapeBand[] | null {
       if (imageName !== undefined && (typeof imageName !== 'string' || imageName.length > 80)) return null;
       if (shape === 'image' && image === undefined) return null;
       bands.push({ end, shape: shape as ShapeBand['shape'], size, color: color.toLowerCase(),
+        ...(rotation === undefined ? {} : { rotation: rotation as number }),
         ...(image === undefined ? {} : { image: image as string }),
         ...(imageName === undefined ? {} : { imageName: imageName as string }) });
       previous = end;

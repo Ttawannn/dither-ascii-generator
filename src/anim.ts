@@ -8,6 +8,9 @@ import type { NumericKey, Params, SliderSpec } from './state';
  * Lanes are stored as a JSON string in `Params.animLanes`.
  */
 export interface Lane {
+  points?: Keyframe[];
+  start?: number;
+  end?: number;
   id: number;
   key: NumericKey;
   mode: 'lfo' | 'keys' | 'audio';
@@ -25,6 +28,27 @@ export interface Lane {
   band: Band;
   /** Seconds of audio averaged, 0..1 (0 = follow every beat). */
   smooth: number;
+}
+
+export interface Keyframe { time: number; value: number; ease: 'linear' | 'smooth' | 'step' }
+export const MAX_POINTS = 32;
+export function lanePoints(lane: Lane): Keyframe[] {
+  return lane.points?.length ? lane.points : [
+    { time: 0, value: lane.from, ease: lane.ease }, { time: 1, value: lane.to, ease: lane.ease },
+  ];
+}
+
+function parsePoints(value: unknown, spec: SliderSpec): Keyframe[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const points = new Map<number, Keyframe>();
+  for (const raw of value.slice(0, MAX_POINTS)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const p = raw as Record<string, unknown>;
+    if (typeof p.time !== 'number' || !Number.isFinite(p.time) || typeof p.value !== 'number' || !Number.isFinite(p.value)) continue;
+    const time = clamp(p.time, 0, 1);
+    points.set(time, { time, value: clamp(p.value, spec.min, spec.max), ease: pick(p.ease, ['linear', 'smooth', 'step'], 'linear') });
+  }
+  return points.size >= 2 ? [...points.values()].sort((a, b) => a.time - b.time) : undefined;
 }
 
 /** Loudness 0..1 of a band, averaged over `window` seconds (supplied by the app's audio input). */
@@ -100,6 +124,9 @@ export function parseLanes(json: string, specFor: SpecFor): Lane[] {
       loop: pick(o.loop, LOOPS.map((l) => l.id), 'pingpong'),
       band: pick(o.band, BAND_IDS, 'bass'),
       smooth: clamp(num(o.smooth, 0.1), 0, 1),
+      ...(parsePoints(o.points, spec) ? { points: parsePoints(o.points, spec) } : {}),
+      ...(typeof o.start === 'number' ? { start: clamp(num(o.start, 0), 0, 29.99) } : {}),
+      ...(typeof o.end === 'number' ? { end: clamp(num(o.end, 30), Math.min(30, num(o.start, 0) + 0.01), 30) } : {}),
     });
     if (lanes.length === MAX_LANES) break;
   }
@@ -138,7 +165,24 @@ export function laneValue(
     // Louder pushes the value up from the slider by up to `amount` of the range.
     v = base + (audio ? audio(lane.band, lane.smooth) : 0) * lane.amount * (spec.max - spec.min);
   } else {
-    v = lane.from + (lane.to - lane.from) * keyProgress(lane, t, duration);
+    const start = Math.min(lane.start ?? 0, Math.max(0, duration - 0.01));
+    const end = Math.min(lane.end ?? duration, duration);
+    const span = Math.max(0.01, end - start);
+    if (!lane.points?.length) v = lane.from + (lane.to - lane.from) * keyProgress(lane, Math.max(0, t - start), span);
+    else {
+      const x = t <= start ? 0 : keyProgress({ ...lane, ease: 'linear' }, t - start, span);
+      const points = lanePoints(lane);
+      if (x <= points[0].time) v = points[0].value;
+      else if (x >= points[points.length - 1].time) v = points[points.length - 1].value;
+      else {
+        const i = points.findIndex((p) => p.time > x);
+        const a = points[i - 1], b = points[i];
+        let u = (x - a.time) / Math.max(1e-8, b.time - a.time);
+        if (a.ease === 'smooth') u = u * u * (3 - 2 * u);
+        if (a.ease === 'step') u = 0;
+        v = a.value + (b.value - a.value) * u;
+      }
+    }
   }
   v = Math.round(v / spec.step) * spec.step;
   return clamp(Number(v.toFixed(6)), spec.min, spec.max);

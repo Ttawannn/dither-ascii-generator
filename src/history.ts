@@ -7,6 +7,8 @@ export class History<T> {
   private past: T[] = [];
   private future: T[] = [];
   private lastChange = -Infinity;
+  private grouping = false;
+  private groupChanged = false;
 
   constructor(
     private current: T,
@@ -16,13 +18,23 @@ export class History<T> {
 
   /** The state became `next` at time `now` (ms). */
   change(next: T, now: number): void {
-    if (now - this.lastChange > this.coalesceMs) {
+    if ((this.grouping && !this.groupChanged) || (!this.grouping && now - this.lastChange > this.coalesceMs)) {
       this.past.push(this.current);
       if (this.past.length > this.limit) this.past.shift();
     }
     this.future = [];
     this.current = next;
     this.lastChange = now;
+    if (this.grouping) this.groupChanged = true;
+  }
+
+  beginStep(): void { this.lastChange = -Infinity; }
+  beginGroup(): void { this.grouping = true; this.groupChanged = false; }
+  endGroup(): void { this.grouping = false; this.lastChange = -Infinity; }
+
+  clear(next: T): void {
+    this.current = next; this.past = []; this.future = []; this.lastChange = -Infinity;
+    this.grouping = this.groupChanged = false;
   }
 
   /** Step back; returns the state to restore, or null at the start. */

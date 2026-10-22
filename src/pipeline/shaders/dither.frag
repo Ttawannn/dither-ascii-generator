@@ -9,6 +9,7 @@ uniform float u_spread;     // strength × palette base spread
 uniform float u_threshold;  // 0..1, threshold algorithm only
 uniform float u_cell;       // pattern cell size in pixels
 uniform float u_angle;      // pattern angle in radians
+uniform vec3 u_modulation;
 uniform uint u_seed;
 uniform vec2 u_offset;      // pattern shift; changes per frame when boiling
 uniform vec2 u_size;        // output size in pixels
@@ -36,6 +37,9 @@ uniform vec3 u_bandBackground;
 uniform float u_bandFeather;
 uniform bool u_bandScatter;
 uniform sampler2D u_bandImages; // 12 vertical RGBA tiles, each 64×64
+uniform int u_layout;
+uniform vec4 u_shapeVariation;
+uniform bool u_shapeTransparent;
 
 out vec4 outColor;
 
@@ -135,6 +139,12 @@ float pattern(vec2 fc) {
   // Follow image: smoothed brightness shifts the pattern by up to two cells, so lines and cells
   // bend along the shapes instead of running straight.
   if (u_follow > 0.0) r += u_follow * 2.0 * dot(texelFetch(u_smooth, ivec2(gl_FragCoord.xy), 0).rgb, LUMA);
+  if (u_algo == 13) {
+    float l = dot(texelFetch(u_src, ivec2(gl_FragCoord.xy), 0).rgb, LUMA);
+    float phase = r.y + u_modulation.z + (l - 0.5) * u_modulation.x * 3.0;
+    float d = abs(fract(phase + 0.5) - 0.5) * 2.0;
+    return clamp(d / max(0.01, u_modulation.y), 0.0, 1.0);
+  }
   if (u_algo == 9) return honeycomb(r);
   float lineA = 0.5 - 0.5 * cos(TAU * r.y);
   if (u_algo == 4) return dotScreen(r);
@@ -230,12 +240,25 @@ vec3 cmyk(vec3 c, vec2 fc) {
 }
 
 // Sample one source value per cell so the entire symbol belongs to the same band.
-vec3 lumaShapes(vec2 fc) {
+float shapeHash(ivec2 p, uint seed) {
+  uint h = uint(p.x) * 1664525u + uint(p.y) * 1013904223u + seed;
+  h ^= h >> 16; h *= 0x7feb352du; h ^= h >> 15; h *= 0x846ca68bu; h ^= h >> 16;
+  return float(h) / 4294967295.0;
+}
+
+vec4 lumaShapes(vec2 fc) {
+  vec4 background = u_shapeTransparent ? vec4(0.0) : vec4(u_bandBackground, 1.0);
   float s = sin(u_angle), c = cos(u_angle);
   mat2 rotate = mat2(c, s, -s, c);
   vec2 grid = rotate * (fc + u_offset) / u_cell;
+  float stagger = u_layout == 1 ? mod(floor(grid.y), 2.0) * 0.5 : 0.0;
+  grid.x -= stagger;
   vec2 cell = floor(grid);
-  vec2 centre = transpose(rotate) * ((cell + 0.5) * u_cell) - u_offset;
+  ivec2 ic = ivec2(cell);
+  uint seed = uint(u_shapeVariation.w);
+  float amount = max(u_layout == 2 ? 0.8 : 0.0, u_shapeVariation.x);
+  vec2 jitter = (vec2(shapeHash(ic, seed), shapeHash(ic, seed + 101u)) - 0.5) * amount;
+  vec2 centre = transpose(rotate) * ((cell + 0.5 + jitter + vec2(stagger, 0.0)) * u_cell) - u_offset;
   ivec2 sampleAt = ivec2(clamp(centre, vec2(0.0), u_size - 1.0));
   float luma = dot(texelFetch(u_src, sampleAt, 0).rgb, LUMA);
   float rank = u_bandScatter ? hash(uvec2(ivec2(cell))) : bayer(ivec2(cell), 3);
@@ -247,18 +270,21 @@ vec3 lumaShapes(vec2 fc) {
     if (luma < u_bands[i].x + (rank - 0.5) * width * u_bandFeather) { band = i; break; }
   }
   int shape = int(u_bands[band].y);
-  float radius = u_bands[band].z * 0.5;
-  if (shape == 0 || radius <= 0.0) return u_bandBackground;
+  float radius = u_bands[band].z * 0.5 * (1.0 - shapeHash(ic, seed + 202u) * u_shapeVariation.y);
+  if (shape == 0 || radius <= 0.0) return background;
+  float angle = u_bands[band].w + (shapeHash(ic, seed + 303u) * 2.0 - 1.0) * u_shapeVariation.z;
+  vec2 localCell = grid - cell - 0.5 - jitter;
+  localCell = mat2(cos(angle), -sin(angle), sin(angle), cos(angle)) * localCell;
   if (shape == 7) {
-    vec2 local = (fract(grid) - 0.5) / (radius * 2.0) + 0.5;
-    if (any(lessThan(local, vec2(0.0))) || any(greaterThan(local, vec2(1.0)))) return u_bandBackground;
+    vec2 local = localCell / (radius * 2.0) + 0.5;
+    if (any(lessThan(local, vec2(0.0))) || any(greaterThan(local, vec2(1.0)))) return background;
     // Raw tiles are top-down; cell coordinates grow upwards. Half-texel padding avoids tile bleed.
     vec2 uv = vec2((0.5 + local.x * 63.0) / 64.0,
       (float(band) * 64.0 + 0.5 + (1.0 - local.y) * 63.0) / 768.0);
     vec4 image = texture(u_bandImages, uv);
-    return mix(u_bandBackground, image.rgb * u_bandColors[band], image.a);
+    return vec4(image.rgb * u_bandColors[band] * image.a, image.a) + background * (1.0 - image.a);
   }
-  vec2 q = abs(fract(grid) - 0.5);
+  vec2 q = abs(localCell);
   float d = length(q) - radius;
   if (shape == 2) d = max(q.x, q.y) - radius;
   if (shape == 3) d = (q.x + q.y - radius) * 0.70710678;
@@ -266,12 +292,13 @@ vec3 lumaShapes(vec2 fc) {
   if (shape == 5) d = min(q.x, q.y) - radius * 0.35;
   if (shape == 6) d = abs(length(q) - radius * 0.8) - radius * 0.2;
   float aa = max(fwidth(d) * 0.5, 0.0001);
-  return mix(u_bandBackground, u_bandColors[band], 1.0 - smoothstep(-aa, aa, d));
+  float coverage = 1.0 - smoothstep(-aa, aa, d);
+  return mix(background, vec4(u_bandColors[band], 1.0), coverage);
 }
 
 void main() {
   if (u_algo == 12) {
-    outColor = vec4(lumaShapes(gl_FragCoord.xy), 1.0);
+    outColor = lumaShapes(gl_FragCoord.xy);
     return;
   }
   vec3 c = texelFetch(u_src, ivec2(gl_FragCoord.xy), 0).rgb;

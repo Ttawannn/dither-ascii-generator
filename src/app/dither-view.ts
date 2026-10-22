@@ -17,7 +17,7 @@ let extracted: { source: Source; count: number; colors: RGB[] } | null = null;
 export function currentPalette(p: Params = store.params): Palette {
   const src = rt.current;
   if (p.palette === 'image' && src && (extracted?.source !== src || extracted.count !== p.levels)) {
-    extracted = { source: src, count: p.levels, colors: extractPalette(src.element, src.width, src.height, p.levels) };
+    extracted = { source: src, count: p.levels, colors: extractPalette(src.paletteElement ?? src.element, src.width, src.height, p.levels) };
   }
   return resolvePalette(p.palette, {
     levels: p.levels,

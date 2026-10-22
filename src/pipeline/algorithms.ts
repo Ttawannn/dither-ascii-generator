@@ -20,6 +20,7 @@ export const ALGORITHMS: Algorithm[] = [
   { id: 'orbs', label: 'Orbs', group: 'pattern', shader: 10 },
   { id: 'halftone-cmyk', label: 'Halftone CMYK', group: 'pattern', shader: 11 },
   { id: 'luma-shapes', label: 'Luma Shapes', group: 'pattern', shader: 12 },
+  { id: 'modulation', label: 'Modulation Lines', group: 'pattern', shader: 13 },
   { id: 'floyd-steinberg', label: 'Floyd–Steinberg', group: 'diffusion' },
   { id: 'atkinson', label: 'Atkinson', group: 'diffusion' },
   { id: 'jjn', label: 'Jarvis–Judice–Ninke', group: 'diffusion' },

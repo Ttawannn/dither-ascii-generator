@@ -61,6 +61,11 @@ export const TINT_MODES = [
 
 export const EFFECTS: EffectDef[] = [
   {
+    id: 'reveal', label: 'ASCII Reveal', enabled: 'fxReveal', kind: 9,
+    uniforms: (p) => [p.fxRevealProgress / 100, p.fxRevealSoftness / 100, p.fxRevealThreshold / 100, rad(p.fxRevealAngle)],
+    extra: (p) => [p.fxRevealTarget === 'original' ? 0 : 1, p.asciiColumns, 0, 0],
+  },
+  {
     id: 'sort', label: 'Pixel sorting', enabled: 'fxSort', kind: 8,
     uniforms: (p) => [p.fxSortLow / 100, p.fxSortHigh / 100, p.fxSortLength, p.fxSortVertical ? 1 : 0],
     extra: (p) => [p.fxSortReverse ? 1 : 0, 0, 0, 0],

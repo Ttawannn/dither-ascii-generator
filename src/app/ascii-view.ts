@@ -48,7 +48,7 @@ function asciiPaletteColors(p: Params): Float32Array | null {
   if (p.asciiColor !== 'palette') return null;
   const src = rt.current;
   if (p.asciiPalette === 'image' && src && asciiExtracted?.source !== src) {
-    asciiExtracted = { source: src, colors: extractPalette(src.element, src.width, src.height, 8) };
+    asciiExtracted = { source: src, colors: extractPalette(src.paletteElement ?? src.element, src.width, src.height, 8) };
   }
   const pal = resolvePalette(p.asciiPalette, {
     levels: 8,

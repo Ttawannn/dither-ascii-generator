@@ -73,6 +73,7 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
       ditherSlider('cellSize', (p) => group(p) === 'pattern' && p.algorithm !== 'orbs'),
       ditherSlider('angle', (p) => group(p) === 'pattern' && p.algorithm !== 'orbs' && !cmyk(p)),
       ditherSlider('hexRings', (p) => p.algorithm === 'honeycomb'),
+      ...['modulationAmount', 'modulationWidth', 'modulationPhase'].map((k) => ditherSlider(k, (p) => p.algorithm === 'modulation')),
       ditherSlider('patternFollow', (p) => FOLLOWS_IMAGE.includes(p.algorithm)),
       ...(['orbSize', 'orbCount', 'orbIntensity', 'orbRandom'] as const).map((k) =>
         ditherSlider(k, (p) => p.algorithm === 'orbs'),

@@ -5,6 +5,7 @@ import { store } from '../core';
 
 /** Controls an effect needs besides its sliders. */
 const EXTRA_CONTROLS: Record<string, () => HTMLElement[]> = {
+  reveal: () => [select('fxRevealTarget', 'Reveal target', [{ value: 'original', label: 'Original' }, { value: 'processed', label: 'Processed' }], store)],
   sort: () => [toggle('fxSortVertical', 'Vertical', store), toggle('fxSortReverse', 'Reverse sort', store)],
   tint: () => [
     el('div', { class: 'color-row single' }, colorInput('fxTintColor', 'Colour', store)),

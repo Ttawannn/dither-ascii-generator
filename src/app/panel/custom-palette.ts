@@ -5,6 +5,8 @@ import type { ParamStore } from '../../state';
 import { button, el, toggle } from '../../ui/controls';
 import { readZip } from '../../zip';
 import { store } from '../core';
+import { actions } from '../core';
+import { getLocks, onLocksChange, renameLockedColor, toggleColor } from '../locks';
 import { flash } from '../shell';
 
 // Editor for the custom palette (`customPalette`): colour chips, a hex list, file import, and a
@@ -112,6 +114,7 @@ export function customPaletteEditor(s: ParamStore = store): HTMLElement {
     input.value = hex;
     input.addEventListener('input', () => {
       const list = colors();
+      renameLockedColor(list[i], input.value);
       list[i] = input.value;
       setColors(list);
     });
@@ -120,7 +123,10 @@ export function customPaletteEditor(s: ParamStore = store): HTMLElement {
       if (list.length > 2) setColors(list.filter((_, j) => j !== i));
     }, 'pal-chip-x');
     remove.title = 'Remove colour';
-    return el('span', { class: 'pal-chip' }, input, remove);
+    const lock = button('○', () => { actions.beginUndo(); toggleColor(colors()[i]); }, 'pal-chip-lock');
+    lock.title = 'Lock during shuffle';
+    lock.setAttribute('aria-label', `Lock colour ${i + 1}`);
+    return el('span', { class: 'pal-chip' }, input, lock, remove);
   }
 
   const add = button('+', () => {
@@ -141,6 +147,9 @@ export function customPaletteEditor(s: ParamStore = store): HTMLElement {
     chips.classList.toggle('at-min', list.length <= 2);
     add.disabled = list.length >= MAX_PALETTE;
     if (document.activeElement !== text) text.value = list.join(' ');
+    chips.querySelectorAll<HTMLButtonElement>('.pal-chip-lock').forEach((b, i) => {
+      const locked = getLocks().colors.includes(list[i]); b.textContent = locked ? '●' : '○'; b.setAttribute('aria-pressed', `${locked}`);
+    });
   }
 
   text.addEventListener('change', () => {
@@ -215,6 +224,7 @@ export function customPaletteEditor(s: ParamStore = store): HTMLElement {
   );
 
   s.subscribe((_, changed) => changed === 'customPalette' && sync());
+  onLocksChange(sync);
   sync();
 
   return el(
@@ -222,7 +232,11 @@ export function customPaletteEditor(s: ParamStore = store): HTMLElement {
     { class: 'pal-editor' },
     chips,
     text,
-    el('div', { class: 'pal-actions' }, button('Import files…', () => picker.click(), 'btn small'), sort),
+    el('div', { class: 'pal-actions' }, button('Import files…', () => picker.click(), 'btn small'), sort,
+      button('Shuffle palette', () => {
+        actions.beginUndo();
+        setColors(colors().map((c) => getLocks().colors.includes(c) ? c : `#${crypto.getRandomValues(new Uint32Array(1))[0].toString(16).padStart(8, '0').slice(0, 6)}`));
+      }, 'btn small')),
     toggle('customRamp', 'Match by brightness', s),
     details,
     picker,
