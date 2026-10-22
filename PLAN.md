@@ -579,3 +579,96 @@ dither-ascii-generator/
 - **Pixel sorting:** ทุกแถวเป็นการสลับลำดับพิกเซลเดิมเท่านั้น · 640×360 ใช้ 7.7 ms/เฟรมที่ช่วง 64 px และ 15.7 ms ที่ 512 px · ไม่มี GL error
 - **จำนวนเทสต์:** ตัวเลข 444 / 453 ที่บันทึกไว้นับเทสต์ซ้ำจากสำเนาใน `.claude/worktrees` · จริงคือ 254 ตัวใน 27 ไฟล์ (หลังแก้ 255) · เพิ่ม `vitest.config.ts` ให้รันเฉพาะ `src/`
 - ยังไม่ได้ตรวจ: มือถือจริง และเปิด SVG ในโปรแกรมเวกเตอร์ภายนอก
+
+## 13. เฟส 24–30 — นำเข้า preset แม่นขึ้น, blend / export เพิ่ม, แยกเพลตพิมพ์, ลุคเส้น / warp / polygon, diffusion แบบใหม่
+
+เป้าหมาย: ให้ไฟล์ preset ภายนอกนำเข้าได้ใกล้เคียงขึ้นโดยจับตามโครงสร้าง ชื่อสไตล์ และความหมายของค่า control, เพิ่มตัวเลือกที่ถูกแต่ใช้บ่อย (blend mode, JPEG / WebP), รองรับงานสกรีนด้วยเพลต CMYK แยกไฟล์ และเพิ่มลุคหมวดที่ยังไม่มี (คอนทัวร์, คลื่น / รัศมี, warp, polygon, diffusion แบบใหม่) · อัลกอริทึมใหม่ทุกตัวเขียนเองจากเปเปอร์หรือสูตรสาธารณะ
+
+### ฟีเจอร์เป้าหมาย
+
+| ฟีเจอร์ | ของเราตอนนี้ | ทำในเฟส | สถานะ |
+|---|---|---|---|
+| จับคู่ชื่อสไตล์ของ preset ภายนอกครบทุกรหัสที่รู้จัก พร้อมแปลงค่า control ตามความหมายจริง | regex คร่าว ๆ บางชื่อตกไปผิดอัลกอริทึม · `scale` และ `luminanceThreshold` แปลงผิด | 24 | ⬜ ยังไม่ทำ |
+| Tint blend mode เพิ่ม (difference, exclusion, hard light, lighten, darken, colour dodge, hue, saturation, luminosity) | 6 แบบ | 25 | ⬜ ยังไม่ทำ |
+| Export ภาพนิ่ง JPEG / WebP พร้อมคุณภาพ | PNG / SVG | 25 | ⬜ ยังไม่ทำ |
+| แม่แบบชื่อไฟล์ export (`{name}` `{look}` `{date}` `{time}`) | ชื่อตายตัว | 25 | ⬜ ยังไม่ทำ |
+| แยกเพลต CMYK เป็น SVG 4 ไฟล์ + ภาพรวม ใน zip | SVG ภาพรวมไฟล์เดียว | 26 | ⬜ ยังไม่ทำ |
+| ลุคคอนทัวร์ / topography (เส้นระดับความสว่าง) | ไม่มี | 27 | ⬜ ยังไม่ทำ |
+| ลุคคลื่น sine ซ้อนกัน (moiré) และคลื่นรัศมี | Modulation Lines (คลื่นแนวเดียว) | 27 | ⬜ ยังไม่ทำ |
+| Bayer 16×16 | Bayer 2×2 / 4×4 / 8×8 | 27 | ⬜ ยังไม่ทำ |
+| Warp ก่อน dither: โค้งแบบจอ CRT และหมุนวน (swirl) ใช้ได้กับทุกอัลกอริทึมและ ASCII | ไม่มี | 27 | ⬜ ยังไม่ทำ |
+| Polygon: hex / สามเหลี่ยม / Voronoi ลงสีเรียบทีละเซลล์ | ไม่มี | 28 | ⬜ ยังไม่ทำ |
+| Stevenson–Arce (kernel 4 แถวจากเปเปอร์ต้นฉบับ) | kernel คงที่ 8 แบบ | 29 | ⬜ ยังไม่ทำ |
+| Gaussian diffusion: kernel 5×5 แบบเกาส์ ปรับความกว้างได้ + noise ตาม seed | kernel คงที่ | 29 | ⬜ ยังไม่ทำ |
+| Diffusion ตามทิศขอบ (ส่ง error ตามทิศที่ความสว่างเปลี่ยนน้อย เกิดลายเส้นแตก) | ทิศกระจายคงที่ | 29 | ⬜ ยังไม่ทำ |
+| Error diffusion ทิศเดียว (แกน X หรือ Y) พร้อม bleed และ smoothing | diffusion 2 มิติ + wave modulation | 29 | ⬜ ยังไม่ทำ |
+| (ทางเลือก) เอฟเฟกต์ก่อน dither และใช้เอฟเฟกต์ชนิดเดียวกันซ้ำได้ | เอฟเฟกต์อยู่หลัง dither เสมอ ชนิดละ 1 ตัว | 30 | ⬜ ยังไม่ทำ |
+
+### ลำดับงาน
+
+| เฟส | งาน | ผลลัพธ์ที่ตรวจได้ | สถานะ |
+|---|---|---|---|
+| **24. นำเข้า preset แม่นขึ้น** | แทน regex ใน `preset-import.ts` ด้วยตารางรหัสสไตล์ → อัลกอริทึมของเรา (ดูหมายเหตุ) ยังจับตามโครงสร้าง `dither.style` / `controls` ไม่ใช้ `type` string · **แปลงค่าตามความหมายจริง** (ตารางในหมายเหตุ): แก้ `scale` → `pixelSize` จาก `100 / scale` เป็น `round(51 − scale)` และเลิกส่ง `luminanceThreshold` เข้า `threshold` ตรง ๆ เพราะความหมายต่างกัน · สไตล์ที่ยังไม่มีคู่ใช้ตัวที่ใกล้สุดและรายงานใน `approximated` · ค่าที่เกินช่วงของเรา (เช่น `errorStrength` > 100) clamp แล้วรายงาน | เทสต์ครอบทุกรหัสในตาราง: แต่ละรหัสได้อัลกอริทึมที่กำหนด หรืออยู่ใน `approximated` / `skipped` ไม่มีรหัสไหนตกไปค่าเริ่มต้นเงียบ ๆ · เทสต์การแปลงค่า: `scale` 45 → `pixelSize` 6, ไม่มี `scale` → 1, `errorReduction` 2 → `diffusion` 50, `matrixSize` `16x16` → Bayer 16 · ทุกค่าผ่าน `sanitize()` อยู่ในช่วง slider | ⬜ ยังไม่ทำ |
+| **25. Blend และ export ภาพนิ่ง** | **Tint:** เพิ่มโหมดใน `TINT_MODES` และ branch ใน `post.frag` (สูตร separable มาตรฐาน + hue / saturation / colour / luminosity แบบ non-separable) ทำบน premultiplied ให้ `rgb <= a` · **JPEG / WebP:** เพิ่มใน `EXPORT_FORMATS` + slider คุณภาพ · JPEG ไม่มี alpha จึงเติมสีพื้น (`matte`) เมื่อภาพโปร่งใส · **ชื่อไฟล์:** param ข้อความ `exportName` แทนตัวแปรตอน export ตัดอักขระที่ใช้ไม่ได้ในชื่อไฟล์ | blend ใหม่ทุกตัวเทียบกับสูตร TypeScript ได้ตรงในค่าตัวอย่าง · preset เดิมได้ภาพเดิมทุกพิกเซล · JPEG / WebP เปิดได้ในเบราว์เซอร์และโปรแกรมดูภาพ ขนาดไฟล์ลดลงตามคุณภาพ · Batch ใช้รูปแบบและชื่อใหม่ด้วย | ⬜ ยังไม่ทำ |
+| **26. แยกเพลต CMYK** | ตัวเลือก export "Separations" เมื่อเป็น Halftone CMYK: ใช้จุดชุดเดียวกับ `halftone-svg.ts` แยกเป็น `cyan.svg` `magenta.svg` `yellow.svg` `black.svg` (จุดดำบนพื้นขาว มุม screen ของแต่ละสี) + PNG ภาพรวม ใส่ใน zip ด้วย `writeZip()` · ใส่ registration mark และชื่อเพลตที่มุม (ปิดได้) · ขนาดตาม `exportDpi` / `exportUnit` | ซ้อน 4 เพลตกลับด้วยสูตรหมึกแล้วได้ภาพใกล้กับ PNG ภาพรวม (เทสต์ pure) · แต่ละเพลตเปิดในโปรแกรมเวกเตอร์ได้ ขนาดจริงถูกต้อง | ⬜ ยังไม่ทำ |
+| **27. ลุคเส้น คลื่น และ warp (GPU)** | **ลุคใหม่** ใน `pattern()` ของ `dither.frag` เป็น threshold function ทั้งหมด จึงใช้ทุกพาเลต / Boil / animation lane ได้: **Contour** ระยะห่างเส้น ความหนา และการบิดตามภาพ (ใช้ `smoothTex`) · **Sine moiré** ความถี่ A / B และมุม · **Radial** จุดศูนย์กลาง X / Y และความถี่ · **Bayer 16×16** สร้างจากสูตรเรียกซ้ำมาตรฐาน · **Warp:** ขั้นบิดภาพก่อน dither (ไม่ใช่อัลกอริทึม) มีสองแบบ: **Curve** เลื่อนแต่ละแถวในแนวนอนตามกำลังสองของตำแหน่งแถว (โค้งแบบจอ CRT) และ **Swirl** หมุนตำแหน่งที่อ่านภาพรอบจุดศูนย์กลางตามรัศมี (ความแรง −100…100 และความชันของ falloff) · ทำใน `adjust.frag` ตอนอ่าน source จึงมีผลกับทุกอัลกอริทึม error diffusion และ ASCII โดยไม่ต้องแก้ทีละตัว | ทุกลุคใช้ได้กับพาเลต ramp / set / rgb และ Palette mixing · ภาพไล่ระดับยังรักษาโทนเฉลี่ย · Bayer 16×16 มีค่า threshold ครบ 256 ระดับไม่ซ้ำ (เทสต์) · Warp = 0 ได้ภาพเดิมทุกพิกเซล · Warp ทำงานกับ Bayer, Floyd–Steinberg, Halftone และ ASCII · เล่นวิดีโอ 1080p ได้แบบเรียลไทม์ · animation lane ของค่าใหม่ทำงาน | ⬜ ยังไม่ทำ |
+| **28. Polygon** | กลุ่มใหม่ "Polygon": ภาพถูกแบ่งเป็นเซลล์ (hex, สามเหลี่ยมสลับขึ้นลง, Voronoi จาก seed กระจาย) แต่ละเซลล์ลงสีเฉลี่ยแล้ว snap เข้าพาเลต · ขนาดเซลล์ เส้นขอบ (ความหนา / สี) และ jitter ของ Voronoi · ทำบน GPU: pass แรกเฉลี่ยสีต่อเซลล์ลง texture เล็ก pass สองหาเซลล์ของแต่ละพิกเซลแล้ววาด · export SVG เป็น polygon เวกเตอร์ | เซลล์ไม่มีรอยต่อหรือช่องว่าง · seed เดิมได้ผลเดิม · SVG มี polygon ตามจำนวนเซลล์และเปิดในโปรแกรมเวกเตอร์ได้ | ⬜ ยังไม่ทำ |
+| **29. Diffusion แบบใหม่** | ทั้งหมดอยู่ใน `diffuse()` (pure) และ worker: **Stevenson–Arce** kernel ใหม่ใน `KERNELS` ใช้น้ำหนักจากเปเปอร์ (หาร 200 รวมเป็น 1) · **Gaussian** น้ำหนักแบบเกาส์บน 12 ตำแหน่งข้างหน้าในกรอบ 5×5 ปรับความกว้าง (Spread) ได้ และ noise แบบเกาส์ที่ได้ผลเดิมทุกครั้งตาม seed (ปิดได้) · **ตามทิศขอบ** หา gradient แนวนอน / ตั้งจากความสว่าง แล้วส่ง error ส่วนใหญ่ไปตามทิศที่ความสว่างเปลี่ยนน้อย ส่วนที่เหลือไปอีกทิศ ปรับสัดส่วนด้วย Crack 0–100 · **ทิศเดียว** ส่ง error ตามแกน X หรือ Y เท่านั้น **Bleed** ส่วนที่รั่วไปแถวถัดไป **Smoothing** ค่าเฉลี่ยสะสม (EMA) ของ error ตามแนว ใช้ร่วมกับ wave modulation เดิมได้ | Stevenson–Arce และ Gaussian น้ำหนักรวมเป็น 1 (เทสต์) และสีเฉลี่ยของ gradient ใกล้ต้นฉบับเท่ากับ kernel เดิม · ตามทิศขอบ: Crack 0 ได้ผลเท่ากับ kernel สองจุด (ขวา + ล่าง) แบบแบ่งครึ่ง · ทิศเดียว: bleed 0 ทุกแถวเป็นอิสระต่อกัน (เทสต์) · พลังงาน error ไม่เพิ่ม · seed เดิมได้ผลเดิม · ใช้ได้กับ ramp / set / RGB, Linear light และ Perceptual match | ⬜ ยังไม่ทำ |
+| **30. (ทางเลือก) เอฟเฟกต์ก่อน dither** | แยกลำดับเอฟเฟกต์เป็นสองช่วง: ก่อน dither (ทำบนภาพที่ปรับแล้ว ก่อน quantize) และหลัง dither (แบบเดิม) · ให้ใช้เอฟเฟกต์ชนิดเดียวกันซ้ำได้ด้วย instance id ใน `fxOrder` · ต้องตัดสินใจก่อนว่าคุ้มกับการรื้อโครงหรือไม่ | preset เดิมได้ภาพเดิมทุกพิกเซล · glitch ก่อน dither แล้วผลถูก quantize เป็นสีพาเลต · undo / preset / share link เก็บลำดับใหม่ได้ | ⬜ ยังไม่ทำ |
+
+### หมายเหตุทางเทคนิค
+
+- **Param ใหม่ทุกตัว** ทำตามขั้นใน CLAUDE.md ค่าเริ่มต้นต้องให้ภาพเดิม · เพิ่มคำแปลไทยใน `TH` · texture / framebuffer / program ใหม่สร้างใน `Renderer.createResources()` · ค่าที่เหมาะใส่ใน `ANIMATABLE` และ `randomLook`
+- **หลักที่ต้องรักษา:** export ภาพนิ่งและ batch เรนเดอร์ที่ความละเอียดเต็มผ่านเส้นทางเดียวกับพรีวิว (`renderFull()` / `renderNow()`) ไม่ส่งออกภาพพรีวิวที่ย่อไว้ · batch ใช้ลำดับเอฟเฟกต์เดียวกับพรีวิว · error diffusion เก็บ error เป็น float ตลอด ไม่ปัดเป็น 8 บิตระหว่างกระจาย · สูตรเขียนเองจากเปเปอร์หรือแนวคิดทั่วไปทั้งหมด ไม่คัดลอกโค้ดจากที่อื่น
+- **ตารางรหัสสไตล์ (เฟส 24):**
+  - error diffusion ตรงตัว: `floyd-steinberg`, `atkinson`, `burkes`, `stucki`, `sierra`, `two-row-sierra` → `sierra2`, `sierra-lite`, `jarvis-judice-ninke` → `jjn`, `ostromukhov` → `ostromoukhov`, `fractal-diffuse` → `riemersma`
+  - error diffusion ประมาณ (ย้ายเป็นคู่ตรงหลังเฟส 29): `stevenson-arce` → `jjn` (→ Stevenson–Arce), `gaussian` → `floyd-steinberg` (→ Gaussian), `cracked-diffuse` → `floyd-steinberg` (→ ตามทิศขอบ), `artifact-modulation` → `floyd-steinberg`
+  - ordered: `bayer-matrix` (+`matrixSize`) → `bayer2` / `bayer4` / `bayer8` (`16x16` → `bayer8` จนกว่าจะมี Bayer 16 ในเฟส 27), `random-ordered` → `noise`
+  - ใช้ warp (หลังเฟส 27): `bayer-void` → `bayer4` + Warp Curve, `vortex-diffusion` → `floyd-steinberg` + Warp Swirl · ก่อนเฟส 27 ใช้แค่อัลกอริทึมและรายงาน `approximated`
+  - halftone: `bit-tone` / `block-tone` / `pop-tone` → `halftone`, `print-pattern` → `halftone-cmyk`, `crosshatch` → `crosshatch`, `stippling` → `stippling`, `beehive` → `honeycomb`, `orb-*` → `orbs`
+  - grid รูปทรง: `circle-grid` / `diamond-grid` / `square-mosaic` → `luma-shapes` พร้อมรูปทรงที่ตรงกัน · `heart-grid` → วงกลม (`approximated`) เพราะ `BAND_SHAPES` ยังไม่มีรูปหัวใจ
+  - ไม่มี dither: `color-separation` / `none` / `original` → `threshold` · `mosaic` → `threshold` + `pixelSize` ตามขนาด tile
+  - รอเฟสอื่น (ตอนนี้ใช้ตัวใกล้สุด + `approximated`): `displace-contour` / `topography` / `dotted-lines` (27), `sine-distort` / `sine-wave-modulation` / `thresholder` / `wave` / `waveform*` → `modulation` (27), `radial-burst` / `radial-peaks` / `vortex` (27), `hexa-poly` / `tri-poly` / `penta-poly` / `low-poly` / `camo` (28), กลุ่ม `*-x` / `*-y` / `*-diffuse` / `*-modulation` แบบเส้น (29)
+  - ไม่มีคู่: `checkers`, `diamond`, `gridlock-traffic`, `glitch`, `diagonal` → `skipped`
+- **แปลงค่า control (เฟส 24):** เป็นความหมายของค่าในไฟล์ preset ภายนอก ใช้เพื่อให้นำเข้าได้ถูก
+
+  | ค่าในไฟล์ | ความหมาย | แปลงเป็น |
+  |---|---|---|
+  | `scale` (ไม่มี = 50) | ขนาดบล็อก = `max(1, round(51 − scale))` px | `pixelSize` (clamp 1–16) |
+  | `errorStrength` (0–200, %) | ตัวคูณ error | `diffusion` (clamp 0–100 เกินรายงาน `approximated`) |
+  | `errorReduction` (ค่าเริ่มต้น 1) | ตัวหาร error | `diffusion = 100 / errorReduction` |
+  | `serpentine` | สลับทิศทุกแถว | `serpentine` |
+  | `matrixSize` (`2x2` … `16x16`) | ขนาด Bayer | `bayer2` / `bayer4` / `bayer8` / Bayer 16 |
+  | `luminanceThreshold` (ค่าเริ่มต้น 50) | ส่วนใหญ่: พิกเซลที่มืดกว่านี้ใช้สีมืดสุดและไม่สร้าง error · ใน ordered ใช้คูณช่วง threshold | ไม่มีคู่ตรง (ดูคำถาม) · เลิกส่งเข้า `threshold` |
+  | `orderedCycling` | เลือกสีตามลำดับความสว่างของพาเลต | ยัง `skipped` |
+  | `dotSize` (bit-tone, 1–20) | ขยายแต่ละช่องของ matrix 4×4 | `cellSize ≈ 4 × dotSize × ขนาดบล็อก` |
+  | `blockSize` (mosaic, 1–50) | ด้าน tile = `blockSize × ขนาดบล็อก` | `pixelSize` (clamp) |
+  | `distributionSpread` (gaussian, 1–20) | ความกว้างของเกาส์ | Spread ของ Gaussian (เฟส 29) |
+  | `cracked` (0–100) | สัดส่วน error ที่ไปอีกทิศ | Crack (เฟส 29) |
+  | `warpIntensity` (bayer-void, 1–200) | จำนวน px ที่แถวล่างสุดเลื่อน | Warp Curve (เฟส 27) |
+  | `twistStrength` (−100…100) · `spiralFrequency` (1–10) | ความแรงการหมุน · ความชันตามรัศมี | Warp Swirl (เฟส 27) |
+- **Blend non-separable:** hue / saturation / colour / luminosity ใช้ฟังก์ชัน `lum` / `sat` / `clipColor` ตามสูตร blend มาตรฐาน · ต้อง un-premultiply ก่อนแล้ว premultiply กลับ
+- **JPEG / WebP:** `canvas.toBlob(type, quality)` · ถ้าเปิดงานพิมพ์ JPEG ใส่ DPI ใน JFIF header (คล้าย `withDpi()` ของ PNG) · WebP เก็บ alpha ได้
+- **Separations:** ใช้ฟังก์ชัน lattice เดียวกับ `halftone-svg.ts` เพื่อให้จุดตรงกับพรีวิวและ SVG ภาพรวม · แยกเป็นฟังก์ชัน pure คืนรายการวงกลมต่อเพลต เขียนเทสต์ได้
+- **Contour:** threshold = `fract(luma * จำนวนเส้น + offset)` เทียบกับความหนา ใช้ `smoothTex` ให้เส้นเรียบ · ระวังเส้นแตกเป็นจุดในพื้นที่ที่ gradient แบน
+- **Bayer 16×16:** สร้างด้วยสูตรเรียกซ้ำมาตรฐาน `M₂ₙ = [[4Mₙ, 4Mₙ+2], [4Mₙ+3, 4Mₙ+1]]` จาก 8×8 · threshold = `(M + 0.5) / 256` · ใส่เป็นค่าคงที่หรือสร้างตอนเริ่มเหมือน matrix เดิม · เพิ่มเป็นอัลกอริทึม `bayer16` และ `u_algo` ใหม่
+- **Warp:** เปลี่ยนพิกัดที่อ่าน source ใน `adjust.frag` (source อ่านผ่าน `v_uv` ที่กลับแกนแล้ว ระวังทิศ) · Curve: `x' = x − amount · (y / H)²` · Swirl: มุมเพิ่ม `strength · (r / rMax)^falloff · 2π` รอบจุดศูนย์กลาง · ขอบที่อ่านเกินภาพใช้ clamp · ตัดสินใจว่า mask (`u_src`) และ Split view จะบิดตามหรือไม่ · Vector halftone SVG อ่านภาพที่ปรับแล้ว จึงได้ warp อัตโนมัติ · stippling ใช้ภาพที่ปรับแล้วเช่นกัน
+- **Stevenson–Arce:** น้ำหนักจากเปเปอร์ต้นฉบับ (หาร 200) แถวปัจจุบัน `(2,0)=32` · แถว +1 `(−3,1)=12 (−1,1)=26 (1,1)=30 (3,1)=16` · แถว +2 `(−2,2)=12 (0,2)=26 (2,2)=12` · แถว +3 `(−3,3)=5 (−1,3)=12 (1,3)=12 (3,3)=5` รวม 200 · เทสต์ว่าน้ำหนักรวมเป็น 1
+- **Gaussian:** น้ำหนัก `exp(−d² / 2σ²)` บน 12 ตำแหน่งข้างหน้า (ขวา 2 จุดในแถวเดียวกัน + 5 จุดในแต่ละแถวล่าง 2 แถว) แล้ว normalize ให้รวมเป็น 1 เพื่อรักษาโทน · σ ผูกกับ Spread · noise ใช้ seed ของ Boil จึงได้ผลเดิม
+- **ตามทิศขอบ:** gradient จากความสว่างของภาพที่ปรับแล้ว (ความต่างซ้าย / ขวา และบน / ล่าง) · ถ้าแนวตั้งเปลี่ยนมากกว่า ส่ง error ส่วนใหญ่ไปทางขวา มิฉะนั้นส่งลงล่าง · Crack 0 = แบ่งครึ่งเท่ากัน, 100 = ส่งไปทิศเดียว · ไม่ใช้ serpentine
+- **Diffusion ทิศเดียว:** `serpentine` ไม่มีผลกับแกนเดียว ซ่อนใน panel
+- **Polygon:** hex และสามเหลี่ยมหาเซลล์ได้จากพิกัดโดยตรง · Voronoi ใช้ jittered grid (ค้นแค่ 3×3 เซลล์รอบ ๆ) จึงเร็วพอบน GPU · การเฉลี่ยสีต่อเซลล์ทำเป็น pass ที่อ่านตัวอย่างหลายจุดในเซลล์ ไม่ต้อง readPixels
+- **เฟส 30:** แตะ `gl.ts` (ลำดับ pass), `effects.ts`, `normalizeOrder()` และ panel · error diffusion ต้อง readPixels หลังเอฟเฟกต์ก่อน dither · เลเยอร์ 2 ต้องมีลำดับของตัวเอง · ทำเป็นเฟสแยกหลังเฟสอื่นเสร็จ
+- **เทสต์:** ตารางรหัส preset และการแปลงค่า, สูตร blend, ชื่อไฟล์จากแม่แบบ, เพลต CMYK, threshold ของลุคใหม่ (ฝั่ง TypeScript), Bayer 16, สูตร warp, polygon SVG, kernel ใหม่ทุกตัว · ส่วน WebGL ตรวจในเบราว์เซอร์
+- **รันขนานได้:** 24, 25, 26 แยกไฟล์กันได้ · 27 และ 28 แตะ `dither.frag` ร่วมกัน ทำต่อกัน · 29 อยู่ใน worker แยกได้ · 30 ทำหลังสุด
+
+### คำถามที่ต้องตัดสินใจก่อนเริ่ม
+
+- เลือกเฟสไหนก่อน (แนะนำ 24–25 เพราะถูกและได้ผลชัด)
+- `luminanceThreshold` ในไฟล์ preset: เพิ่ม param ใหม่ "Black cut" (พิกเซลที่มืดกว่าค่านี้ใช้สีมืดสุด) หรือข้ามแล้วรายงาน `skipped`
+- JPEG / WebP: เพิ่มเป็นรูปแบบในปุ่ม Export เลย หรือซ่อนในตัวเลือกขั้นสูง
+- Separations: ใส่ registration mark เป็นค่าเริ่มต้นหรือไม่
+- Warp: อยู่ในหมวด Adjust หรือเป็นหมวดของตัวเอง · mask และ Split view บิดตามหรือไม่
+- Gaussian: normalize น้ำหนักให้รวมเป็น 1 (รักษาโทน แนะนำ) หรือปล่อยไม่ normalize (ภาพสว่าง / มืดลงตาม Spread เป็นอีกลุค)
+- Polygon: เป็นกลุ่มใหม่ในหมวด Dither หรือรวมเข้ากับ Luma Shapes
+- เฟส 30: ทำหรือไม่ (งานใหญ่ ต้องรื้อลำดับ pass)
