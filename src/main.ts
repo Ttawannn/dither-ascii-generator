@@ -12,6 +12,7 @@ import './app/exporting';
 import './app/undo';
 import './app/thumbs';
 import './app/input';
+import './app/project';
 import { openSample } from './app/sources';
 import { applyShareLink } from './app/panel/presets';
 import { syncLfoLoop } from './app/render';

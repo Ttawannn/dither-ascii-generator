@@ -6,6 +6,7 @@ import { parseLanes, serializeLanes } from './anim';
 import { parseLayer, serializeLayer, type Layer } from './layers';
 import { PALETTES, parseColorList, serializeColorList } from './pipeline/palettes';
 import { DEFAULT_SHAPE_BANDS, parseShapeBands } from './pipeline/shape-bands';
+import { TEMPORAL_PATTERNS, TEMPORAL_SLIDERS } from './temporal';
 
 export type Mode = 'dither' | 'ascii';
 
@@ -37,6 +38,13 @@ export interface Params {
   boilPattern: string;
   /** Boil jitter strength, 0..100 (50 = the original amount). */
   boilAmount: number;
+  temporalPattern: string;
+  temporalAmount: number;
+  temporalSpeed: number;
+  temporalScale: number;
+  temporalAngle: number;
+  temporalSeed: number;
+  temporalLoop: boolean;
   /** JSON list of animation lanes (see anim.ts). */
   animLanes: string;
   /** Timeline length in seconds for keyframe lanes. */
@@ -49,6 +57,15 @@ export interface Params {
   shapeFeather: number;
   shapeFeatherPattern: string;
   shapeBackground: string;
+  shapeLayout: string;
+  shapeJitter: number;
+  shapeSizeJitter: number;
+  shapeAngleJitter: number;
+  shapeSeed: number;
+  shapeTransparent: boolean;
+  modulationAmount: number;
+  modulationWidth: number;
+  modulationPhase: number;
   stippleCount: number;
   stippleIterations: number;
   stippleSize: number;
@@ -122,6 +139,12 @@ export interface Params {
   asciiTransparent: boolean;
   // post-effects
   fxOrder: string;
+  fxReveal: boolean;
+  fxRevealProgress: number;
+  fxRevealSoftness: number;
+  fxRevealThreshold: number;
+  fxRevealAngle: number;
+  fxRevealTarget: string;
   fxGlow: boolean;
   fxGlowRadius: number;
   fxGlowIntensity: number;
@@ -217,6 +240,8 @@ export const DEFAULTS: Params = {
   boilFps: 8,
   boilPattern: 'random',
   boilAmount: 50,
+  temporalPattern: 'off', temporalAmount: 20, temporalSpeed: 1, temporalScale: 12,
+  temporalAngle: 0, temporalSeed: 1, temporalLoop: true,
   animLanes: '[]',
   animDuration: 4,
   paletteMixing: 'nearest',
@@ -226,6 +251,9 @@ export const DEFAULTS: Params = {
   shapeFeather: 0,
   shapeFeatherPattern: 'ordered',
   shapeBackground: '#101218',
+  shapeLayout: 'grid', shapeJitter: 0, shapeSizeJitter: 0, shapeAngleJitter: 0, shapeSeed: 1,
+  shapeTransparent: false,
+  modulationAmount: 50, modulationWidth: 50, modulationPhase: 0,
   stippleCount: 10000,
   stippleIterations: 8,
   stippleSize: 100,
@@ -289,6 +317,7 @@ export const DEFAULTS: Params = {
   asciiPalette: 'pico8',
   asciiTransparent: false,
   fxOrder: DEFAULT_ORDER,
+  fxReveal: false, fxRevealProgress: 0, fxRevealSoftness: 10, fxRevealThreshold: 50, fxRevealAngle: 0, fxRevealTarget: 'original',
   fxGlow: false,
   fxGlowRadius: 6,
   fxGlowIntensity: 80,
@@ -424,6 +453,13 @@ export const HALFTONE_SHAPES = [
 ];
 
 export const DITHER_SLIDERS: Record<string, SliderSpec> = {
+  modulationAmount: { key: 'modulationAmount', label: 'Modulation', min: 0, max: 100, step: 1 },
+  modulationWidth: { key: 'modulationWidth', label: 'Line width', min: 1, max: 100, step: 1 },
+  modulationPhase: { key: 'modulationPhase', label: 'Phase', min: 0, max: 100, step: 1 },
+  shapeJitter: { key: 'shapeJitter', label: 'Position variation', min: 0, max: 100, step: 1 },
+  shapeSizeJitter: { key: 'shapeSizeJitter', label: 'Size variation', min: 0, max: 100, step: 1 },
+  shapeAngleJitter: { key: 'shapeAngleJitter', label: 'Rotation variation', min: 0, max: 180, step: 1 },
+  shapeSeed: { key: 'shapeSeed', label: 'Shape seed', min: 1, max: 9999, step: 1 },
   shapeFeather: { key: 'shapeFeather', label: 'Band feather', min: 0, max: 100, step: 1, format: pct },
   stippleCount: { key: 'stippleCount', label: 'Dots', min: 100, max: 30000, step: 100 },
   stippleIterations: { key: 'stippleIterations', label: 'Relaxation', min: 0, max: 20, step: 1 },
@@ -477,6 +513,12 @@ export const ASCII_SLIDERS: Record<string, SliderSpec> = {
 
 /** Sliders per post-effect id (see pipeline/effects.ts). */
 export const FX_SLIDERS: Record<string, SliderSpec[]> = {
+  reveal: [
+    { key: 'fxRevealProgress', label: 'Reveal progress', min: 0, max: 100, step: 1 },
+    { key: 'fxRevealSoftness', label: 'Reveal softness', min: 0, max: 100, step: 1 },
+    { key: 'fxRevealThreshold', label: 'Reveal threshold', min: 0, max: 100, step: 1 },
+    { key: 'fxRevealAngle', label: 'Reveal direction', min: 0, max: 360, step: 1 },
+  ],
   glow: [
     { key: 'fxGlowRadius', label: 'Radius', min: 1, max: 200, step: 1, format: (v) => `${v}px` },
     { key: 'fxGlowIntensity', label: 'Intensity', min: 0, max: 200, step: 1, format: pct },
@@ -578,6 +620,8 @@ export const BOIL_SLIDER: SliderSpec = {
 
 export const ADJUST_KEYS: (keyof Params)[] = [...ADJUST_SLIDERS.map((s) => s.key), 'invert'];
 export const DITHER_KEYS: (keyof Params)[] = [
+  'shapeLayout', 'shapeJitter', 'shapeSizeJitter', 'shapeAngleJitter', 'shapeSeed', 'shapeTransparent',
+  'modulationAmount', 'modulationWidth', 'modulationPhase',
   'shapeBands', 'shapeFeather', 'shapeFeatherPattern', 'shapeBackground',
   'paletteMixing', 'linearLight', 'halftoneShape',
   'stippleCount', 'stippleIterations', 'stippleSize', 'stippleSeed',
@@ -624,9 +668,11 @@ export const ANIM_DURATION_SLIDER: SliderSpec = {
   format: (v) => `${v} s`,
 };
 
-export const ANIM_KEYS: (keyof Params)[] = ['animate', 'boilFps', 'boilPattern', 'boilAmount', 'animLanes', 'animDuration'];
+export const ANIM_KEYS: (keyof Params)[] = ['animate', 'boilFps', 'boilPattern', 'boilAmount', 'animLanes', 'animDuration',
+  'temporalPattern', 'temporalLoop', ...TEMPORAL_SLIDERS.map((s) => s.key)];
 
 export const FX_KEYS: (keyof Params)[] = [
+  'fxReveal', 'fxRevealTarget',
   'fxSort', 'fxSortVertical', 'fxSortReverse',
   'fxOrder',
   'fxGlow',
@@ -694,6 +740,9 @@ export function layerParams(p: Params, layer: Layer): Params {
 
 /** Allowed values for string params that come from a fixed list. */
 const ENUMS: Partial<Record<keyof Params, string[]>> = {
+  temporalPattern: TEMPORAL_PATTERNS.map((p) => p.id),
+  shapeLayout: ['grid', 'staggered', 'scatter'],
+  fxRevealTarget: ['original', 'processed'],
   shapeFeatherPattern: ['ordered', 'scatter'],
   paletteMixing: PALETTE_MIXING.map((x) => x.id),
   halftoneShape: HALFTONE_SHAPES.map((x) => x.id),
@@ -729,6 +778,7 @@ const RANGES = new Map(
     BOIL_SLIDER,
     BOIL_AMOUNT_SLIDER,
     ANIM_DURATION_SLIDER,
+    ...TEMPORAL_SLIDERS,
   ].map((s) => [s.key, s] as const),
 );
 
@@ -741,6 +791,7 @@ const RANGES = new Map(
  * every change rebuilds the glyph atlas.
  */
 export const ANIMATABLE: SliderSpec[] = [
+  ...TEMPORAL_SLIDERS.filter((s) => s.key !== 'temporalSeed'),
   ...ADJUST_SLIDERS,
   ...Object.values(DITHER_SLIDERS).filter((s) => !s.key.startsWith('stipple')),
   ...Object.values(ASCII_SLIDERS).filter((s) => s.key !== 'asciiFontSize' && s.key !== 'asciiLineHeight'),

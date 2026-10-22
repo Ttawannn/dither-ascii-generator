@@ -7,6 +7,7 @@ import {
   actions,
   activeLayer,
   animatedParams,
+  clock,
   autoScale,
   group,
   isPlaying,
@@ -28,6 +29,7 @@ export function draw(): void {
   const src = rt.current;
   if (!renderer.hasSource || !src || renderer.contextLost) return;
   const p = animatedParams(store.params);
+  rt.seed = p.animate && p.temporalPattern === 'off' ? Math.floor(clock() * p.boilFps) + 1 : 0;
   if (isVideo(src) && src.element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
     renderer.setSource(src.element, src.width, src.height);
   }
@@ -69,6 +71,7 @@ setDrawer(draw);
  */
 export function renderLook(p: Params, t: RenderTarget, showMask = false): boolean {
   const r = t.r;
+  r.time = t.thumb ? 0 : clock();
   const layer = activeLayer(p);
   const mask = maskEffect(p, showMask);
   // The mask limits layer 2 only when asked (but "Show mask" always shows it full screen).
@@ -112,7 +115,8 @@ export function syncBoil(): void {
   const { animate, boilFps } = store.params;
   if (animate) {
     boilTimer = window.setInterval(() => {
-      rt.seed = (rt.seed % 100000) + 1;
+      if (rt.previewPaused || rt.exporting) return;
+      rt.seed = store.params.temporalPattern === 'off' ? Math.floor(clock() * store.params.boilFps) + 1 : 0;
       requestRender();
     }, 1000 / boilFps);
   }

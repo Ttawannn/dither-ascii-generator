@@ -104,6 +104,15 @@ export class Transport {
     return { start: this.trimIn ?? 0, end: this.trimOut ?? duration };
   }
 
+  restoreTrim(trim: { start: number; end: number } | null): void {
+    const duration = this.video?.duration ?? 0;
+    if (trim && (trim.start < 0 || trim.end > duration + 0.01 || trim.end <= trim.start)) throw new Error('Invalid project trim');
+    this.trimIn = trim?.start ?? null;
+    this.trimOut = trim?.end ?? null;
+    this.sync();
+    this.onTrimChange();
+  }
+
   toggle(): void {
     const v = this.video;
     if (!v) return;

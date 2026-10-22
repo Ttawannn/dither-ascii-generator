@@ -5,7 +5,7 @@ import {
 } from '../../pipeline/shape-bands';
 import { imagePreview, loadBandImage } from '../../ui/band-image';
 import { DITHER_SLIDERS, type ParamStore } from '../../state';
-import { button, colorInput, el, select, slider } from '../../ui/controls';
+import { button, colorInput, el, select, slider, toggle } from '../../ui/controls';
 
 export function lumaShapesEditor(store: ParamStore): HTMLElement {
   let selected = 0;
@@ -47,6 +47,9 @@ export function lumaShapesEditor(store: ParamStore): HTMLElement {
   });
   const size = el('input', { type: 'range', min: '0', max: '100', step: '1', 'aria-label': 'Band size' });
   const sizeValue = el('span', { class: 'control-value' });
+  const rotation = el('input', { type: 'range', min: '-180', max: '180', step: '1', 'aria-label': 'Band rotation' });
+  const rotationValue = el('span', { class: 'control-value' });
+  rotation.addEventListener('input', () => edit({ rotation: Number(rotation.value) }));
   size.addEventListener('input', () => edit({ size: Number(size.value) }));
   const boundary = el('input', { type: 'range', step: '1', 'aria-label': 'Band width' });
   const boundaryValue = el('span', { class: 'control-value' });
@@ -241,6 +244,8 @@ export function lumaShapesEditor(store: ParamStore): HTMLElement {
     size.style.setProperty('--fill', `${band.size}%`);
     sizeValue.textContent = `${band.size}%`;
     size.disabled = band.shape === 'empty';
+    rotation.value = `${band.rotation ?? 0}`;
+    rotationValue.textContent = `${band.rotation ?? 0}°`;
     const width = band.end - start + 1;
     boundary.min = '1';
     boundary.max = `${shapeBandWidthLimit(current, selected)}`;
@@ -280,8 +285,12 @@ export function lumaShapesEditor(store: ParamStore): HTMLElement {
         el('div', { class: 'pal-actions' }, button('Upload shape image', () => imageFile.click(), 'btn small'), clearImage),
         el('div', { class: 'note' }, 'PNG keeps transparency · images fit inside a 64×64 tile'), imageFile),
       el('label', { class: 'control' }, el('div', { class: 'control-row' }, 'Band size', sizeValue), size),
+      el('label', { class: 'control' }, el('div', { class: 'control-row' }, 'Band rotation', rotationValue), rotation),
       el('label', { class: 'control' }, el('div', { class: 'control-row' }, 'Band width', boundaryValue), boundary)),
     colorInput('shapeBackground', 'Background', store),
+    toggle('shapeTransparent', 'Transparent shapes background', store),
+    select('shapeLayout', 'Shape layout', [{ value: 'grid', label: 'Grid' }, { value: 'staggered', label: 'Staggered' }, { value: 'scatter', label: 'Scatter' }], store),
+    ...['shapeJitter', 'shapeSizeJitter', 'shapeAngleJitter', 'shapeSeed'].map((k) => slider(DITHER_SLIDERS[k], store)),
     slider(DITHER_SLIDERS.shapeFeather, store),
     select('shapeFeatherPattern', 'Feather pattern', [
       { value: 'ordered', label: 'Ordered' }, { value: 'scatter', label: 'Scatter' },

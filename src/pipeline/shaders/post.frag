@@ -75,6 +75,29 @@ void main() {
   vec4 c = at(px);
   vec4 o = c;
 
+  if (u_kind == 9) {
+    vec2 suv = vec2(u_srcMirror ? 1.0 - uv.x : uv.x, 1.0 - uv.y);
+    vec3 original = texture(u_src, suv).rgb;
+    float cols = max(20.0, u_q.y);
+    vec2 grid = uv * vec2(cols, max(1.0, cols * u_size.y / u_size.x / 1.8));
+    vec2 cell = floor(grid);
+    vec2 local = fract(grid) - 0.5;
+    // Small geometric glyphs form a stable text-like veil over either rendering mode.
+    float glyph = hash(cell);
+    float stroke = glyph < 0.33 ? min(abs(local.x), abs(local.y))
+      : glyph < 0.66 ? abs(abs(local.x) - abs(local.y)) : abs(length(local) - 0.28);
+    float a = 1.0 - smoothstep(0.045, 0.09, stroke);
+    vec4 veil = vec4(original * a, a);
+    float along = dot(uv - 0.5, vec2(cos(u_p.w), sin(u_p.w))) * 0.7 + 0.5;
+    float field = mix(along, 1.0 - dot(original, LUMA), u_p.z);
+    float soft = max(0.0001, u_p.y * 0.5);
+    float revealed = smoothstep(field - soft, field + soft, mix(-soft, 1.0 + soft, u_p.x));
+    if (u_p.x <= 0.0) revealed = 0.0;
+    if (u_p.x >= 1.0) revealed = 1.0;
+    outColor = mix(veil, u_q.x < 0.5 ? vec4(original, 1.0) : c, revealed);
+    return;
+  }
+
   if (u_kind == 101) {
     // Mask from the source: a brightness range (u_p.x..u_p.y) or a hue range (u_q.x ± u_q.y),
     // softened by u_p.z. Outside it shows the original, a colour, or nothing.

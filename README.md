@@ -9,7 +9,7 @@ A browser-based generator that turns images, videos and your webcam into **dithe
 ## Highlights
 
 - Real-time preview of every setting, including on video and webcam
-- 24 dither algorithms, including Luma Shapes, palette mixing, Ostromoukhov, Riemersma and dot diffusion, plus weighted Voronoi stippling
+- 26 dither algorithms, including Modulation Lines, Luma Shapes, palette mixing, Ostromoukhov, Riemersma and dot diffusion, plus weighted Voronoi stippling
 - 8 palette options: retro systems, duotone colour picks, your own colours, or colours extracted from your image
 - ASCII mode with 48 character sets, depth and offset controls, palette colours and transparent backgrounds
 - A "boil" animation that brings still images to life
@@ -18,6 +18,16 @@ A browser-based generator that turns images, videos and your webcam into **dithe
 - English and Thai interface
 
 Your files never leave your device. All processing happens in the browser.
+
+## Projects and new creative controls
+
+- **Save project / Open project** saves a `.dither-project` file containing the original image or video, current settings, both layers, mask, animation, export settings, trim marks, imported shape images, used custom fonts and an audio file. Open it on another browser without uploading those assets again. The initial archive limit is **128 MB**. A webcam is saved as its current still frame; live microphone input and undo history are not recorded. Projects reopen paused, and incomplete or invalid files leave the current work in place. A Cancel button is available while reading or saving a project.
+- **Lock & Shuffle:** the small circle beside each adjustment locks it during shuffling, while Algorithm / Palette / Effects lock entire groups. Custom palette swatches also have locks. Shuffle adjustments and Shuffle palette affect only their respective controls; Surprise me respects all locks. Locks are saved in this browser and project files, independently of look presets and share links. Matching duplicate swatches share a colour lock, which stays attached to that colour when sorted.
+- **Temporal patterns:** under Animation, turn on Boil and choose Drifting noise, Moving scan, Travelling wave or Block noise. Amount, speed, scale, direction and seed control the input modulation before quantisation. Loop temporal pattern fits an integer number of cycles into Timeline length. Off keeps the existing Boil behaviour. With a temporal pattern selected, it replaces the older random seed shifts. Stippling remains for still images.
+- **Multiple keyframes:** choose a setting, press + Animate, then Keys. Add up to 32 points per lane, drag their markers or edit their time/value, and choose linear, ease in-out or hold interpolation. Each lane has its own start/end within the timeline, with repeat, ping-pong or once playback. Arrow keys, Home and End move a focused marker. The animation playhead previews a precise time; sliders continue to show base values. Older From–To lanes appear as two editable points. The existing limit of eight lanes and one lane per numeric setting remains.
+- **Modulation Lines** bends a line screen with the image's brightness. Adjust cell size, angle, modulation, line width and phase. Fine lines, Coarse poster and Moving signal are starting presets.
+- **ASCII Reveal** adds a stable veil of `+`, `×` and ring-like symbols, then reveals either the original image or the processed result. Progress, softness, threshold and direction can be animated. This symbol veil is independent of the selected ASCII font; the processed target keeps its own character settings. Reorder Reveal and Glow to control which parts glow. Portrait reveal, Logo reveal and Terminal dissolve are starting presets.
+- **Luma Shapes** adds band rotation, Grid / Staggered / Scatter placement, position/size/rotation variation, a repeatable shape seed and a transparent background. SVG export writes actual shape primitives grouped by colour, with physical print dimensions when selected. Uploaded shape tiles are embedded PNGs inside SVG. Anti-aliasing differs from the pixel preview. For layers, masks or post-effects, use PNG for the full composition; SVG reports these unsupported combinations instead of dropping them. Very dense vector output is limited to 150,000 candidate cells.
 
 **Works offline:** after the first visit the app (fonts included) is cached, so it opens without a connection, and it can be installed as an app from the browser menu. A new version is picked up the next time it is opened online.
 

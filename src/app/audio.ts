@@ -1,5 +1,5 @@
 import { analyseLevels, BAND_IDS, levelAt, levelsFromDb, LEVEL_RATE, type Band } from '../audio-levels';
-import { audioInput, rt } from './core';
+import { actions, animationPaused, audioInput, clock, seekAnimation, toggleAnimation } from './core';
 
 // The audio that drives audio lanes: the microphone (live only) or an audio file. A file is analysed
 // once, so exports read the same levels at the same frame times every run, and its sound can be
@@ -9,13 +9,12 @@ type Input =
   | { kind: 'mic'; name: string; ctx: AudioContext; analyser: AnalyserNode; stream: MediaStream }
   | {
       kind: 'file';
+      file: File;
       name: string;
       ctx: AudioContext;
       buffer: AudioBuffer;
       levels: Record<Band, Float32Array>;
       node: AudioBufferSourceNode | null;
-      /** ctx.currentTime when playback (re)started, minus the position it started from. */
-      startedAt: number;
       /** Position in seconds while paused. */
       pausedAt: number | null;
     };
@@ -32,6 +31,7 @@ export function onAudioChange(fn: () => void): void {
 export const audioName = () => input?.name ?? null;
 export const audioKind = () => input?.kind ?? null;
 export const audioPlaying = () => input?.kind === 'file' && input.pausedAt === null;
+export const audioFile = () => input?.kind === 'file' ? input.file : null;
 
 // Live microphone levels, kept briefly so a lane can average over its smoothing window.
 const MIC_HISTORY = 2 * LEVEL_RATE;
@@ -54,17 +54,11 @@ function sampleMic(analyser: AnalyserNode, ctx: AudioContext): void {
   micFilled = Math.min(MIC_HISTORY, micFilled + 1);
 }
 
-/** Current position in an audio file, in seconds (wrapping, since it loops). */
-function filePosition(f: Extract<Input, { kind: 'file' }>): number {
-  const t = f.pausedAt ?? f.ctx.currentTime - f.startedAt;
-  return ((t % f.buffer.duration) + f.buffer.duration) % f.buffer.duration;
-}
-
 audioInput.level = (band, window) => {
   if (!input) return 0;
   if (input.kind === 'file') {
-    // Exports step the clock frame by frame; live playback follows the file's own position.
-    const t = rt.clockOverride ?? filePosition(input);
+    // Scrubbing and exports use the same clock as the renderer.
+    const t = clock();
     return levelAt(input.levels[band], t % input.buffer.duration, window);
   }
   sampleMic(input.analyser, input.ctx);
@@ -95,6 +89,7 @@ export async function useMicrophone(): Promise<void> {
 }
 
 function playFrom(f: Extract<Input, { kind: 'file' }>, position: number): void {
+  void f.ctx.resume().catch(() => undefined);
   f.node?.stop();
   const node = f.ctx.createBufferSource();
   node.buffer = f.buffer;
@@ -102,14 +97,20 @@ function playFrom(f: Extract<Input, { kind: 'file' }>, position: number): void {
   node.connect(f.ctx.destination);
   node.start(0, position);
   f.node = node;
-  f.startedAt = f.ctx.currentTime - position;
   f.pausedAt = null;
 }
 
 export async function useAudioFile(file: File): Promise<void> {
-  stopAudio();
+  const prepared = await prepareAudioFile(file);
+  prepared.commit(true);
+}
+
+/** Decode without disturbing the current input, for transactional project loading. */
+export async function prepareAudioFile(file: File): Promise<{ commit: (play?: boolean) => void; dispose: () => void }> {
   const ctx = new AudioContext();
-  const buffer = await ctx.decodeAudioData(await file.arrayBuffer());
+  let buffer: AudioBuffer;
+  try { buffer = await ctx.decodeAudioData(await file.arrayBuffer()); }
+  catch { void ctx.close(); throw new Error('Could not decode audio data'); }
   // Analyse a mono mix.
   const mono = new Float32Array(buffer.length);
   for (let c = 0; c < buffer.numberOfChannels; c++) {
@@ -118,37 +119,50 @@ export async function useAudioFile(file: File): Promise<void> {
   }
   const f: Extract<Input, { kind: 'file' }> = {
     kind: 'file',
+    file,
     name: file.name,
     ctx,
     buffer,
     levels: analyseLevels(mono, buffer.sampleRate),
     node: null,
-    startedAt: 0,
     pausedAt: 0,
   };
-  input = f;
-  playFrom(f, 0);
-  changed();
+  return {
+    commit(play = false) { stopAudio(); input = f; if (play) { seekAnimation(0); toggleAnimation(); } changed(); },
+    dispose() { void ctx.close(); },
+  };
 }
 
 export function toggleAudioPlayback(): void {
   if (input?.kind !== 'file') return;
   if (input.pausedAt === null) {
-    input.pausedAt = filePosition(input);
-    input.node?.stop();
-    input.node = null;
+    seekAnimation(clock());
   } else {
-    playFrom(input, input.pausedAt);
+    if (animationPaused()) toggleAnimation();
+    else playFrom(input, clock() % input.buffer.duration);
   }
   changed();
 }
 
-/** The first `seconds` of the audio file, for adding sound to a video export; null for none or the mic. */
-export function exportAudio(seconds: number): AudioBuffer | null {
+actions.syncAudioClock = (time, playing) => {
+  if (input?.kind !== 'file') return;
+  const position = ((time % input.buffer.duration) + input.buffer.duration) % input.buffer.duration;
+  const wasPlaying = input.pausedAt === null;
+  if (playing) playFrom(input, position);
+  else { input.node?.stop(); input.node = null; input.pausedAt = position; }
+  if (wasPlaying !== playing) changed();
+};
+
+/** Loop the soundtrack from `start` for `seconds`; null for none or the microphone. */
+export function exportAudio(seconds: number, start = 0): AudioBuffer | null {
   if (input?.kind !== 'file') return null;
   const src = input.buffer;
-  const length = Math.min(src.length, Math.round(seconds * src.sampleRate));
+  const length = Math.max(1, Math.round(seconds * src.sampleRate));
   const out = new AudioBuffer({ length, numberOfChannels: src.numberOfChannels, sampleRate: src.sampleRate });
-  for (let c = 0; c < src.numberOfChannels; c++) out.copyToChannel(src.getChannelData(c).subarray(0, length), c);
+  const offset = Math.round(start * src.sampleRate);
+  for (let c = 0; c < src.numberOfChannels; c++) {
+    const samples = src.getChannelData(c), dest = out.getChannelData(c);
+    for (let i = 0; i < length; i++) dest[i] = samples[(offset + i) % src.length];
+  }
   return out;
 }

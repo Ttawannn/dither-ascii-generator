@@ -19,6 +19,9 @@ export const rt = {
   seed: 0,
   /** Frame time in seconds while exporting; null means real time. */
   clockOverride: null as number | null,
+  previewTime: 0,
+  previewPaused: false,
+  previewStarted: performance.now() / 1000,
   exporting: null as { cancelled: boolean } | null,
   /** Suppress queued/live redraws while an export waits for a complete full-resolution frame. */
   renderingFull: false,
@@ -36,6 +39,15 @@ export const stippleProgress = {
 };
 
 export const actions = {
+  syncAudioClock: (_time: number, _playing: boolean): void => {},
+  beginUndo: (): void => {},
+  beginUndoGesture: (): void => {},
+  endUndoGesture: (): void => {},
+  resetHistory: (): void => {},
+  saveProject: async (): Promise<void> => {},
+  openProject: async (_file: File): Promise<void> => {},
+  cancelProject: (): void => {},
+  projectStatus: (_message: string, _busy: boolean): void => {},
   generateStipple: async (_p: Params): Promise<void> => {},
   cancelStipple: (): void => {},
   openSample: async (): Promise<void> => {},
@@ -82,7 +94,29 @@ export function requestRender(): void {
 }
 
 /** Animation clock in seconds: real time, or the frame time while exporting. */
-export const clock = () => rt.clockOverride ?? performance.now() / 1000;
+export const clock = () => rt.clockOverride ?? (rt.current?.kind === 'video' ? (rt.current.element as HTMLVideoElement).currentTime
+  : rt.previewPaused ? rt.previewTime : rt.previewTime + performance.now() / 1000 - rt.previewStarted);
+export const animationPaused = () => rt.current?.kind === 'video' ? (rt.current.element as HTMLVideoElement).paused : rt.previewPaused;
+export function seekAnimation(time: number): void {
+  rt.previewTime = Math.max(0, time); rt.previewPaused = true; rt.clockOverride = null; requestRender();
+  if (rt.current?.kind === 'video') {
+    const video = rt.current.element as HTMLVideoElement;
+    video.pause();
+    const at = Math.min(video.duration, Math.max(0, time));
+    if (Math.abs(video.currentTime - at) > 1e-4) video.currentTime = at;
+  }
+  actions.syncAudioClock(clock(), false);
+  rt.seed = store.params.animate && store.params.temporalPattern === 'off' ? Math.floor(time * store.params.boilFps) + 1 : 0;
+}
+export function toggleAnimation(): void {
+  if (animationPaused()) {
+    rt.previewStarted = performance.now() / 1000; rt.previewPaused = false;
+    if (rt.current?.kind === 'video') void (rt.current.element as HTMLVideoElement).play().catch(() => undefined);
+    actions.syncAudioClock(clock(), true);
+  }
+  else seekAnimation(clock());
+  requestRender();
+}
 
 // Parsed animation lanes, cached per stored string.
 let lanesCache: { json: string; lanes: Lane[] } = { json: '', lanes: [] };
@@ -126,4 +160,5 @@ export const lfoActive = (p: Params) =>
 export const transparentAscii = (p: Params) => p.asciiTransparent && p.asciiColor !== 'colorBg';
 /** The output has transparent areas: an ASCII background, or what lies outside the mask. */
 export const transparentOutput = (p: Params) =>
-  (p.mode === 'ascii' && transparentAscii(p)) || (p.maskMode !== 'off' && p.maskOutside === 'transparent');
+  (p.mode === 'ascii' && transparentAscii(p)) || (p.mode === 'dither' && p.algorithm === 'luma-shapes' && p.shapeTransparent)
+  || p.fxReveal || (p.maskMode !== 'off' && p.maskOutside === 'transparent');

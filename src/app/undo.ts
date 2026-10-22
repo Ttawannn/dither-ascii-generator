@@ -1,14 +1,19 @@
 import { History } from '../history';
 import { PRESET_KEYS, snapshot } from '../presets';
-import type { Params } from '../state';
 import { button } from '../ui/controls';
-import { store } from './core';
+import { actions, store } from './core';
+import { getLocks, onLocksChange, setLocks } from './locks';
 import { flash, header } from './shell';
 
 // Undo / redo for the look (the preset-controlled settings). Opening another source and export
 // settings are not part of it.
 
-const history = new History<Partial<Params>>(snapshot(store.params));
+const capture = () => ({ params: snapshot(store.params), locks: getLocks() });
+const history = new History(capture());
+actions.beginUndo = () => history.beginStep();
+actions.beginUndoGesture = () => history.beginGroup();
+actions.endUndoGesture = () => history.endGroup();
+actions.resetHistory = () => { history.clear(capture()); sync(); };
 let restoring = false;
 
 const undoBtn = button('↶', () => undo(), 'btn small history-btn');
@@ -25,14 +30,20 @@ function sync(): void {
 
 store.subscribe((p, changed) => {
   if (restoring || !PRESET_KEYS.includes(changed)) return;
-  history.change(snapshot(p), performance.now());
+  history.change({ params: snapshot(p), locks: getLocks() }, performance.now());
   sync();
 });
 
-function restore(state: Partial<Params> | null, what: string): void {
+onLocksChange(() => {
+  if (restoring) return;
+  history.change(capture(), performance.now()); sync();
+});
+
+function restore(state: ReturnType<typeof capture> | null, what: string): void {
   if (!state) return;
   restoring = true;
-  store.apply(state);
+  store.apply(state.params);
+  setLocks(state.locks);
   restoring = false;
   sync();
   flash(what);

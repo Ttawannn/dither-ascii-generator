@@ -49,6 +49,22 @@ describe('parseLanes', () => {
 });
 
 describe('keyframes', () => {
+  it('interpolates multiple points, holds steps, clamps outside a lane, and repeats', () => {
+    const lane = keys({ start: 1, end: 5, loop: 'once', points: [
+      { time: 0, value: -80, ease: 'linear' }, { time: .5, value: 40, ease: 'step' }, { time: 1, value: 90, ease: 'linear' },
+    ] });
+    expect(laneValue(lane, 0, contrast, 0, 8)).toBe(-80);
+    expect(laneValue(lane, 0, contrast, 2, 8)).toBe(-20);
+    expect(laneValue(lane, 0, contrast, 4, 8)).toBe(40);
+    expect(laneValue(lane, 0, contrast, 6, 8)).toBe(90);
+    expect(laneValue({ ...lane, loop: 'repeat' }, 0, contrast, 6, 8)).toBe(-20);
+  });
+  it('repairs duplicate point times, sorts points, and keeps the final value at a repeated time', () => {
+    const [lane] = parseLanes(JSON.stringify([{ ...keys(), points: [
+      { time: 1, value: 100, ease: 'linear' }, { time: 0, value: -100 }, { time: .5, value: 0 }, { time: .5, value: 40 },
+    ] }]), animatableSpec);
+    expect(lane.points?.map((p) => [p.time, p.value])).toEqual([[0, -100], [.5, 40], [1, 100]]);
+  });
   it('repeats, ping-pongs or plays once', () => {
     expect(keyProgress({ ease: 'linear', loop: 'repeat' }, 1, 4)).toBeCloseTo(0.25);
     expect(keyProgress({ ease: 'linear', loop: 'repeat' }, 5, 4)).toBeCloseTo(0.25);

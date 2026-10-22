@@ -13,6 +13,7 @@ import ditherFrag from './shaders/dither.frag?raw';
 import blitFrag from './shaders/blit.frag?raw';
 import asciiFrag from './shaders/ascii.frag?raw';
 import postFrag from './shaders/post.frag?raw';
+import { temporalPhase, TEMPORAL_PATTERNS } from '../temporal';
 import filterFrag from './shaders/filter.frag?raw';
 import compositeFrag from './shaders/composite.frag?raw';
 import sortFrag from './shaders/sort.frag?raw';
@@ -84,6 +85,7 @@ function texture(gl: WebGL2RenderingContext, filter: number, wrap: number = gl.C
  * Glow first renders a bright pass into its own mipmapped texture and samples that.
  */
 export class Renderer {
+  time = 0;
   readonly gl: WebGL2RenderingContext;
   readonly maxTextureSize: number;
   // GPU objects, rebuilt by createResources() after a context loss.
@@ -278,6 +280,9 @@ export class Renderer {
     gl.uniform1f(u('u_hue'), (p.hue * Math.PI) / 180);
     gl.uniform1i(u('u_invert'), p.invert ? 1 : 0);
     gl.uniform1i(u('u_bypass'), bypass ? 1 : 0);
+    gl.uniform1i(u('u_temporal'), p.animate ? Math.max(0, TEMPORAL_PATTERNS.findIndex((v) => v.id === p.temporalPattern)) : 0);
+    gl.uniform4f(u('u_temporalParams'), p.temporalAmount / 100, p.temporalScale, p.temporalAngle * Math.PI / 180, temporalPhase(p, this.time));
+    gl.uniform1f(u('u_temporalSeed'), p.temporalSeed);
     gl.uniform1i(u('u_mirror'), p.mirror ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.mirror = p.mirror;
@@ -454,6 +459,7 @@ export class Renderer {
     );
     gl.uniform1i(u('u_shape'), Math.max(0, ['round', 'ellipse', 'square', 'diamond'].indexOf(p.halftoneShape)));
     gl.uniform1f(u('u_cell'), p.cellSize);
+    gl.uniform3f(u('u_modulation'), p.modulationAmount / 100, p.modulationWidth / 100, p.modulationPhase / 100);
     gl.uniform1f(u('u_angle'), (p.angle * Math.PI) / 180);
     gl.uniform1ui(u('u_seed'), seed + 1);
     gl.uniform2f(u('u_offset'), (seed * 29) % 64, (seed * 47) % 64);
@@ -470,6 +476,9 @@ export class Renderer {
     gl.uniform4f(u('u_cmykAngles'), rad(p.cmykAngleC), rad(p.cmykAngleM), rad(p.cmykAngleY), rad(p.cmykAngleK));
     gl.uniform3f(u('u_cmyk'), p.cmykDotGain / 100, p.cmykGcr / 100, p.cmykSupersample);
     if (p.algorithm === 'luma-shapes') {
+      gl.uniform1i(u('u_layout'), ['grid', 'staggered', 'scatter'].indexOf(p.shapeLayout));
+      gl.uniform4f(u('u_shapeVariation'), p.shapeJitter / 100, p.shapeSizeJitter / 100, rad(p.shapeAngleJitter), p.shapeSeed);
+      gl.uniform1i(u('u_shapeTransparent'), p.shapeTransparent ? 1 : 0);
       const bands = parseShapeBands(p.shapeBands) ?? shapeSet();
       gl.activeTexture(gl.TEXTURE3);
       gl.bindTexture(gl.TEXTURE_2D, this.bandImageTex);
@@ -487,7 +496,7 @@ export class Renderer {
       gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(u('u_bandCount'), bands.length);
       gl.uniform4fv(u('u_bands[0]'), new Float32Array(bands.flatMap((b) =>
-        [(b.end + 1) / 256, BAND_SHAPES.findIndex((s) => s.id === b.shape), b.size / 100, 0])));
+        [(b.end + 1) / 256, BAND_SHAPES.findIndex((s) => s.id === b.shape), b.size / 100, rad(b.rotation ?? 0)])));
       gl.uniform3fv(u('u_bandColors[0]'), new Float32Array(bands.flatMap((b) => hexToRgb(b.color))));
       gl.uniform3fv(u('u_bandBackground'), hexToRgb(p.shapeBackground));
       gl.uniform1f(u('u_bandFeather'), p.shapeFeather / 100);

@@ -39,6 +39,7 @@ window.addEventListener('drop', (e) => {
 /** Presets (.preset, or .json shaped like one), palette files, otherwise an image or video. */
 async function openDropped(file: File | undefined): Promise<void> {
   if (!file) return;
+  if (/\.dither-project$/i.test(file.name)) return actions.openProject(file);
   if (/\.(preset|json)$/i.test(file.name) && (await importPresetFile(file))) return;
   if (/\.preset$/i.test(file.name)) return flash(`${file.name} is not a preset file`);
   if (isPaletteFile(file)) return importPaletteFile(file);

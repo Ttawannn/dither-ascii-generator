@@ -1,4 +1,8 @@
-import { ADJUST_KEYS, ANIM_KEYS, ASCII_KEYS, DEFAULTS, DITHER_KEYS, FX_KEYS, MASK_KEYS, sanitize, type Params } from './state';
+import { ADJUST_KEYS, ANIM_KEYS, ASCII_KEYS, DEFAULTS, DITHER_KEYS, FX_KEYS, MASK_KEYS, sanitize, animatableSpec, type Params, type NumericKey } from './state';
+import { newLane, serializeLanes, type Lane } from './anim';
+
+const keyLane = (key: NumericKey, from: number, to: number, ease: Lane['ease'], loop: Lane['loop']) =>
+  serializeLanes([{ ...newLane(1, key, animatableSpec(key)!, from), mode: 'keys', from, to, ease, loop }]);
 
 export interface Preset {
   name: string;
@@ -18,6 +22,17 @@ export const PRESET_KEYS: (keyof Params)[] = [
 ];
 
 export const BUILT_IN: Preset[] = [
+  { name: 'Fine lines', params: { algorithm: 'modulation', cellSize: 3, modulationWidth: 35, modulationAmount: 25, pixelSize: 1, angle: 0 } },
+  { name: 'Coarse poster', params: { algorithm: 'modulation', cellSize: 14, modulationWidth: 75, modulationAmount: 80, palette: 'cga', angle: 30 } },
+  { name: 'Moving signal', params: { algorithm: 'modulation', cellSize: 8, palette: 'gameboy', animLanes: keyLane('modulationPhase', 0, 100, 'linear', 'repeat') } },
+  ...[
+    { name: 'Portrait reveal', asciiCharset: 'detailed', asciiColumns: 100, fxRevealAngle: 0 },
+    { name: 'Logo reveal', asciiCharset: 'blocks', asciiColumns: 60, fxRevealAngle: 90 },
+    { name: 'Terminal dissolve', asciiCharset: 'standard', asciiColumns: 120, fxRevealAngle: 180 },
+  ].map(({ name, ...params }) => ({ name, params: {
+    ...params, mode: 'ascii' as const, fxReveal: true, fxGlow: true, fxGlowRadius: 5, fxGlowIntensity: 60,
+    animLanes: keyLane('fxRevealProgress', 0, 100, 'smooth', 'pingpong'),
+  } })),
   {
     name: 'Mac 1-bit',
     params: { algorithm: 'atkinson', palette: 'mono', ink: '#1a1a1a', paper: '#e8e4d8', pixelSize: 2, contrast: 10 },

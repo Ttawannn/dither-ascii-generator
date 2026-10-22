@@ -18,6 +18,7 @@ const MAX_BYTES = 20 * 1024 * 1024;
 let names: string[] = [];
 const listeners = new Set<() => void>();
 const faces = new Map<string, FontFace>();
+const fontData = new Map<string, ArrayBuffer>();
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -46,6 +47,24 @@ async function register(name: string, data: ArrayBuffer): Promise<void> {
   if (old) document.fonts.delete(old);
   document.fonts.add(face);
   faces.set(name, face);
+  fontData.set(name, data);
+}
+
+export const userFontData = (name: string): ArrayBuffer | null => fontData.get(name) ?? null;
+export async function prepareProjectFont(name: string, data: ArrayBuffer): Promise<() => void> {
+  if (data.byteLength > MAX_BYTES) throw new Error('That font file is larger than 20 MB');
+  const face = new FontFace(name, data);
+  await face.load();
+  return () => {
+    const old = faces.get(name);
+    if (old) document.fonts.delete(old);
+    document.fonts.add(face);
+    faces.set(name, face);
+    fontData.set(name, data);
+    names = [...names.filter((n) => n !== name), name];
+    void run('readwrite', (s) => s.put({ name, data } satisfies StoredFont)).catch(() => undefined);
+    changed();
+  };
 }
 
 function changed(): void {
@@ -107,6 +126,7 @@ export async function removeUserFont(name: string): Promise<void> {
   const face = faces.get(name);
   if (face) document.fonts.delete(face);
   faces.delete(name);
+  fontData.delete(name);
   try {
     await run('readwrite', (s) => s.delete(name));
   } catch {

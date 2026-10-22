@@ -1,6 +1,8 @@
 import { download } from '../../export/png';
 import { importPreset, importPresetList } from '../../preset-import';
 import { randomLook, rng } from '../../random-look';
+import { ADJUST_LOCK_KEYS, LOCK_GROUPS, protectLook } from '../../locks';
+import { getLocks, onLocksChange, toggleKeys } from '../locks';
 import {
   BUILT_IN,
   decodeShare,
@@ -14,7 +16,7 @@ import {
   storeSaved,
   type Preset,
 } from '../../presets';
-import type { Params } from '../../state';
+import { ADJUST_SLIDERS, DEFAULTS, type Params } from '../../state';
 import { button, el, section } from '../../ui/controls';
 import { actions, store } from '../core';
 import { flash } from '../shell';
@@ -178,13 +180,35 @@ export function applyShareLink(): void {
 /** A random look within ranges that keep the picture readable (Undo brings the previous one back). */
 function surprise(): void {
   const seed = crypto.getRandomValues(new Uint32Array(1))[0];
-  store.apply(resolvePreset({ name: 'Surprise', params: randomLook(rng(seed)) }));
+  actions.beginUndo();
+  store.apply(protectLook(store.params, resolvePreset({ name: 'Surprise', params: randomLook(rng(seed)) }), getLocks()));
+}
+
+const groupLocks = LOCK_GROUPS.map((group) => {
+  const b = button(group.label, () => { actions.beginUndo(); toggleKeys(group.keys); }, 'chip');
+  b.title = 'Lock during shuffle';
+  const sync = () => { const locked = group.keys.every((k) => getLocks().keys.includes(k)); b.classList.toggle('active', locked); b.setAttribute('aria-pressed', `${locked}`); };
+  onLocksChange(sync); sync(); return b;
+});
+function shuffleAdjustments(): void {
+  const random = rng(crypto.getRandomValues(new Uint32Array(1))[0]);
+  const next: Record<string, unknown> = {};
+  for (const s of ADJUST_SLIDERS) {
+    const span = (s.max - s.min) * 0.2;
+    const lo = Math.max(s.min, DEFAULTS[s.key] - span), hi = Math.min(s.max, DEFAULTS[s.key] + span);
+    next[s.key] = +((Math.round((lo + random() * (hi - lo)) / s.step)) * s.step).toFixed(3);
+  }
+  for (const k of ADJUST_LOCK_KEYS) if (typeof DEFAULTS[k] === 'boolean') next[k] = random() < 0.25;
+  actions.beginUndo(); store.apply(protectLook(store.params, next as Partial<Params>, getLocks()));
 }
 
 export const presetsSection = section(
   'Presets',
   builtInGrid,
   el('div', { class: 'btn-row' }, button('Surprise me', surprise, 'btn small share-btn')),
+  el('div', { class: 'btn-row' }, button('Shuffle adjustments', shuffleAdjustments, 'btn small')),
+  el('div', { class: 'note' }, 'Keep during shuffle'),
+  el('div', { class: 'btn-row' }, ...groupLocks),
   savedHead,
   savedGrid,
   el('div', { class: 'save-row' }, presetName, button('Save', savePreset, 'btn small')),
