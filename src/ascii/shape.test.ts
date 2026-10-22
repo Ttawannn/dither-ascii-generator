@@ -17,6 +17,13 @@ describe('shape matching', () => {
     expect(shapeGlyph(new Float32Array(32).fill(0.5), masks, [0, 1, 2, 3], 2, 1)).toBe(2);
     expect(shapeGlyph(masks.slice(32, 64), masks, [0, 1, 2, 3], 2, 0)).toBe(2);
   });
+  it('keeps the density glyph in a smooth gradient, but follows a strong stroke', () => {
+    // A faint top-to-bottom ramp (±3%) looks like a horizontal stroke once normalised.
+    const ramp = Float32Array.from({ length: 32 }, (_, i) => 0.5 + (Math.floor(i / 4) - 3.5) * 0.008);
+    expect(shapeGlyph(ramp, masks, [0, 1, 2, 3], 3, 1)).toBe(3);
+    expect(shapeGlyph(masks.slice(64, 96), masks, [0, 1, 2, 3], 3, 1)).toBe(2);
+  });
+
   it('uses bottom-up sub-cell pixels for glyphs but top-down cells for exports', () => {
     const data = new Uint8Array(4 * 16 * 4);
     for (let y = 0; y < 16; y++)
