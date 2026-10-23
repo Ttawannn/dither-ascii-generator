@@ -2,7 +2,7 @@ import type { Atlas } from '../ascii/atlas';
 import type { AsciiGrid } from '../ascii/grid';
 import { hexToRgb } from './palettes';
 import type { Params } from '../state';
-import { FOLLOWS_IMAGE, getAlgorithm } from './algorithms';
+import { FOLLOWS_IMAGE, getAlgorithm, lookUniform } from './algorithms';
 import { blueNoiseTile } from './bluenoise';
 import { paletteLab } from './oklab';
 import { baseSpread, MAX_PALETTE, type Palette } from './palettes';
@@ -283,6 +283,7 @@ export class Renderer {
     gl.uniform1i(u('u_temporal'), p.animate ? Math.max(0, TEMPORAL_PATTERNS.findIndex((v) => v.id === p.temporalPattern)) : 0);
     gl.uniform4f(u('u_temporalParams'), p.temporalAmount / 100, p.temporalScale, p.temporalAngle * Math.PI / 180, temporalPhase(p, this.time));
     gl.uniform1f(u('u_temporalSeed'), p.temporalSeed);
+    gl.uniform3f(u('u_warp'), p.warpCurve / 100, p.warpSwirl / 100, p.warpSwirlRadius / 100);
     gl.uniform1i(u('u_mirror'), p.mirror ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.mirror = p.mirror;
@@ -432,13 +433,17 @@ export class Renderer {
     const algo = getAlgorithm(p.algorithm);
     // Follow image: blur the adjusted image over ~1.5 cells; its brightness shifts the pattern.
     const follow = FOLLOWS_IMAGE.includes(p.algorithm) ? p.patternFollow / 100 : 0;
-    if (follow > 0) {
+    // Contour reads a smoothed copy too, blurred by its own Smoothness.
+    const contour = p.algorithm === 'contour';
+    const smooth = follow > 0 || contour;
+    if (smooth) {
       if (this.adjW !== this.smoothW || this.adjH !== this.smoothH) {
         this.sizeTarget(this.smoothTex, this.smoothFbo, this.adjW, this.adjH);
         this.smoothW = this.adjW;
         this.smoothH = this.adjH;
       }
-      this.separable(this.adjTex, this.smoothFbo, 0, Math.max(1, p.cellSize * 1.5), 0);
+      const radius = contour ? 1 + (p.contourSmooth / 100) * 24 : Math.max(1, p.cellSize * 1.5);
+      this.separable(this.adjTex, this.smoothFbo, 0, radius, 0);
     }
     this.beginOutput();
     const { prog, u } = this.dither;
@@ -467,7 +472,7 @@ export class Renderer {
     gl.uniform1f(u('u_hexRings'), p.hexRings / 100);
     gl.uniform1f(u('u_follow'), follow);
     gl.activeTexture(gl.TEXTURE2);
-    gl.bindTexture(gl.TEXTURE_2D, follow > 0 ? this.smoothTex : this.adjTex);
+    gl.bindTexture(gl.TEXTURE_2D, smooth ? this.smoothTex : this.adjTex);
     gl.uniform1i(u('u_smooth'), 2);
     gl.activeTexture(gl.TEXTURE0);
     gl.uniform4f(u('u_orb'), p.orbSize, p.orbCount, p.orbIntensity / 100, p.orbRandom / 100);
@@ -475,6 +480,7 @@ export class Renderer {
     const rad = (deg: number) => (deg * Math.PI) / 180;
     gl.uniform4f(u('u_cmykAngles'), rad(p.cmykAngleC), rad(p.cmykAngleM), rad(p.cmykAngleY), rad(p.cmykAngleK));
     gl.uniform3f(u('u_cmyk'), p.cmykDotGain / 100, p.cmykGcr / 100, p.cmykSupersample);
+    gl.uniform4fv(u('u_look'), lookUniform(p, this.adjW, this.adjH));
     if (p.algorithm === 'luma-shapes') {
       gl.uniform1i(u('u_layout'), ['grid', 'staggered', 'scatter'].indexOf(p.shapeLayout));
       gl.uniform4f(u('u_shapeVariation'), p.shapeJitter / 100, p.shapeSizeJitter / 100, rad(p.shapeAngleJitter), p.shapeSeed);

@@ -20,6 +20,7 @@ uniform vec4 u_orb;         // orbs: radius px, count, intensity 0..1, size vari
 uniform bool u_orbVertical;
 uniform vec4 u_cmykAngles;  // halftone CMYK: screen angle per ink (radians), C M Y K
 uniform vec3 u_cmyk;        // dot gain 0..1, black replacement 0..1, samples per side
+uniform vec4 u_look;        // contour: lines, width, phase · moiré: ratio, angle · radial: centre px, arms
 
 uniform int u_kind;         // 0 ramp, 1 set, 2 rgb
 uniform vec3 u_pal[32];
@@ -49,7 +50,7 @@ const float TAU = 6.28318531;
 // Recursive Bayer matrix of size 2^n, value in (0, 1).
 float bayer(ivec2 p, int n) {
   int v = 0;
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 4; i++) {
     if (i >= n) break;
     int bx = (p.x >> i) & 1;
     int by = (p.y >> i) & 1;
@@ -133,6 +134,19 @@ float pattern(vec2 fc) {
   if (u_algo == 3) return texelFetch(u_noise, p & 63, 0).r;
   if (u_algo == 7) return hash(uvec2(p));
   if (u_algo == 10) return orbs(fc);
+  if (u_algo == 14) return bayer(p, 4);
+  if (u_algo == 15) {
+    // Contour: lines along levels of the smoothed brightness, so they follow the shapes. The distance
+    // to the nearest level is spread evenly, so the tone holds and darker areas get thicker lines.
+    float l = dot(texelFetch(u_smooth, ivec2(gl_FragCoord.xy), 0).rgb, LUMA);
+    return abs(fract(l * u_look.x + u_look.z + 0.5) - 0.5) * 2.0;
+  }
+  if (u_algo == 17) {
+    // Radial: rings around a centre; whole spiral arms keep the pattern seamless.
+    vec2 d = fc - u_offset - u_look.xy;
+    float phase = length(d) / u_cell + u_look.z * atan(d.y, d.x) / TAU;
+    return 0.5 - 0.5 * cos(TAU * phase);
+  }
 
   float s = sin(u_angle), c = cos(u_angle);
   vec2 r = mat2(c, s, -s, c) * fc / u_cell;
@@ -146,6 +160,12 @@ float pattern(vec2 fc) {
     return clamp(d / max(0.01, u_modulation.y), 0.0, 1.0);
   }
   if (u_algo == 9) return honeycomb(r);
+  if (u_algo == 16) {
+    // Sine moiré: two line screens, the second at its own wavelength and angle.
+    float a = u_angle + u_look.y;
+    vec2 r2 = mat2(cos(a), sin(a), -sin(a), cos(a)) * fc / (u_cell * u_look.x);
+    return 0.5 + 0.25 * (cos(TAU * r.y) + cos(TAU * r2.y));
+  }
   float lineA = 0.5 - 0.5 * cos(TAU * r.y);
   if (u_algo == 4) return dotScreen(r);
   if (u_algo == 5) return lineA;

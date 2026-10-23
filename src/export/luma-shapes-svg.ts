@@ -1,4 +1,5 @@
 import type { Params } from '../state';
+import { bayer } from '../pipeline/algorithms';
 import { parseShapeBands, shapeSet, type ShapeBand } from '../pipeline/shape-bands';
 import type { SvgSize } from './halftone-svg';
 
@@ -9,11 +10,6 @@ export function shapeHash(x: number, y: number, seed: number): number {
   return (h >>> 0) / 4294967295;
 }
 const num = (v: number) => +v.toFixed(5);
-function bayer(x: number, y: number): number {
-  let v = 0;
-  for (let i = 0; i < 3; i++) v |= ((((x >> i) & 1) ^ ((y >> i) & 1)) * 2 + ((y >> i) & 1)) << (2 * (2 - i));
-  return (v + 0.5) / 64;
-}
 export interface ShapeCell {
   x: number; y: number; band: number; radius: number; rotation: number;
   cx: number; cy: number; stagger: number;
@@ -42,7 +38,7 @@ export function shapeCells(data: Uint8Array, width: number, height: number, p: P
     const px = Math.max(0, Math.min(width - 1, Math.trunc(x))), py = Math.max(0, Math.min(height - 1, Math.trunc(y)));
     const at = (py * width + px) * 4;
     const luma = (data[at] * 0.2126 + data[at + 1] * 0.7152 + data[at + 2] * 0.0722) / 255;
-    const rank = p.shapeFeatherPattern === 'scatter' ? shapeHash(cx, cy, boilSeed + 1) : bayer(cx, cy);
+    const rank = p.shapeFeatherPattern === 'scatter' ? shapeHash(cx, cy, boilSeed + 1) : bayer(cx, cy, 3);
     let band = bands.length - 1;
     for (let i = 0; i < bands.length - 1; i++) {
       const bound = (bands[i].end + 1) / 256, lower = i ? (bands[i - 1].end + 1) / 256 : 0;

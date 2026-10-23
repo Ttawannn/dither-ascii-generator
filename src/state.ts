@@ -29,6 +29,11 @@ export interface Params {
   blur: number;
   /** Edge-preserving smoothing strength, 0..100. */
   denoise: number;
+  /** Warp before dithering: rows shifted along a curve (-100..100), and a swirl around the centre. */
+  warpCurve: number;
+  warpSwirl: number;
+  /** Swirl reach, % of the half-diagonal. */
+  warpSwirlRadius: number;
   invert: boolean;
   mirror: boolean;
   // animation
@@ -66,6 +71,16 @@ export interface Params {
   modulationAmount: number;
   modulationWidth: number;
   modulationPhase: number;
+  /** Contour: lines per full brightness range, and how much the brightness is smoothed first (0..100). */
+  contourLevels: number;
+  contourSmooth: number;
+  /** Sine moiré: second screen's wavelength (% of the cell) and angle (degrees from the first). */
+  moireRatio: number;
+  moireAngle: number;
+  /** Radial: centre as % of width / height, and spiral arms (0 = rings). */
+  radialX: number;
+  radialY: number;
+  radialArms: number;
   stippleCount: number;
   stippleIterations: number;
   stippleSize: number;
@@ -242,6 +257,9 @@ export const DEFAULTS: Params = {
   sharpen: 0,
   blur: 0,
   denoise: 0,
+  warpCurve: 0,
+  warpSwirl: 0,
+  warpSwirlRadius: 100,
   invert: false,
   mirror: false,
   animate: false,
@@ -262,6 +280,9 @@ export const DEFAULTS: Params = {
   shapeLayout: 'grid', shapeJitter: 0, shapeSizeJitter: 0, shapeAngleJitter: 0, shapeSeed: 1,
   shapeTransparent: false,
   modulationAmount: 50, modulationWidth: 50, modulationPhase: 0,
+  contourLevels: 12, contourSmooth: 30,
+  moireRatio: 110, moireAngle: 8,
+  radialX: 50, radialY: 50, radialArms: 0,
   stippleCount: 10000,
   stippleIterations: 8,
   stippleSize: 100,
@@ -461,6 +482,9 @@ export const ADJUST_SLIDERS: SliderSpec[] = [
   { key: 'sharpen', label: 'Sharpen', min: 0, max: 100, step: 1 },
   { key: 'blur', label: 'Blur', min: 0, max: 100, step: 1 },
   { key: 'denoise', label: 'Denoise', min: 0, max: 100, step: 1 },
+  { key: 'warpCurve', label: 'Curve', min: -100, max: 100, step: 1, format: signed },
+  { key: 'warpSwirl', label: 'Swirl', min: -100, max: 100, step: 1, format: signed },
+  { key: 'warpSwirlRadius', label: 'Swirl radius', min: 10, max: 100, step: 1, format: pct },
 ];
 
 export const PALETTE_MIXING = [{ id: 'nearest', label: 'Nearest' }, { id: 'pattern', label: 'Pattern' }];
@@ -473,6 +497,13 @@ export const DITHER_SLIDERS: Record<string, SliderSpec> = {
   modulationAmount: { key: 'modulationAmount', label: 'Modulation', min: 0, max: 100, step: 1 },
   modulationWidth: { key: 'modulationWidth', label: 'Line width', min: 1, max: 100, step: 1 },
   modulationPhase: { key: 'modulationPhase', label: 'Phase', min: 0, max: 100, step: 1 },
+  contourLevels: { key: 'contourLevels', label: 'Lines', min: 2, max: 48, step: 1 },
+  contourSmooth: { key: 'contourSmooth', label: 'Smoothness', min: 0, max: 100, step: 1, format: pct },
+  moireRatio: { key: 'moireRatio', label: 'Second wavelength', min: 50, max: 200, step: 1, format: pct },
+  moireAngle: { key: 'moireAngle', label: 'Second angle', min: 0, max: 90, step: 1, format: (v) => `${v}°` },
+  radialX: { key: 'radialX', label: 'Centre X', min: 0, max: 100, step: 1, format: pct },
+  radialY: { key: 'radialY', label: 'Centre Y', min: 0, max: 100, step: 1, format: pct },
+  radialArms: { key: 'radialArms', label: 'Spiral arms', min: -8, max: 8, step: 1, format: signed },
   shapeJitter: { key: 'shapeJitter', label: 'Position variation', min: 0, max: 100, step: 1 },
   shapeSizeJitter: { key: 'shapeSizeJitter', label: 'Size variation', min: 0, max: 100, step: 1 },
   shapeAngleJitter: { key: 'shapeAngleJitter', label: 'Rotation variation', min: 0, max: 180, step: 1 },
@@ -639,6 +670,7 @@ export const ADJUST_KEYS: (keyof Params)[] = [...ADJUST_SLIDERS.map((s) => s.key
 export const DITHER_KEYS: (keyof Params)[] = [
   'shapeLayout', 'shapeJitter', 'shapeSizeJitter', 'shapeAngleJitter', 'shapeSeed', 'shapeTransparent',
   'modulationAmount', 'modulationWidth', 'modulationPhase',
+  'contourLevels', 'contourSmooth', 'moireRatio', 'moireAngle', 'radialX', 'radialY', 'radialArms',
   'shapeBands', 'shapeFeather', 'shapeFeatherPattern', 'shapeBackground',
   'paletteMixing', 'linearLight', 'halftoneShape',
   'stippleCount', 'stippleIterations', 'stippleSize', 'stippleSeed',

@@ -15,6 +15,7 @@ uniform bool u_bypass;
 uniform int u_temporal;
 uniform vec4 u_temporalParams; // amount, scale, angle, phase
 uniform float u_temporalSeed;
+uniform vec3 u_warp;           // curve -1..1, swirl -1..1, swirl reach 0.1..1 (of the half-diagonal)
 
 in vec2 v_uv;
 out vec4 outColor;
@@ -35,15 +36,33 @@ vec3 hueRotate(vec3 c, float a) {
   return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca);
 }
 
+// Where to read the source for this pixel (v_uv: y = 0 at the top). Curve shifts each row sideways
+// by the square of its distance from the top; swirl turns points around the centre, most at the
+// centre and none past the reach.
+vec2 warp(vec2 uv) {
+  if (u_warp.x != 0.0) uv.x -= u_warp.x * 0.25 * uv.y * uv.y;
+  if (u_warp.y != 0.0) {
+    float aspect = u_texel.y / u_texel.x;
+    vec2 d = (uv - 0.5) * vec2(aspect, 1.0);
+    float reach = u_warp.z * 0.5 * length(vec2(aspect, 1.0));
+    float f = max(0.0, 1.0 - length(d) / reach);
+    float a = u_warp.y * 6.28318531 * f * f;
+    d = mat2(cos(a), sin(a), -sin(a), cos(a)) * d;
+    uv = d / vec2(aspect, 1.0) + 0.5;
+  }
+  return uv;
+}
+
 void main() {
-  vec3 c = texture(u_src, v_uv).rgb;
+  vec2 uv = u_bypass ? v_uv : warp(v_uv);
+  vec3 c = texture(u_src, uv).rgb;
 
   if (!u_bypass) {
     if (u_sharpen > 0.0) {
-      vec3 n = texture(u_src, v_uv + vec2(u_texel.x, 0.0)).rgb
-             + texture(u_src, v_uv - vec2(u_texel.x, 0.0)).rgb
-             + texture(u_src, v_uv + vec2(0.0, u_texel.y)).rgb
-             + texture(u_src, v_uv - vec2(0.0, u_texel.y)).rgb;
+      vec3 n = texture(u_src, uv + vec2(u_texel.x, 0.0)).rgb
+             + texture(u_src, uv - vec2(u_texel.x, 0.0)).rgb
+             + texture(u_src, uv + vec2(0.0, u_texel.y)).rgb
+             + texture(u_src, uv - vec2(0.0, u_texel.y)).rgb;
       c += (c * 4.0 - n) * u_sharpen;
     }
 

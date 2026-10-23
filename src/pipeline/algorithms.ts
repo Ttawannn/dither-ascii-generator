@@ -1,3 +1,5 @@
+import type { Params } from '../state';
+
 export type AlgorithmGroup = 'ordered' | 'pattern' | 'diffusion' | 'stipple' | 'other';
 
 export interface Algorithm {
@@ -12,6 +14,7 @@ export const ALGORITHMS: Algorithm[] = [
   { id: 'bayer2', label: 'Bayer 2×2', group: 'ordered', shader: 0 },
   { id: 'bayer4', label: 'Bayer 4×4', group: 'ordered', shader: 1 },
   { id: 'bayer8', label: 'Bayer 8×8', group: 'ordered', shader: 2 },
+  { id: 'bayer16', label: 'Bayer 16×16', group: 'ordered', shader: 14 },
   { id: 'bluenoise', label: 'Blue noise', group: 'ordered', shader: 3 },
   { id: 'halftone', label: 'Halftone dot', group: 'pattern', shader: 4 },
   { id: 'lines', label: 'Halftone line', group: 'pattern', shader: 5 },
@@ -21,6 +24,9 @@ export const ALGORITHMS: Algorithm[] = [
   { id: 'halftone-cmyk', label: 'Halftone CMYK', group: 'pattern', shader: 11 },
   { id: 'luma-shapes', label: 'Luma Shapes', group: 'pattern', shader: 12 },
   { id: 'modulation', label: 'Modulation Lines', group: 'pattern', shader: 13 },
+  { id: 'contour', label: 'Contour', group: 'pattern', shader: 15 },
+  { id: 'moire', label: 'Sine moiré', group: 'pattern', shader: 16 },
+  { id: 'radial', label: 'Radial', group: 'pattern', shader: 17 },
   { id: 'floyd-steinberg', label: 'Floyd–Steinberg', group: 'diffusion' },
   { id: 'atkinson', label: 'Atkinson', group: 'diffusion' },
   { id: 'jjn', label: 'Jarvis–Judice–Ninke', group: 'diffusion' },
@@ -47,6 +53,29 @@ export const GROUP_LABELS: Record<AlgorithmGroup, string> = {
   stipple: 'Stippling',
   other: 'Other',
 };
+
+/** Recursive Bayer threshold of size 2^n at (x, y), in (0, 1); the same recursion as dither.frag. */
+export function bayer(x: number, y: number, n: number): number {
+  let v = 0;
+  for (let i = 0; i < n; i++) {
+    const bx = (x >> i) & 1;
+    const by = (y >> i) & 1;
+    v |= (((bx ^ by) << 1) | by) << (2 * (n - 1 - i));
+  }
+  return (v + 0.5) / (1 << (2 * n));
+}
+
+/**
+ * dither.frag's `u_look` for the looks that need more than the cell and angle: Contour (lines,
+ * unused, phase), Sine moiré (second wavelength as a ratio, second angle in radians) and Radial
+ * (centre in output pixels with y up, spiral arms).
+ */
+export function lookUniform(p: Params, width: number, height: number): [number, number, number, number] {
+  if (p.algorithm === 'contour') return [p.contourLevels, 0, p.modulationPhase / 100, 0];
+  if (p.algorithm === 'moire') return [p.moireRatio / 100, (p.moireAngle * Math.PI) / 180, 0, 0];
+  if (p.algorithm === 'radial') return [(p.radialX / 100) * width, (1 - p.radialY / 100) * height, p.radialArms, 0];
+  return [0, 0, 0, 0];
+}
 
 export function getAlgorithm(id: string): Algorithm {
   return ALGORITHMS.find((a) => a.id === id) ?? ALGORITHMS[0];

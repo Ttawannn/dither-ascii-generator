@@ -17,7 +17,7 @@ function lockable(control: HTMLElement, key: string): HTMLElement {
 }
 
 /** Subheads placed before these sliders. */
-const HEADS: Record<string, string> = { shadows: 'Tone', saturation: 'Colour', sharpen: 'Detail' };
+const HEADS: Record<string, string> = { shadows: 'Tone', saturation: 'Colour', sharpen: 'Detail', warpCurve: 'Warp' };
 
 export const adjustSection = section(
   'Adjust',

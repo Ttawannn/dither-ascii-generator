@@ -70,10 +70,15 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
         'strength',
         (p) => (group(p) === 'ordered' || group(p) === 'pattern' || p.algorithm === 'noise') && !cmyk(p) && !lumaShapes(p),
       ),
-      ditherSlider('cellSize', (p) => group(p) === 'pattern' && p.algorithm !== 'orbs'),
-      ditherSlider('angle', (p) => group(p) === 'pattern' && p.algorithm !== 'orbs' && !cmyk(p)),
+      ditherSlider('cellSize', (p) => group(p) === 'pattern' && !['orbs', 'contour'].includes(p.algorithm)),
+      ditherSlider('angle', (p) => group(p) === 'pattern' && !['orbs', 'contour', 'radial'].includes(p.algorithm) && !cmyk(p)),
       ditherSlider('hexRings', (p) => p.algorithm === 'honeycomb'),
-      ...['modulationAmount', 'modulationWidth', 'modulationPhase'].map((k) => ditherSlider(k, (p) => p.algorithm === 'modulation')),
+      ...['contourLevels', 'contourSmooth'].map((k) => ditherSlider(k, (p) => p.algorithm === 'contour')),
+      ...['modulationAmount', 'modulationWidth', 'modulationPhase'].map((k) =>
+        ditherSlider(k, (p) => p.algorithm === 'modulation' || (p.algorithm === 'contour' && k === 'modulationPhase')),
+      ),
+      ...['moireRatio', 'moireAngle'].map((k) => ditherSlider(k, (p) => p.algorithm === 'moire')),
+      ...['radialX', 'radialY', 'radialArms'].map((k) => ditherSlider(k, (p) => p.algorithm === 'radial')),
       ditherSlider('patternFollow', (p) => FOLLOWS_IMAGE.includes(p.algorithm)),
       ...(['orbSize', 'orbCount', 'orbIntensity', 'orbRandom'] as const).map((k) =>
         ditherSlider(k, (p) => p.algorithm === 'orbs'),

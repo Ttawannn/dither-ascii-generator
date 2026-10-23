@@ -89,8 +89,8 @@ describe('importPreset', () => {
     expect(bayer('8x8').params.algorithm).toBe('bayer8');
     expect(bayer('8x8').approximated).not.toContain('Dither style “bayer-matrix” → Bayer 8×8');
     const big = bayer('16x16');
-    expect(big.params.algorithm).toBe('bayer8');
-    expect(big.approximated.some((a) => a.startsWith('Dither style “bayer-matrix”'))).toBe(true);
+    expect(big.params.algorithm).toBe('bayer16');
+    expect(big.approximated.some((a) => a.startsWith('Dither style “bayer-matrix”'))).toBe(false);
     expect(big.skipped).not.toContain('Dither control “matrixSize”');
   });
 
@@ -108,6 +108,15 @@ describe('importPreset', () => {
     expect(bands.map((b) => b.shape)).toEqual(['empty', 'diamond', 'diamond', 'diamond', 'diamond', 'diamond']);
     expect(bands[5].color).toBe('#0055ff');
     expect(r.params.shapeBackground).toBe('#000000');
+  });
+
+  it('carries warp amounts onto Warp', () => {
+    const curve = importPreset(external({ dither: { style: 'bayer-void', controls: { warpIntensity: 50 } } }))!;
+    expect(curve.params).toMatchObject({ algorithm: 'bayer4', warpCurve: 20 });
+    const swirl = importPreset(external({ dither: { style: 'vortex-diffusion', controls: { twistStrength: -60 } } }))!;
+    expect(swirl.params).toMatchObject({ algorithm: 'floyd-steinberg', warpSwirl: -30 });
+    expect(importPreset(external({ dither: { style: 'topography' } }))!.params.algorithm).toBe('contour');
+    expect(importPreset(external({ dither: { style: 'vortex', controls: { swirl: 3 } } }))!.params).toMatchObject({ algorithm: 'radial', radialArms: 3 });
   });
 
   it('never drops a known style silently', () => {

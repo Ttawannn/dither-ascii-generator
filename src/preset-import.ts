@@ -150,18 +150,18 @@ const STYLES: Record<string, string> = {
   'penta-poly': '~honeycomb',
   'low-poly': '~honeycomb',
   camo: '~honeycomb',
-  'displace-contour': '~lines',
-  topography: '~lines',
-  'dotted-lines': '~lines',
-  'sine-distort': '~modulation',
+  'displace-contour': '~contour',
+  topography: '~contour',
+  'dotted-lines': '~contour',
+  'sine-distort': '~moire',
   'sine-wave-modulation': '~modulation',
   thresholder: '~modulation',
   wave: '~modulation',
   waveform: '~modulation',
   'waveform-alt': '~modulation',
-  'radial-burst': '~modulation',
-  'radial-peaks': '~modulation',
-  vortex: '~modulation',
+  'radial-burst': '~radial',
+  'radial-peaks': '~radial',
+  vortex: '~radial',
   'atkinson-line-modulation': '~atkinson+wave',
   'atkinson-vhs': '~atkinson+wave',
   'stucki-diffusion-lines': '~stucki+wave',
@@ -196,7 +196,7 @@ function mapStyle(style: string): StyleMatch | null {
   return pattern ? { algorithm: pattern[1], wave: false, approx: true } : null;
 }
 
-const BAYER_SIZES: Record<string, string> = { '2x2': 'bayer2', '4x4': 'bayer4', '8x8': 'bayer8', '16x16': 'bayer8' };
+const BAYER_SIZES: Record<string, string> = { '2x2': 'bayer2', '4x4': 'bayer4', '8x8': 'bayer8', '16x16': 'bayer16' };
 
 /** A Luma Shapes set drawing every non-empty band as `shape`, coloured from the palette when there is one. */
 function shapeGrid(shape: ShapeBand['shape'], colors: string[]): string {
@@ -301,7 +301,7 @@ function importExternal(p: Obj): ImportResult {
   if (mapped) {
     const bayer = style!.toLowerCase() === 'bayer-matrix' ? BAYER_SIZES[str(controls.matrixSize) ?? '4x4'] : undefined;
     out.algorithm = bayer ?? mapped.algorithm;
-    if (mapped.approx || controls.matrixSize === '16x16')
+    if (mapped.approx)
       approximated.push(`Dither style “${style}” → ${ALGORITHMS.find((a) => a.id === out.algorithm)!.label}`);
     if (mapped.algorithm === 'threshold') out.threshold = 50; // nearest colour, no dithering
     if (mapped.shape) {
@@ -356,7 +356,15 @@ function importExternal(p: Obj): ImportResult {
     else if (key === 'blockSize' && v !== undefined && style?.toLowerCase() === 'mosaic') {
       out.pixelSize = clamp(Math.round(v) * block, 1, 16);
       if (Math.round(v) * block > 16) approximated.push('Mosaic block size (capped at 16 px)');
-    } else if (key === 'lineSpacing' && v !== undefined) out.cellSize = v;
+    } else if (key === 'warpIntensity' && v !== undefined) {
+      // Pixels the bottom row moves; Curve moves it by a quarter of the width at 100 (read as ~1000 px wide).
+      out.warpCurve = clamp(Math.round((v * 100) / 250), -100, 100);
+      approximated.push('Warp intensity → Curve');
+    } else if (key === 'twistStrength' && v !== undefined) {
+      out.warpSwirl = clamp(Math.round(v / 2), -100, 100);
+      approximated.push('Twist → Swirl');
+    } else if (key === 'swirl' && v !== undefined && out.algorithm === 'radial') out.radialArms = clamp(Math.round(v), -8, 8);
+    else if (key === 'lineSpacing' && v !== undefined) out.cellSize = v;
     else if (key === 'cellSize' && v !== undefined) out.cellSize = v;
     else if (key === 'orbSize' && v !== undefined) out.orbSize = v;
     else if (key === 'orbCount' && v !== undefined) out.orbCount = v;
