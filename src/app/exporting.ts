@@ -4,7 +4,7 @@ import { decodeBandImage, parseShapeBands, BAND_IMAGE_SIZE } from '../pipeline/s
 import { hexToRgb } from '../pipeline/palettes';
 import { currentStipple, generateStipple } from './stippling';
 import type { AnimationFormat, FrameSequence } from '../export/animation';
-import { cmykHalftoneSvg, monoHalftoneSvg, type SvgSize } from '../export/halftone-svg';
+import { cmykHalftoneSvg, cmykSeparations, monoHalftoneSvg, type CmykOptions, type SvgSize } from '../export/halftone-svg';
 import { exportFileName } from '../export/file-name';
 import { download, imageBlob } from '../export/png';
 import { canvasToSvg } from '../export/svg';
@@ -49,7 +49,7 @@ function syncExportInfo(): void {
     const print = p.exportPrint
       ? ` · ${[canvas.width, canvas.height].map((n) => printLength(n * p.exportScale, p.exportDpi, p.exportUnit).toFixed(1)).join(' × ')} ${p.exportUnit} at ${p.exportDpi} dpi`
       : '';
-    const dots = vectorDots(p) ? ' · vector dots' : '';
+    const dots = separationsOn(p) ? ' · 4 plates in a .zip' : vectorDots(p) ? ' · vector dots' : '';
     const note =
       p.exportFormat === 'jpg' && transparentOutput(p)
         ? ' · JPEG can’t keep transparency: the background colour is used'
@@ -80,6 +80,7 @@ const EXPORT_KEYS: (keyof Params)[] = [
   'exportDpi',
   'exportUnit',
   'exportVectorDots',
+  'exportSeparations',
   'mode',
   'algorithm',
   'animate',
@@ -229,6 +230,33 @@ function vectorDots(p: Params): boolean {
   return p.algorithm === 'halftone-cmyk' || (p.algorithm === 'halftone' && currentPalette(p).colors.length === 2);
 }
 
+/** Halftone CMYK saved as four plates in a .zip. */
+const separationsOn = (p: Params) => vectorDots(p) && p.algorithm === 'halftone-cmyk' && p.exportSeparations;
+
+/** The four ink plates as SVG files, plus the combined image as PNG. */
+async function separationFiles(p: Params): Promise<ZipEntry[]> {
+  const [width, height] = renderer.adjustedSize;
+  const plates = cmykSeparations(
+    { data: renderer.readAdjusted(), width, height },
+    { ...cmykOptions(p), size: svgSize(p, width, height), marks: p.exportMarks },
+  );
+  const text = new TextEncoder();
+  const composite = await imageBlob(canvas, p.exportScale, { dpi: p.exportPrint ? p.exportDpi : undefined });
+  return [
+    ...plates.map((plate) => ({ name: `${plate.name}.svg`, data: text.encode(plate.svg) })),
+    { name: 'composite.png', data: new Uint8Array(await composite.arrayBuffer()) },
+  ];
+}
+
+const cmykOptions = (p: Params): CmykOptions => ({
+  cell: p.cellSize,
+  shape: p.halftoneShape,
+  angles: [p.cmykAngleC, p.cmykAngleM, p.cmykAngleY, p.cmykAngleK],
+  dotGain: p.cmykDotGain / 100,
+  gcr: p.cmykGcr / 100,
+  scale: p.exportScale,
+});
+
 /** Physical SVG width / height when Print size is on. */
 function svgSize(p: Params, w: number, h: number): SvgSize | undefined {
   if (!p.exportPrint) return undefined;
@@ -275,17 +303,7 @@ function svgOf(p: Params): string {
             .padStart(2, '0'),
         )
         .join('')}`;
-    if (p.algorithm === 'halftone-cmyk') {
-      return cmykHalftoneSvg(px, {
-        cell: p.cellSize,
-        shape: p.halftoneShape,
-        angles: [p.cmykAngleC, p.cmykAngleM, p.cmykAngleY, p.cmykAngleK],
-        dotGain: p.cmykDotGain / 100,
-        gcr: p.cmykGcr / 100,
-        scale: p.exportScale,
-        size,
-      });
-    }
+    if (p.algorithm === 'halftone-cmyk') return cmykHalftoneSvg(px, { ...cmykOptions(p), size });
     // Dark tones take the palette's first colour (a ramp runs ink → paper); a 2-colour set, the darker one.
     const pal = currentPalette(p);
     const [ink, paper] =
@@ -352,6 +370,11 @@ actions.exportClick = async () => {
     } catch (error) {
       flash((error as Error).message);
       return;
+    }
+    if (separationsOn(p)) {
+      const zip = writeZip(await separationFiles(animatedParams(p)));
+      download(new Blob([zip.slice()], { type: 'application/zip' }), fileName(p, src.name, 'zip'));
+      return flash('Saved 4 plates and the combined image in a .zip');
     }
     const blob = await stillBlob(p);
     if (typeof blob === 'string') return flash(blob);

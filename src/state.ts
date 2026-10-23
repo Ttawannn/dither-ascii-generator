@@ -218,6 +218,10 @@ export interface Params {
   exportVectorDots: boolean;
   /** ANSI text export colours: 'truecolor' or '256'. */
   exportAnsi: string;
+  /** Halftone CMYK SVG as four plates (one file per ink) in a .zip. */
+  exportSeparations: boolean;
+  /** Registration marks and plate names on separations. */
+  exportMarks: boolean;
   /** JPEG / WebP quality, 10–100. */
   exportQuality: number;
   /** File name template: {name} {mode} {algo} {date} {time}. */
@@ -386,6 +390,8 @@ export const DEFAULTS: Params = {
   exportUnit: 'cm',
   exportVectorDots: true,
   exportAnsi: 'truecolor',
+  exportSeparations: false,
+  exportMarks: true,
   exportQuality: 92,
   exportName: '{name}-{mode}',
 };

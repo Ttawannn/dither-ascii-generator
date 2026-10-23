@@ -195,22 +195,28 @@ export function monoHalftoneSvg(
  * Four-ink halftone: cyan, magenta, yellow and black screens at their own angles, multiplied over
  * white, separated the same way as dither.frag (grey component replacement, then dot gain).
  */
-export function cmykHalftoneSvg(
-  px: Pixels,
-  opts: {
-    cell: number;
-    /** Screen angles in degrees, C M Y K. */
-    angles: [number, number, number, number];
-    /** 0..1 */
-    dotGain: number;
-    /** 0..1 */
-    gcr: number;
-    scale: number;
-    size?: SvgSize;
-    shape?: string;
-  },
-): string {
-  const inks = ['#00ffff', '#ff00ff', '#ffff00', '#000000'];
+export interface CmykOptions {
+  cell: number;
+  /** Screen angles in degrees, C M Y K. */
+  angles: [number, number, number, number];
+  /** 0..1 */
+  dotGain: number;
+  /** 0..1 */
+  gcr: number;
+  scale: number;
+  size?: SvgSize;
+  shape?: string;
+}
+
+const INKS = [
+  { name: 'cyan', color: '#00ffff' },
+  { name: 'magenta', color: '#ff00ff' },
+  { name: 'yellow', color: '#ffff00' },
+  { name: 'black', color: '#000000' },
+];
+
+/** Each ink's dots (C, M, Y, K), shared by the combined image and the separate plates. */
+function cmykDots(px: Pixels, opts: CmykOptions): string[] {
   const amount =
     (ch: number) =>
     ([r, g, b]: [number, number, number]) => {
@@ -220,11 +226,52 @@ export function cmykHalftoneSvg(
       v = clamp01(v + opts.dotGain * v * (1 - v));
       return screenCoverage(v, opts.shape);
     };
-  const body = inks
-    .map((ink, ch) => {
-      const dots = circles(px, opts.cell, (opts.angles[ch] * Math.PI) / 180, amount(ch), opts.shape);
-      return `<g fill="${ink}" style="mix-blend-mode:multiply">${dots}</g>`;
-    })
+  return INKS.map((_, ch) => circles(px, opts.cell, (opts.angles[ch] * Math.PI) / 180, amount(ch), opts.shape));
+}
+
+export function cmykHalftoneSvg(px: Pixels, opts: CmykOptions): string {
+  const body = cmykDots(px, opts)
+    .map((dots, ch) => `<g fill="${INKS[ch].color}" style="mix-blend-mode:multiply">${dots}</g>`)
     .join('\n');
   return wrap(px, opts.scale, opts.size, '#ffffff', body);
+}
+
+/**
+ * The four inks as separate plates for screen printing: black dots on white, one file per ink,
+ * with the same dots as cmykHalftoneSvg. With `marks`, a margin carries registration marks at the
+ * middle of each side and the plate's name, so the plates can be lined up.
+ */
+export function cmykSeparations(px: Pixels, opts: CmykOptions & { marks: boolean }): { name: string; svg: string }[] {
+  const { width: w, height: h } = px;
+  const m = opts.marks ? Math.max(2 * opts.cell, Math.round(0.06 * Math.min(w, h))) : 0;
+  const size = opts.size && m ? growSize(opts.size, (w + 2 * m) / w, (h + 2 * m) / h) : opts.size;
+  return cmykDots(px, opts).map((dots, ch) => {
+    const body = `<g fill="#000000">${dots}</g>`;
+    if (!m) return { name: INKS[ch].name, svg: wrap(px, opts.scale, size, '#ffffff', body) };
+    const r = m * 0.3;
+    const mark = (x: number, y: number) =>
+      `<circle cx="${num(x)}" cy="${num(y)}" r="${num(r)}"/><path d="M ${num(x - r * 1.6)} ${num(y)} H ${num(x + r * 1.6)} M ${num(x)} ${num(y - r * 1.6)} V ${num(y + r * 1.6)}"/>`;
+    const marks = [mark(w / 2, -m / 2), mark(w / 2, h + m / 2), mark(-m / 2, h / 2), mark(w + m / 2, h / 2)].join('');
+    const label = `<text x="0" y="${num(h + m * 0.75)}" font-family="sans-serif" font-size="${num(m * 0.35)}">${INKS[ch].name.toUpperCase()}</text>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-m} ${-m} ${w + 2 * m} ${h + 2 * m}" width="${size?.width ?? (w + 2 * m) * opts.scale}" height="${size?.height ?? (h + 2 * m) * opts.scale}">
+<defs><clipPath id="frame"><rect width="${w}" height="${h}"/></clipPath></defs>
+<rect x="${-m}" y="${-m}" width="${w + 2 * m}" height="${h + 2 * m}" fill="#ffffff"/>
+<g clip-path="url(#frame)">
+${body}
+</g>
+<g fill="none" stroke="#000000" stroke-width="${num(Math.max(0.5, m * 0.03))}">${marks}</g>
+${label}
+</svg>
+`;
+    return { name: INKS[ch].name, svg };
+  });
+}
+
+/** A physical size ("120mm") grown by a factor, keeping its unit. */
+function growSize(size: SvgSize, fx: number, fy: number): SvgSize {
+  const grow = (s: string, f: number) => {
+    const m = /^([\d.]+)(\D*)$/.exec(s);
+    return m ? `${num(parseFloat(m[1]) * f)}${m[2]}` : s;
+  };
+  return { width: grow(size.width, fx), height: grow(size.height, fy) };
 }

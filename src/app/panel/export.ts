@@ -37,6 +37,16 @@ export const exportSection = section(
     store,
     (p) => p.exportFormat === 'svg' && p.mode === 'dither' && VECTOR_DOTS.includes(p.algorithm),
   ),
+  showWhen(
+    toggle('exportSeparations', 'Separate plates', store),
+    store,
+    (p) => p.exportFormat === 'svg' && p.mode === 'dither' && p.algorithm === 'halftone-cmyk' && p.exportVectorDots,
+  ),
+  showWhen(
+    toggle('exportMarks', 'Registration marks', store),
+    store,
+    (p) => p.exportFormat === 'svg' && p.algorithm === 'halftone-cmyk' && p.exportVectorDots && p.exportSeparations,
+  ),
   showWhen(toggle('exportPrint', 'Print size', store), store, still),
   showWhen(slider(EXPORT_SLIDERS.dpi, store), store, (p) => still(p) && p.exportPrint),
   showWhen(
