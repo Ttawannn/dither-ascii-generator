@@ -12,13 +12,11 @@ import {
 import { LFO_SHAPES } from '../../ascii/lfo';
 import { getPaletteDef, MONO_PRESETS } from '../../pipeline/palettes';
 import { ASCII_SLIDERS, type ParamStore, type Params } from '../../state';
-import { button, colorInput, colorPresets, el, select, showWhen, slider, textInput, toggle } from '../../ui/controls';
+import { button, categoryPicker, colorInput, colorPresets, el, select, showWhen, slider, textInput, toggle } from '../../ui/controls';
 import { addUserFont, onUserFontsChange, removeUserFont, userFonts } from '../../user-fonts';
 import { notBraille, store } from '../core';
 import { flash } from '../shell';
 import { customPaletteEditor } from './custom-palette';
-
-const groupLabel = (id: string) => CHARSET_GROUPS.find((g) => g.id === id)?.label ?? id;
 
 /** Font choice bound to `s`: the built-in fonts plus fonts added in this browser, with Add / Remove. */
 function fontPicker(s: ParamStore): HTMLElement {
@@ -134,11 +132,12 @@ export function asciiControlsFor(s: ParamStore, withPreview = false): HTMLElemen
     el(
       'div',
       {},
-      select(
+      categoryPicker(
         'asciiCharset',
         'Characters',
-        CHARSETS.map((c) => ({ value: c.id, label: c.label, group: groupLabel(c.group) })),
+        () => CHARSETS.map((c) => ({ value: c.id, label: c.label, category: c.group })),
         s,
+        { categories: CHARSET_GROUPS },
       ),
       ...(withPreview ? [glyphPreview, glyphInfo] : []),
       showWhen(textInput('asciiCustom', 'Custom ramp', s), s, (p) => p.asciiCharset === 'custom'),

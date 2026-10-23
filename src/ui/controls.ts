@@ -1,4 +1,6 @@
 import { DEFAULTS, type BooleanKey, type ParamStore, type Params, type SliderSpec, type StringKey } from '../state';
+import { favourites, onFavouritesChange, toggleFavourite } from '../favourites';
+import { ALL, categoryFor, FAVOURITES, itemsIn, stepItem, type PickItem } from './picker';
 
 type Attrs = Record<string, string>;
 
@@ -137,7 +139,124 @@ export function select(key: StringKey, label: string, options: SelectOption[], s
   return root;
 }
 
-export type ColorKey = 'ink' | 'paper' | 'asciiFg' | 'asciiBg' | 'fxTintColor' | 'maskColor' | 'shapeBackground' | 'polyBorderColor';
+export interface PickerOptions {
+  /** Category ids and labels, in display order. */
+  categories: { id: string; label: string }[];
+  /** Item names are user content or proper names: keep them out of translation. */
+  noTranslate?: boolean;
+}
+
+/**
+ * Two rows bound to a string param: a Category (with All and Favourites) and the item within it,
+ * each with ‹ › to step through, plus a star that adds the current item to the favourites.
+ * `items` is read again on `refresh()`, for lists that change (imported palettes).
+ */
+export function categoryPicker(
+  key: StringKey,
+  label: string,
+  items: () => PickItem[],
+  store: ParamStore,
+  opts: PickerOptions,
+): HTMLElement & { refresh(): void } {
+  const favKey = key as string;
+  const catSelect = el('select', { 'aria-label': `${label} category` });
+  const itemSelect = el('select', { 'aria-label': label });
+  if (opts.noTranslate) itemSelect.setAttribute('translate', 'no');
+  let shown = ALL;
+
+  const step = (cls: string, text: string, name: string, onClick: () => void) => {
+    const b = button(text, onClick, `btn small picker-step ${cls}`);
+    b.setAttribute('aria-label', name);
+    b.title = name;
+    return b;
+  };
+  const star = button('☆', () => toggleFavourite(favKey, store.params[key]), 'link picker-star');
+  star.title = 'Add to favourites';
+
+  const categoryIds = () => {
+    const ids = [ALL, ...(favourites(favKey).length ? [FAVOURITES] : [])];
+    const present = new Set(items().map((i) => i.category));
+    return [...ids, ...opts.categories.filter((c) => present.has(c.id)).map((c) => c.id)];
+  };
+  const categoryLabel = (id: string) =>
+    id === ALL ? 'All' : id === FAVOURITES ? 'Favourites' : (opts.categories.find((c) => c.id === id)?.label ?? id);
+
+  const render = () => {
+    const list = items();
+    const fav = favourites(favKey);
+    const current = store.params[key];
+    shown = categoryFor(list, current, shown, fav);
+    catSelect.replaceChildren(...categoryIds().map((id) => el('option', { value: id }, categoryLabel(id))));
+    catSelect.value = shown;
+    const visible = itemsIn(list, shown, fav);
+    if (shown === ALL) {
+      // Grouped by category, like the plain select.
+      const groups = new Map<string, HTMLOptGroupElement>();
+      itemSelect.replaceChildren();
+      for (const it of visible) {
+        if (!groups.has(it.category)) {
+          const g = el('optgroup', { label: categoryLabel(it.category) });
+          groups.set(it.category, g);
+          itemSelect.append(g);
+        }
+        groups.get(it.category)!.append(el('option', { value: it.value }, it.label));
+      }
+    } else {
+      itemSelect.replaceChildren(...visible.map((it) => el('option', { value: it.value }, it.label)));
+    }
+    if (!visible.some((it) => it.value === current)) itemSelect.prepend(el('option', { value: current, disabled: '' }, list.find((i) => i.value === current)?.label ?? current));
+    itemSelect.value = current;
+    const on = fav.includes(current);
+    star.textContent = on ? '★' : '☆';
+    star.setAttribute('aria-pressed', `${on}`);
+    star.setAttribute('aria-label', on ? 'Remove from favourites' : 'Add to favourites');
+  };
+
+  const choose = (value: string) => value !== store.params[key] && store.set(key, value as Params[typeof key]);
+  catSelect.addEventListener('change', () => {
+    shown = catSelect.value;
+    const first = itemsIn(items(), shown, favourites(favKey))[0];
+    if (first && !itemsIn(items(), shown, favourites(favKey)).some((i) => i.value === store.params[key])) choose(first.value);
+    render();
+  });
+  itemSelect.addEventListener('change', () => choose(itemSelect.value));
+  const stepCategory = (dir: number) => {
+    const ids = categoryIds();
+    shown = ids[(ids.indexOf(shown) + dir + ids.length) % ids.length];
+    const first = itemsIn(items(), shown, favourites(favKey))[0];
+    if (first) choose(first.value);
+    render();
+  };
+  const stepValue = (dir: number) => choose(stepItem(items(), store.params[key], dir, shown, favourites(favKey)));
+
+  store.subscribe((_, changed) => changed === key && render());
+  onFavouritesChange(render);
+  render();
+
+  const root = el(
+    'div',
+    { class: 'control picker' },
+    el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, 'Category')),
+    el(
+      'div',
+      { class: 'picker-row' },
+      el('div', { class: 'select' }, catSelect),
+      step('prev', '‹', 'Previous category', () => stepCategory(-1)),
+      step('next', '›', 'Next category', () => stepCategory(1)),
+    ),
+    el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, label), star),
+    el(
+      'div',
+      { class: 'picker-row' },
+      el('div', { class: 'select' }, itemSelect),
+      step('prev', '‹', `Previous ${label.toLowerCase()}`, () => stepValue(-1)),
+      step('next', '›', `Next ${label.toLowerCase()}`, () => stepValue(1)),
+    ),
+  );
+  return Object.assign(root, { refresh: render });
+}
+
+export type ColorKey ='ink' | 'paper' | 'asciiFg' | 'asciiBg' | 'fxTintColor' | 'maskColor' | 'shapeBackground' | 'polyBorderColor';
 
 /** Colour swatch bound to a hex string param. */
 export function colorInput(key: ColorKey, label: string, store: ParamStore): HTMLElement {

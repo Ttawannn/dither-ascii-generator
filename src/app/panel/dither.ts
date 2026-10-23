@@ -1,7 +1,7 @@
 import { ALGORITHMS, FOLLOWS_IMAGE, GROUP_LABELS } from '../../pipeline/algorithms';
 import { getPaletteDef, MONO_PRESETS, PALETTES } from '../../pipeline/palettes';
 import { DITHER_SLIDERS, HALFTONE_SHAPES, PALETTE_MIXING, type ParamStore, type Params } from '../../state';
-import { button, colorInput, colorPresets, el, select, showWhen, slider, swatches, toggle } from '../../ui/controls';
+import { button, categoryPicker, colorInput, colorPresets, el, select, showWhen, slider, swatches, toggle } from '../../ui/controls';
 import { actions, group, stippleProgress, store } from '../core';
 import { customPaletteEditor } from './custom-palette';
 import { lumaShapesEditor } from './luma-shapes';
@@ -44,11 +44,12 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
     el(
       'div',
       {},
-      select(
+      categoryPicker(
         'algorithm',
         'Algorithm',
-        ALGORITHMS.map((a) => ({ value: a.id, label: a.label, group: GROUP_LABELS[a.group] })),
+        () => ALGORITHMS.map((a) => ({ value: a.id, label: a.label, category: a.group })),
         s,
+        { categories: Object.entries(GROUP_LABELS).map(([id, label]) => ({ id, label })) },
       ),
       showWhen(lumaShapesEditor(s), s, lumaShapes),
       showWhen(
