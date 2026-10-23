@@ -1,6 +1,6 @@
 import type { Params } from '../state';
 
-export type AlgorithmGroup = 'ordered' | 'pattern' | 'diffusion' | 'stipple' | 'other';
+export type AlgorithmGroup = 'ordered' | 'pattern' | 'polygon' | 'diffusion' | 'stipple' | 'other';
 
 export interface Algorithm {
   id: string;
@@ -27,6 +27,9 @@ export const ALGORITHMS: Algorithm[] = [
   { id: 'contour', label: 'Contour', group: 'pattern', shader: 15 },
   { id: 'moire', label: 'Sine moiré', group: 'pattern', shader: 16 },
   { id: 'radial', label: 'Radial', group: 'pattern', shader: 17 },
+  { id: 'poly-hex', label: 'Hex cells', group: 'polygon', shader: 18 },
+  { id: 'poly-tri', label: 'Triangles', group: 'polygon', shader: 19 },
+  { id: 'voronoi', label: 'Voronoi', group: 'polygon', shader: 20 },
   { id: 'floyd-steinberg', label: 'Floyd–Steinberg', group: 'diffusion' },
   { id: 'atkinson', label: 'Atkinson', group: 'diffusion' },
   { id: 'jjn', label: 'Jarvis–Judice–Ninke', group: 'diffusion' },
@@ -49,6 +52,7 @@ export const FOLLOWS_IMAGE = ['halftone', 'lines', 'crosshatch', 'honeycomb'];
 export const GROUP_LABELS: Record<AlgorithmGroup, string> = {
   ordered: 'Ordered',
   pattern: 'Pattern',
+  polygon: 'Polygon',
   diffusion: 'Error diffusion',
   stipple: 'Stippling',
   other: 'Other',

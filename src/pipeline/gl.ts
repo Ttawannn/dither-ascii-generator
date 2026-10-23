@@ -481,6 +481,8 @@ export class Renderer {
     gl.uniform4f(u('u_cmykAngles'), rad(p.cmykAngleC), rad(p.cmykAngleM), rad(p.cmykAngleY), rad(p.cmykAngleK));
     gl.uniform3f(u('u_cmyk'), p.cmykDotGain / 100, p.cmykGcr / 100, p.cmykSupersample);
     gl.uniform4fv(u('u_look'), lookUniform(p, this.adjW, this.adjH));
+    gl.uniform2f(u('u_poly'), p.polyBorder / 100, p.polyJitter / 100);
+    gl.uniform3fv(u('u_polyBorder'), hexToRgb(p.polyBorderColor));
     if (p.algorithm === 'luma-shapes') {
       gl.uniform1i(u('u_layout'), ['grid', 'staggered', 'scatter'].indexOf(p.shapeLayout));
       gl.uniform4f(u('u_shapeVariation'), p.shapeJitter / 100, p.shapeSizeJitter / 100, rad(p.shapeAngleJitter), p.shapeSeed);

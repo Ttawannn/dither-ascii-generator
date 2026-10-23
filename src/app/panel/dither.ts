@@ -70,8 +70,14 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
         'strength',
         (p) => (group(p) === 'ordered' || group(p) === 'pattern' || p.algorithm === 'noise') && !cmyk(p) && !lumaShapes(p),
       ),
-      ditherSlider('cellSize', (p) => group(p) === 'pattern' && !['orbs', 'contour'].includes(p.algorithm)),
-      ditherSlider('angle', (p) => group(p) === 'pattern' && !['orbs', 'contour', 'radial'].includes(p.algorithm) && !cmyk(p)),
+      ditherSlider('cellSize', (p) => (group(p) === 'pattern' && !['orbs', 'contour'].includes(p.algorithm)) || group(p) === 'polygon'),
+      ditherSlider(
+        'angle',
+        (p) => (group(p) === 'pattern' && !['orbs', 'contour', 'radial'].includes(p.algorithm) && !cmyk(p)) || group(p) === 'polygon',
+      ),
+      ditherSlider('polyJitter', (p) => p.algorithm === 'voronoi'),
+      ditherSlider('polyBorder', (p) => group(p) === 'polygon'),
+      showWhen(colorInput('polyBorderColor', 'Border colour', s), s, (p) => group(p) === 'polygon' && p.polyBorder > 0),
       ditherSlider('hexRings', (p) => p.algorithm === 'honeycomb'),
       ...['contourLevels', 'contourSmooth'].map((k) => ditherSlider(k, (p) => p.algorithm === 'contour')),
       ...['modulationAmount', 'modulationWidth', 'modulationPhase'].map((k) =>

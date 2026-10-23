@@ -21,6 +21,8 @@ uniform bool u_orbVertical;
 uniform vec4 u_cmykAngles;  // halftone CMYK: screen angle per ink (radians), C M Y K
 uniform vec3 u_cmyk;        // dot gain 0..1, black replacement 0..1, samples per side
 uniform vec4 u_look;        // contour: lines, width, phase · moiré: ratio, angle · radial: centre px, arms
+uniform vec2 u_poly;        // polygon border 0..0.5 of the inner radius, Voronoi jitter 0..1
+uniform vec3 u_polyBorder;  // polygon border colour
 
 uniform int u_kind;         // 0 ramp, 1 set, 2 rgb
 uniform vec3 u_pal[32];
@@ -171,6 +173,52 @@ float pattern(vec2 fc) {
   if (u_algo == 5) return lineA;
   float lineB = 0.5 - 0.5 * cos(TAU * r.x);
   return min(lineA, 0.25 + 0.75 * lineB); // crosshatch: second direction joins in the shadows
+}
+
+// Polygon cell of p (in cell units): xy = its centre, z = 0 on the border … 1 at the centre.
+// Mirrored in polygon-svg.ts.
+vec3 polyCell(vec2 p) {
+  if (u_algo == 18) {
+    // Hexagons on the honeycomb lattice (pointy top, inner radius ½).
+    const vec2 s = vec2(1.0, 1.7320508);
+    vec2 a = mod(p, s) - 0.5 * s;
+    vec2 b = mod(p - 0.5 * s, s) - 0.5 * s;
+    vec2 q = dot(a, a) < dot(b, b) ? a : b;
+    vec2 aq = abs(q);
+    return vec3(p - q, 1.0 - 2.0 * max(dot(aq, vec2(0.5, 0.8660254)), aq.x));
+  }
+  if (u_algo == 19) {
+    // Equilateral triangles of side 1 in rows, alternately pointing up and down; z from barycentrics.
+    const float h = 0.8660254;
+    float row = floor(p.y / h);
+    float f = p.y / h - row;
+    float shift = mod(row, 2.0) * 0.5;
+    float k = floor(p.x - shift);
+    float u = p.x - shift - k;
+    if (f < 2.0 * u && f < 2.0 * (1.0 - u)) {
+      float l = min(f, min(2.0 * u - f, 2.0 - 2.0 * u - f) * 0.5);
+      return vec3(k + 0.5 + shift, (row + 1.0 / 3.0) * h, 3.0 * l);
+    }
+    float c = u < 0.5 ? k : k + 1.0;
+    float v = p.x - shift - c;
+    float l = min(1.0 - f, (f - 2.0 * abs(v)) * 0.5);
+    return vec3(c + shift, (row + 2.0 / 3.0) * h, 3.0 * l);
+  }
+  // Voronoi of one jittered point per grid square.
+  vec2 g = floor(p);
+  float d1 = 1e9, d2 = 1e9;
+  vec2 best = g;
+  for (int y = -1; y <= 1; y++) {
+    for (int x = -1; x <= 1; x++) {
+      vec2 id = g + vec2(x, y);
+      uint n = (uint(int(id.x)) * 73856093u) ^ (uint(int(id.y)) * 19349663u);
+      vec2 pt = id + 0.5 + (vec2(hash1(n * 2u), hash1(n * 2u + 1u)) - 0.5) * u_poly.y;
+      float d = distance(p, pt);
+      if (d < d1) { d2 = d1; d1 = d; best = pt; }
+      else if (d < d2) d2 = d;
+    }
+  }
+  return vec3(best, min(1.0, d2 - d1));
 }
 
 // sRGB → OKLab; matches oklabInto() in oklab.ts.
@@ -326,8 +374,29 @@ void main() {
     outColor = vec4(cmyk(c, gl_FragCoord.xy + u_offset), 1.0);
     return;
   }
+  bool poly = u_algo >= 18 && u_algo <= 20;
+  if (poly) {
+    // Polygon: one flat colour per cell, the average of nine points around its centre (the same for
+    // every pixel of the cell), snapped to the palette below without dithering.
+    float sn = sin(u_angle), cs = cos(u_angle);
+    mat2 turn = mat2(cs, sn, -sn, cs);
+    vec3 cell = polyCell(turn * (gl_FragCoord.xy + u_offset) / u_cell);
+    if (cell.z < u_poly.x) {
+      outColor = vec4(u_polyBorder, 1.0);
+      return;
+    }
+    vec2 centre = transpose(turn) * cell.xy * u_cell - u_offset;
+    float reach = (u_algo == 19 ? 0.15 : 0.25) * u_cell;
+    c = vec3(0.0);
+    for (int sy = -1; sy <= 1; sy++) {
+      for (int sx = -1; sx <= 1; sx++) {
+        c += texelFetch(u_src, ivec2(clamp(centre + vec2(sx, sy) * reach, vec2(0.0), u_size - 1.0)), 0).rgb;
+      }
+    }
+    c /= 9.0;
+  }
   c = working(c);
-  float t = u_algo == 8 ? 0.5 : pattern(gl_FragCoord.xy + u_offset);
+  float t = u_algo == 8 || poly ? 0.5 : pattern(gl_FragCoord.xy + u_offset);
   float off = u_algo == 8 ? 0.5 - u_threshold : u_spread * (t - 0.5);
 
   vec3 q;

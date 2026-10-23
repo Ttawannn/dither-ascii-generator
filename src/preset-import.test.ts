@@ -283,3 +283,14 @@ describe('tint blend names', () => {
     expect(tint('pinLight').skipped).toContain('Tint blend mode “pin-light”');
   });
 });
+
+describe('polygon styles', () => {
+  it('map onto the polygon looks', () => {
+    const style = (s: string) => importPreset({ preset: { dither: { style: s } } })!;
+    expect(style('hexa-poly').params.algorithm).toBe('poly-hex');
+    expect(style('hexa-poly').approximated).toEqual([]);
+    expect(style('tri-poly').params.algorithm).toBe('poly-tri');
+    expect(style('camo').params.algorithm).toBe('voronoi');
+    expect(style('camo').approximated).toContain('Dither style “camo” → Voronoi');
+  });
+});

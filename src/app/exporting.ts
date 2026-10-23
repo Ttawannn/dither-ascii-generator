@@ -6,6 +6,8 @@ import { currentStipple, generateStipple } from './stippling';
 import type { AnimationFormat, FrameSequence } from '../export/animation';
 import { cmykHalftoneSvg, cmykSeparations, monoHalftoneSvg, type CmykOptions, type SvgSize } from '../export/halftone-svg';
 import { exportFileName } from '../export/file-name';
+import { polygonSvg, type PolygonKind } from '../export/polygon-svg';
+import { getAlgorithm } from '../pipeline/algorithms';
 import { download, imageBlob } from '../export/png';
 import { canvasToSvg } from '../export/svg';
 import { activeEffects } from '../pipeline/effects';
@@ -287,6 +289,22 @@ function svgOf(p: Params): string {
     const [w, h] = renderer.adjustedSize;
     try { return lumaShapesSvg(renderer.readAdjusted(), w, h, p, images, size, rt.seed); }
     catch (error) { return (error as Error).message; }
+  }
+  if (getAlgorithm(p.algorithm).group === 'polygon' && !activeLayer(p) && !activeEffects(p).length && p.maskMode === 'off') {
+    const [width, height] = renderer.adjustedSize;
+    return polygonSvg({ data: renderer.readAdjusted(), width, height }, {
+      kind: p.algorithm as PolygonKind,
+      cell: p.cellSize,
+      angle: p.angle,
+      border: p.polyBorder / 100,
+      borderColor: p.polyBorderColor,
+      jitter: p.polyJitter / 100,
+      offset: [(rt.seed * 29) % 64, (rt.seed * 47) % 64],
+      palette: currentPalette(p),
+      perceptual: p.perceptual,
+      scale: p.exportScale,
+      size,
+    });
   }
   if (p.algorithm === 'stippling' && !activeLayer(p) && !p.fxSort && !activeEffects(p).length && p.maskMode === 'off') {
     const cached = currentStipple(p);

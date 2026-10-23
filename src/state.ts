@@ -81,6 +81,10 @@ export interface Params {
   radialX: number;
   radialY: number;
   radialArms: number;
+  /** Polygon looks: border width as % of the cell's inner radius, its colour, and Voronoi jitter 0..100. */
+  polyBorder: number;
+  polyBorderColor: string;
+  polyJitter: number;
   stippleCount: number;
   stippleIterations: number;
   stippleSize: number;
@@ -283,6 +287,7 @@ export const DEFAULTS: Params = {
   contourLevels: 12, contourSmooth: 30,
   moireRatio: 110, moireAngle: 8,
   radialX: 50, radialY: 50, radialArms: 0,
+  polyBorder: 0, polyBorderColor: '#000000', polyJitter: 80,
   stippleCount: 10000,
   stippleIterations: 8,
   stippleSize: 100,
@@ -504,6 +509,8 @@ export const DITHER_SLIDERS: Record<string, SliderSpec> = {
   radialX: { key: 'radialX', label: 'Centre X', min: 0, max: 100, step: 1, format: pct },
   radialY: { key: 'radialY', label: 'Centre Y', min: 0, max: 100, step: 1, format: pct },
   radialArms: { key: 'radialArms', label: 'Spiral arms', min: -8, max: 8, step: 1, format: signed },
+  polyBorder: { key: 'polyBorder', label: 'Border', min: 0, max: 50, step: 1, format: pct },
+  polyJitter: { key: 'polyJitter', label: 'Jitter', min: 0, max: 100, step: 1, format: pct },
   shapeJitter: { key: 'shapeJitter', label: 'Position variation', min: 0, max: 100, step: 1 },
   shapeSizeJitter: { key: 'shapeSizeJitter', label: 'Size variation', min: 0, max: 100, step: 1 },
   shapeAngleJitter: { key: 'shapeAngleJitter', label: 'Rotation variation', min: 0, max: 180, step: 1 },
@@ -671,6 +678,7 @@ export const DITHER_KEYS: (keyof Params)[] = [
   'shapeLayout', 'shapeJitter', 'shapeSizeJitter', 'shapeAngleJitter', 'shapeSeed', 'shapeTransparent',
   'modulationAmount', 'modulationWidth', 'modulationPhase',
   'contourLevels', 'contourSmooth', 'moireRatio', 'moireAngle', 'radialX', 'radialY', 'radialArms',
+  'polyBorder', 'polyBorderColor', 'polyJitter',
   'shapeBands', 'shapeFeather', 'shapeFeatherPattern', 'shapeBackground',
   'paletteMixing', 'linearLight', 'halftoneShape',
   'stippleCount', 'stippleIterations', 'stippleSize', 'stippleSeed',
@@ -811,7 +819,9 @@ const ENUMS: Partial<Record<keyof Params, string[]>> = {
   maskMode: MASK_MODES.map((m) => m.id),
   maskOutside: MASK_OUTSIDE.map((m) => m.id),
 };
-const COLOR_KEYS: (keyof Params)[] = ['ink', 'paper', 'asciiFg', 'asciiBg', 'fxTintColor', 'maskColor', 'shapeBackground'];
+const COLOR_KEYS: (keyof Params)[] = [
+  'ink', 'paper', 'asciiFg', 'asciiBg', 'fxTintColor', 'maskColor', 'shapeBackground', 'polyBorderColor',
+];
 const HEX = /^#[0-9a-f]{6}$/i;
 
 const STORAGE_KEY = 'dag.params.v1';
