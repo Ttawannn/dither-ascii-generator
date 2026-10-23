@@ -307,3 +307,16 @@ describe('diffusion styles', () => {
     expect(style('modulated-diffuse-y').params.axisVertical).toBeUndefined();
   });
 });
+
+describe('glow curve settings', () => {
+  it('reads epsilon, distance scale and radius compensation', () => {
+    const r = importPreset({
+      preset: {
+        dither: {},
+        effectInstances: { g: { type: 'glow', settings: { enabled: true, epsilon: 10, distanceScale: 150, radiusCompensation: true } } },
+      },
+    })!;
+    expect(r.params).toMatchObject({ fxGlow: true, fxGlowEpsilon: 50, fxGlowDistance: 150, fxGlowCompensate: true });
+    expect(r.skipped.some((x) => /epsilon|distanceScale|radiusCompensation/.test(x))).toBe(false);
+  });
+});

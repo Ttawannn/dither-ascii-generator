@@ -139,6 +139,77 @@ export function select(key: StringKey, label: string, options: SelectOption[], s
   return root;
 }
 
+/**
+ * Angle dial bound to a numeric param in degrees: drag around the ring (an axis, so 0–180 covers
+ * every direction when `spec.max` is 180), arrow keys (Shift for 15°), or type the value.
+ */
+export function dial(spec: SliderSpec, store: ParamStore): HTMLElement {
+  const key = spec.key;
+  const span = spec.max - spec.min;
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '-1 -1 2 2');
+  svg.setAttribute('class', 'dial');
+  svg.setAttribute('tabindex', '0');
+  svg.setAttribute('role', 'slider');
+  svg.setAttribute('aria-label', spec.label);
+  svg.setAttribute('aria-valuemin', `${spec.min}`);
+  svg.setAttribute('aria-valuemax', `${spec.max}`);
+  const ring = document.createElementNS(NS, 'circle');
+  ring.setAttribute('r', '0.9');
+  ring.setAttribute('class', 'dial-ring');
+  const line = document.createElementNS(NS, 'line');
+  line.setAttribute('class', 'dial-line');
+  const knob = document.createElementNS(NS, 'circle');
+  knob.setAttribute('r', '0.16');
+  knob.setAttribute('class', 'dial-knob');
+  svg.append(ring, line, knob);
+  const input = el('input', { type: 'number', min: `${spec.min}`, max: `${spec.max}`, step: `${spec.step}`, class: 'dial-input', 'aria-label': spec.label });
+
+  const clamp = (v: number) => Math.min(spec.max, Math.max(spec.min, Math.round(v / spec.step) * spec.step));
+  const sync = (v: number) => {
+    // A full turn of the knob covers the range twice for an axis (0–180°), once otherwise.
+    const a = ((v - spec.min) / span) * (span <= 180 ? Math.PI : 2 * Math.PI);
+    const [x, y] = [Math.cos(a) * 0.72, -Math.sin(a) * 0.72];
+    line.setAttribute('x1', `${span <= 180 ? -x : 0}`);
+    line.setAttribute('y1', `${span <= 180 ? -y : 0}`);
+    line.setAttribute('x2', `${x}`);
+    line.setAttribute('y2', `${y}`);
+    knob.setAttribute('cx', `${x}`);
+    knob.setAttribute('cy', `${y}`);
+    svg.setAttribute('aria-valuenow', `${v}`);
+    input.value = `${v}`;
+  };
+  const set = (v: number) => store.set(key, clamp(v) as Params[typeof key]);
+  const fromPointer = (e: PointerEvent) => {
+    const r = svg.getBoundingClientRect();
+    const deg = (Math.atan2(r.top + r.height / 2 - e.clientY, e.clientX - r.left - r.width / 2) * 180) / Math.PI;
+    const turn = span <= 180 ? 180 : 360;
+    set(spec.min + ((((deg % turn) + turn) % turn) / turn) * span);
+  };
+  svg.addEventListener('pointerdown', (e) => {
+    svg.setPointerCapture(e.pointerId);
+    fromPointer(e);
+  });
+  svg.addEventListener('pointermove', (e) => svg.hasPointerCapture(e.pointerId) && fromPointer(e));
+  svg.addEventListener('keydown', (e) => {
+    const d = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    set((store.params[key] as number) + d * (e.shiftKey ? 15 : spec.step));
+  });
+  svg.addEventListener('dblclick', () => store.set(key, DEFAULTS[key] as Params[typeof key]));
+  input.addEventListener('change', () => set(Number(input.value)));
+  store.subscribe((p, changed) => changed === key && sync(p[key] as number));
+  sync(store.params[key] as number);
+  return el(
+    'div',
+    { class: 'control dial-control' },
+    el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, spec.label)),
+    el('div', { class: 'dial-row' }, svg as unknown as HTMLElement, input),
+  );
+}
+
 export interface PickerOptions {
   /** Category ids and labels, in display order. */
   categories: { id: string; label: string }[];
@@ -268,7 +339,8 @@ export function categoryPicker(
   return Object.assign(root, { refresh: render });
 }
 
-export type ColorKey ='ink' | 'paper' | 'asciiFg' | 'asciiBg' | 'fxTintColor' | 'maskColor' | 'shapeBackground' | 'polyBorderColor';
+export type ColorKey =
+  | 'ink' | 'paper' | 'asciiFg' | 'asciiBg' | 'fxTintColor' | 'maskColor' | 'shapeBackground' | 'polyBorderColor' | 'fxGlowColor';
 
 /** Colour swatch bound to a hex string param. */
 export function colorInput(key: ColorKey, label: string, store: ParamStore): HTMLElement {

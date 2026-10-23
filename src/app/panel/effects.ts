@@ -1,12 +1,17 @@
 import { EFFECTS, moveEffect, normalizeOrder, TINT_MODES } from '../../pipeline/effects';
 import { FX_KEYS, FX_SLIDERS, type BooleanKey, type Params } from '../../state';
-import { button, colorInput, el, section, select, showWhen, slider, toggle } from '../../ui/controls';
+import { button, colorInput, dial, el, section, select, showWhen, slider, toggle } from '../../ui/controls';
 import { store } from '../core';
 
 /** Controls an effect needs besides its sliders. */
 const EXTRA_CONTROLS: Record<string, () => HTMLElement[]> = {
   reveal: () => [select('fxRevealTarget', 'Reveal target', [{ value: 'original', label: 'Original' }, { value: 'processed', label: 'Processed' }], store)],
   sort: () => [toggle('fxSortVertical', 'Vertical', store), toggle('fxSortReverse', 'Reverse sort', store)],
+  glow: () => [
+    dial(FX_SLIDERS.glow.find((s) => s.key === 'fxGlowAngle')!, store),
+    toggle('fxGlowCompensate', 'Radius compensation', store),
+    el('div', { class: 'color-row single' }, colorInput('fxGlowColor', 'Glow colour', store)),
+  ],
   tint: () => [
     el('div', { class: 'color-row single' }, colorInput('fxTintColor', 'Colour', store)),
     select(
@@ -30,7 +35,8 @@ for (const fx of EFFECTS) {
       'div',
       { class: 'effect-body' },
       ...(EXTRA_CONTROLS[fx.id]?.() ?? []),
-      ...FX_SLIDERS[fx.id].map((s) => slider(s, store)),
+      // Glow's angle is a dial among its extra controls.
+      ...FX_SLIDERS[fx.id].filter((s) => s.key !== 'fxGlowAngle').map((s) => slider(s, store)),
       ...(fx.animated ? [el('div', { class: 'note' }, 'Moves when Boil is on')] : []),
     ),
     store,

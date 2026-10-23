@@ -458,6 +458,10 @@ function importExternal(p: Obj): ImportResult {
         if (n('aspectRatio') !== undefined) out.fxGlowAspect = n('aspectRatio')! / 100;
         if (n('direction') !== undefined) out.fxGlowAngle = ((n('direction')! % 180) + 180) % 180;
         if (n('falloff') !== undefined) out.fxGlowFalloff = n('falloff')! / 10;
+        // ε there is epsilon / 10; ours is Epsilon / 50.
+        if (n('epsilon') !== undefined) out.fxGlowEpsilon = clamp(Math.round(n('epsilon')! * 5), 0, 100);
+        if (n('distanceScale') !== undefined) out.fxGlowDistance = clamp(n('distanceScale')!, 25, 400);
+        if (typeof s.radiusCompensation === 'boolean') out.fxGlowCompensate = s.radiusCompensation;
         approximated.push(`${inst.label} → Glow`);
         for (const key of Object.keys(s)) {
           if (
@@ -470,6 +474,9 @@ function importExternal(p: Obj): ImportResult {
               'aspectRatio',
               'direction',
               'falloff',
+              'epsilon',
+              'distanceScale',
+              'radiusCompensation',
             ].includes(key)
           ) {
             skipped.push(`${inst.label} “${key}”`);

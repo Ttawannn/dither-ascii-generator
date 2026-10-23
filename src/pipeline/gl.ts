@@ -18,7 +18,7 @@ import filterFrag from './shaders/filter.frag?raw';
 import compositeFrag from './shaders/composite.frag?raw';
 import sortFrag from './shaders/sort.frag?raw';
 import sortOutputFrag from './shaders/sort-output.frag?raw';
-import type { PostEffect } from './effects';
+import { compensationGain, GLOW_BASE_RADIUS, type PostEffect } from './effects';
 
 /** How layer 2 is blended over layer 1 (see composite.frag). */
 export interface CompositeOptions {
@@ -29,6 +29,9 @@ export interface CompositeOptions {
   /** The mask pass, when the Mask limits layer 2 only; its params are reused. */
   mask: PostEffect | null;
 }
+
+/** The glow probe samples every PROBE-th output pixel in each direction. */
+const PROBE = 4;
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
   const sh = gl.createShader(type)!;
@@ -114,6 +117,11 @@ export class Renderer {
   private postFbo: WebGLFramebuffer[] = [];
   private glowTex!: WebGLTexture;
   private glowFbo!: WebGLFramebuffer;
+  /** Small target for measuring glow peaks (Radius compensation). */
+  private probeTex!: WebGLTexture;
+  private probeFbo!: WebGLFramebuffer;
+  private probeW = 0;
+  private probeH = 0;
   private postW = 0;
   private postH = 0;
   private effects: PostEffect[] = [];
@@ -212,6 +220,9 @@ export class Renderer {
     this.postFbo = [gl.createFramebuffer()!, gl.createFramebuffer()!];
     this.glowTex = texture(gl, gl.LINEAR_MIPMAP_LINEAR);
     this.glowFbo = gl.createFramebuffer()!;
+    this.probeTex = texture(gl, gl.NEAREST);
+    this.probeFbo = gl.createFramebuffer()!;
+    this.probeW = this.probeH = 0;
     // Cached sizes and uploads referred to the previous objects.
     this.adjW = this.adjH = 0;
     this.tmpW = this.tmpH = 0;
@@ -668,6 +679,8 @@ export class Renderer {
       }
       gl.uniform4fv(u('u_p'), fx.params);
       gl.uniform4fv(u('u_q'), fx.extra);
+      gl.uniform4fv(u('u_r'), fx.more ?? [0, 0, 0, 0]);
+      gl.uniform3fv(u('u_c'), fx.color ?? [0, 0, 0]);
       if (fx.mask) {
         gl.uniform3fv(u('u_maskColor'), fx.mask.color);
         gl.uniform1i(u('u_maskView'), fx.mask.view ? 1 : 0);
@@ -686,6 +699,10 @@ export class Renderer {
         gl.bindTexture(gl.TEXTURE_2D, this.glowTex);
         gl.generateMipmap(gl.TEXTURE_2D);
         gl.activeTexture(gl.TEXTURE0);
+        if (fx.more?.[3] && fx.params[0] > GLOW_BASE_RADIUS) {
+          const gain = compensationGain(this.glowPeak(GLOW_BASE_RADIUS, fx), this.glowPeak(fx.params[0], fx));
+          gl.uniform4f(u('u_r'), fx.more[0], gain, fx.more[2], fx.more[3]);
+        }
       }
       gl.bindFramebuffer(gl.FRAMEBUFFER, i === n - 1 ? null : this.postFbo[1 - src]);
       gl.bindTexture(gl.TEXTURE_2D, this.postTex[src]);
@@ -693,6 +710,35 @@ export class Renderer {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       src = 1 - src;
     });
+  }
+
+  /**
+   * How bright the glow's gathered light at `radius` gets (before intensity): its 99th percentile on
+   * a grid of every PROBE-th pixel, read back. Needs the post program in use and the glow on unit 1.
+   */
+  private glowPeak(radius: number, fx: PostEffect): number {
+    const gl = this.gl;
+    const { u } = this.post;
+    const [w, h] = [Math.ceil(this.postW / PROBE), Math.ceil(this.postH / PROBE)];
+    if (w !== this.probeW || h !== this.probeH) this.sizeTarget(this.probeTex, this.probeFbo, (this.probeW = w), (this.probeH = h));
+    // The probe never reads unit 0; keep the probe texture off it (no feedback loop). The caller
+    // binds its input there again before the next draw.
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.probeFbo);
+    gl.viewport(0, 0, w, h);
+    gl.uniform2f(u('u_probe'), PROBE, PROBE);
+    gl.uniform4f(u('u_p'), radius, fx.params[1], fx.params[2], fx.params[3]);
+    gl.uniform1i(u('u_kind'), 102);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    const px = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    gl.uniform4fv(u('u_p'), fx.params);
+    gl.viewport(0, 0, this.postW, this.postH);
+    const counts = new Uint32Array(256);
+    for (let i = 0; i < px.length; i += 4) counts[Math.max(px[i], px[i + 1], px[i + 2])]++;
+    let above = 0;
+    for (let v = 255; v > 0; v--) if ((above += counts[v]) >= w * h * 0.01) return v / 255;
+    return 0;
   }
 
   /** Segmented bitonic sort. RGBA32UI records retain the exact premultiplied colour and stable ties. */

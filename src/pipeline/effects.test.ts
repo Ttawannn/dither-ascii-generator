@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS, FX_SLIDERS, sanitize, type Params } from '../state';
-import { activeEffects, DEFAULT_ORDER, EFFECT_IDS, EFFECTS, MASK_KIND, maskEffect, moveEffect, normalizeOrder } from './effects';
+import { activeEffects, compensationGain, DEFAULT_ORDER, EFFECT_IDS, EFFECTS, MASK_KIND, maskEffect, moveEffect, normalizeOrder } from './effects';
 
 describe('effect order', () => {
   it('keeps a valid order as it is', () => {
@@ -128,5 +128,31 @@ describe('effect definitions', () => {
 
   it('switch on with a boolean param', () => {
     for (const e of EFFECTS) expect(typeof DEFAULTS[e.enabled], e.id).toBe('boolean');
+  });
+});
+
+describe('glow curve', () => {
+  it('keeps the old glow at the defaults: no ε, no compensation, no tint', () => {
+    const [fx] = activeEffects({ ...DEFAULTS, fxGlow: true });
+    expect(fx.extra[3]).toBe(0);
+    expect(fx.more).toEqual([1, 1, 0, 0]);
+    expect(fx.color).toEqual([1, 1, 1]);
+  });
+
+  it('passes ε, distance scale, compensation gain and tint', () => {
+    const [fx] = activeEffects({ ...DEFAULTS, fxGlow: true, fxGlowEpsilon: 50, fxGlowDistance: 200, fxGlowCompensate: true, fxGlowRadius: 200, fxGlowTint: 40, fxGlowColor: '#ff0000' });
+    expect(fx.extra[3]).toBe(1);
+    expect(fx.more![0]).toBe(2);
+    expect(fx.more![1]).toBe(1); // the renderer fills in the gain
+    expect(fx.more![2]).toBe(0.4);
+    expect(fx.more![3]).toBe(1);
+    expect(fx.color).toEqual([1, 0, 0]);
+  });
+
+  it('compensation lifts faded small details, leaves large bright areas, and is capped', () => {
+    expect(compensationGain(0.9, 0.9)).toBe(1);
+    expect(compensationGain(0.8, 0.2)).toBe(4);
+    expect(compensationGain(0.5, 0.9)).toBe(1);
+    expect(compensationGain(1, 0)).toBe(8);
   });
 });

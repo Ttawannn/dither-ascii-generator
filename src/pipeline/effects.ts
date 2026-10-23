@@ -13,7 +13,21 @@ export interface PostEffect {
   bright: boolean;
   /** Mask pass only: colour shown outside the mask, and whether to show the mask itself. */
   mask?: { color: [number, number, number]; view: boolean };
+  /** Further parameters (`u_r`) and a colour (`u_c`), for effects that need them (glow). */
+  more?: [number, number, number, number];
+  color?: [number, number, number];
 }
+
+/** Glow radius whose brightness Radius compensation keeps (the baseline). */
+export const GLOW_BASE_RADIUS = 20;
+
+/**
+ * Radius compensation gain. A wide glow averages its bright sources over a larger area, so small
+ * bright details fade while large bright areas don't. Given how bright the gathered light gets at
+ * the baseline radius and at the glow's radius, this brings it back up (at most 8×, never down).
+ */
+export const compensationGain = (basePeak: number, widePeak: number) =>
+  Math.min(8, Math.max(1, basePeak / Math.max(widePeak, 1e-3)));
 
 /** `u_kind` of the mask pass, which always runs last. */
 export const MASK_KIND = 101;
@@ -44,6 +58,8 @@ export interface EffectDef {
   animated?: boolean;
   uniforms: (p: Params) => [number, number, number, number];
   extra?: (p: Params) => [number, number, number, number];
+  more?: (p: Params) => [number, number, number, number];
+  color?: (p: Params) => [number, number, number];
   bright?: boolean;
 }
 
@@ -87,7 +103,11 @@ export const EFFECTS: EffectDef[] = [
     kind: 0,
     bright: true,
     uniforms: (p) => [p.fxGlowRadius, p.fxGlowIntensity / 100, p.fxGlowThreshold / 100, p.fxGlowSoftness / 100],
-    extra: (p) => [p.fxGlowAspect, rad(p.fxGlowAngle), p.fxGlowFalloff, 0],
+    // ε in the falloff 1 / ((ring · scale)^n + ε), up to 2 (the ring terms run 1 … 3^n).
+    extra: (p) => [p.fxGlowAspect, rad(p.fxGlowAngle), p.fxGlowFalloff, p.fxGlowEpsilon / 50],
+    // u_r.y is the compensation gain, filled in by the renderer from the bright pass (1 = none).
+    more: (p) => [p.fxGlowDistance / 100, 1, p.fxGlowTint / 100, p.fxGlowCompensate ? 1 : 0],
+    color: (p) => hexToRgb(p.fxGlowColor),
   },
   {
     id: 'glitch',
@@ -179,5 +199,12 @@ export function activeEffects(p: Params): PostEffect[] {
     .split(',')
     .map(getEffect)
     .filter((e) => p[e.enabled] === true)
-    .map((e) => ({ kind: e.kind, params: e.uniforms(p), extra: e.extra?.(p) ?? [0, 0, 0, 0], bright: !!e.bright }));
+    .map((e) => ({
+      kind: e.kind,
+      params: e.uniforms(p),
+      extra: e.extra?.(p) ?? [0, 0, 0, 0],
+      bright: !!e.bright,
+      ...(e.more ? { more: e.more(p) } : {}),
+      ...(e.color ? { color: e.color(p) } : {}),
+    }));
 }

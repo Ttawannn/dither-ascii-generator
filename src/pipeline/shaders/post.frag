@@ -15,6 +15,9 @@ uniform vec2 u_size;
 uniform int u_kind;
 uniform vec4 u_p;        // effect parameters, see EFFECTS in effects.ts
 uniform vec4 u_q;        // more parameters (EffectDef.extra)
+uniform vec4 u_r;        // further parameters (EffectDef.more)
+uniform vec3 u_c;        // a colour (EffectDef.color)
+uniform vec2 u_probe;    // glow probe: output pixels per probe pixel
 uniform float u_seed;    // boil seed: animates glitch and grain
 uniform bool u_opaque;   // false when the image has a transparent background
 
@@ -90,6 +93,31 @@ vec4 at(vec2 px) {
   return texture(u_tex, px / u_size);
 }
 
+// Glow: the bright pass gathered from three rings of `radius`, stretched (u_q.x) and turned (u_q.y).
+// Wide rings read coarser mip levels so the samples still overlap.
+vec3 gatherGlow(vec2 px, float radius) {
+  vec2 stretch = vec2(sqrt(u_q.x), 1.0 / sqrt(u_q.x));
+  float ca = cos(u_q.y), sa = sin(u_q.y);
+  mat2 turn = mat2(ca, sa, -sa, ca);
+  vec3 sum = vec3(0.0);
+  float wsum = 0.0;
+  // Falloff 1 / ((ring · scale)^n + ε); with ε = 0 the scale cancels out, so keep the plain form.
+  bool plain = u_q.w == 0.0;
+  for (int ring = 1; ring <= 3; ring++) {
+    float r = radius * float(ring) / 3.0;
+    float w = plain ? pow(float(ring), -u_q.z) : 1.0 / (pow(float(ring) * u_r.x, u_q.z) + u_q.w);
+    float gap = TAU * r * max(stretch.x, stretch.y) / 16.0;
+    float lod = max(0.0, log2(gap * 0.5));
+    for (int i = 0; i < 16; i++) {
+      float a = TAU * (float(i) + 0.5 * float(ring)) / 16.0;
+      vec2 off = turn * (vec2(cos(a), sin(a)) * stretch) * r;
+      sum += textureLod(u_glow, (px + off) / u_size, lod).rgb * w;
+      wsum += w;
+    }
+  }
+  return sum / wsum;
+}
+
 void main() {
   vec2 px = gl_FragCoord.xy;
   vec2 uv = px / u_size;
@@ -147,6 +175,13 @@ void main() {
     return;
   }
 
+  if (u_kind == 102) {
+    // Glow probe for Radius compensation: the gathered light of radius u_p.x on a coarse grid
+    // (u_probe pixels per probe pixel), read back to find its peak.
+    outColor = vec4(gatherGlow(gl_FragCoord.xy * u_probe, u_p.x), 1.0);
+    return;
+  }
+
   if (u_kind == 100) {
     // Bright pass for glow: what is above the threshold, with a soft knee. The knee's half-width
     // is a share (u_p.w) of the threshold, so it never reaches below black.
@@ -162,26 +197,10 @@ void main() {
   }
 
   if (u_kind == 0) {
-    // Glow: the bright pass gathered from three rings, stretched (u_q.x) and turned (u_q.y), and added
-    // back. Wide rings read coarser mip levels so the samples still overlap.
-    vec2 stretch = vec2(sqrt(u_q.x), 1.0 / sqrt(u_q.x));
-    float ca = cos(u_q.y), sa = sin(u_q.y);
-    mat2 turn = mat2(ca, sa, -sa, ca);
-    vec3 sum = vec3(0.0);
-    float wsum = 0.0;
-    for (int ring = 1; ring <= 3; ring++) {
-      float r = u_p.x * float(ring) / 3.0;
-      float w = pow(float(ring), -u_q.z);
-      float gap = TAU * r * max(stretch.x, stretch.y) / 16.0;
-      float lod = max(0.0, log2(gap * 0.5));
-      for (int i = 0; i < 16; i++) {
-        float a = TAU * (float(i) + 0.5 * float(ring)) / 16.0;
-        vec2 off = turn * (vec2(cos(a), sin(a)) * stretch) * r;
-        sum += textureLod(u_glow, (px + off) / u_size, lod).rgb * w;
-        wsum += w;
-      }
-    }
-    vec3 g = sum / wsum * u_p.y;
+    vec3 g = gatherGlow(px, u_p.x) * u_p.y;
+    // Radius compensation (u_r.y, 1 when off), then the glow colour mixed in by Glow tint.
+    if (u_r.y != 1.0) g *= u_r.y;
+    if (u_r.z > 0.0) g = mix(g, u_c * max(g.r, max(g.g, g.b)), u_r.z);
     o = vec4(c.rgb + g, max(c.a, clamp(max(g.r, max(g.g, g.b)), 0.0, 1.0)));
   } else if (u_kind == 1) {
     // Chromatic aberration: each channel pushed outwards (or inwards when negative) by its share of

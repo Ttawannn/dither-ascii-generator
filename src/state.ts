@@ -184,6 +184,14 @@ export interface Params {
   fxGlowAspect: number;
   fxGlowAngle: number;
   fxGlowFalloff: number;
+  /** Glow falloff curve: ε flattens the core (0..100), distance scale stretches distances in it (25..400 %). */
+  fxGlowEpsilon: number;
+  fxGlowDistance: number;
+  /** Keep wide glows as bright as narrow ones. */
+  fxGlowCompensate: boolean;
+  /** Glow colour, mixed in by Tint (0 = the picture's own colours). */
+  fxGlowColor: string;
+  fxGlowTint: number;
   fxGlitch: boolean;
   fxGlitchAmount: number;
   fxGlitchBlock: number;
@@ -374,6 +382,11 @@ export const DEFAULTS: Params = {
   fxGlowAspect: 1,
   fxGlowAngle: 0,
   fxGlowFalloff: 1,
+  fxGlowEpsilon: 0,
+  fxGlowDistance: 100,
+  fxGlowCompensate: false,
+  fxGlowColor: '#ffffff',
+  fxGlowTint: 0,
   fxGlitch: false,
   fxGlitchAmount: 30,
   fxGlitchBlock: 16,
@@ -601,6 +614,9 @@ export const FX_SLIDERS: Record<string, SliderSpec[]> = {
     { key: 'fxGlowAspect', label: 'Stretch', min: 0.25, max: 4, step: 0.05, format: (v) => `${v.toFixed(2)}×` },
     { key: 'fxGlowAngle', label: 'Angle', min: 0, max: 180, step: 1, format: (v) => `${v}°` },
     { key: 'fxGlowFalloff', label: 'Falloff', min: 0, max: 3, step: 0.1, format: (v) => v.toFixed(1) },
+    { key: 'fxGlowEpsilon', label: 'Epsilon', min: 0, max: 100, step: 1 },
+    { key: 'fxGlowDistance', label: 'Distance scale', min: 25, max: 400, step: 1, format: pct },
+    { key: 'fxGlowTint', label: 'Glow tint', min: 0, max: 100, step: 1, format: pct },
   ],
   glitch: [
     { key: 'fxGlitchAmount', label: 'Amount', min: 0, max: 100, step: 1, format: pct },
@@ -752,7 +768,7 @@ export const FX_KEYS: (keyof Params)[] = [
   'fxReveal', 'fxRevealTarget',
   'fxSort', 'fxSortVertical', 'fxSortReverse',
   'fxOrder',
-  'fxGlow',
+  'fxGlow', 'fxGlowCompensate', 'fxGlowColor',
   'fxGlitch',
   'fxChroma',
   'fxScan',
@@ -840,7 +856,7 @@ const ENUMS: Partial<Record<keyof Params, string[]>> = {
   maskOutside: MASK_OUTSIDE.map((m) => m.id),
 };
 const COLOR_KEYS: (keyof Params)[] = [
-  'ink', 'paper', 'asciiFg', 'asciiBg', 'fxTintColor', 'maskColor', 'shapeBackground', 'polyBorderColor',
+  'ink', 'paper', 'asciiFg', 'asciiBg', 'fxTintColor', 'maskColor', 'shapeBackground', 'polyBorderColor', 'fxGlowColor',
 ];
 const HEX = /^#[0-9a-f]{6}$/i;
 
