@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ALGORITHMS, KERNELS } from './algorithms';
+import { ALGORITHMS, axisKernel, edgeShares, gaussianKernel, KERNELS } from './algorithms';
 import { blueNoiseTile } from './bluenoise';
 import { diffuse, smoothLuma, type DiffusionJob } from './diffuse';
 
@@ -60,7 +60,7 @@ describe('smoothLuma', () => {
 
 describe('error-diffusion kernels', () => {
   it('has a fixed kernel or an explicitly tested traversal for every diffusion algorithm', () => {
-    for (const a of ALGORITHMS.filter((a) => a.group === 'diffusion')) expect(!!KERNELS[a.id] || ['ostromoukhov', 'riemersma', 'dot-diffusion'].includes(a.id), a.id).toBe(true);
+    for (const a of ALGORITHMS.filter((a) => a.group === 'diffusion')) expect(!!KERNELS[a.id] || ['ostromoukhov', 'riemersma', 'dot-diffusion', 'gaussian', 'edge-diffusion', 'axis'].includes(a.id), a.id).toBe(true);
   });
 
   it('only push error forward and never add energy', () => {
@@ -201,5 +201,68 @@ describe('diffuse', () => {
     const a = diffuse(job({ noise: 0.06, seed: 3 }));
     expect(diffuse(job({ noise: 0.06, seed: 3 }))).toEqual(a);
     expect(diffuse(job({ noise: 0.06, seed: 4 }))).not.toEqual(a);
+  });
+});
+
+describe('new kernels', () => {
+  const shape = { sigma: 1.5, noise: 0, crack: 0.5, vertical: false, bleed: 0, smooth: 0 };
+  const sum = (k: [number, number, number][]) => k.reduce((s, [, , w]) => s + w, 0);
+
+  it('Stevenson–Arce uses the published twelve weights, summing to 1', () => {
+    const k = KERNELS['stevenson-arce'];
+    expect(k).toHaveLength(12);
+    expect(sum(k)).toBeCloseTo(1, 10);
+    expect(k).toContainEqual([2, 0, 32 / 200]);
+    expect(k).toContainEqual([-3, 3, 5 / 200]);
+    expect(k).toContainEqual([3, 3, 5 / 200]);
+  });
+
+  it('Gaussian covers the 12 cells ahead in a 5×5 window, symmetric, summing to 1', () => {
+    const k = gaussianKernel(1.5);
+    expect(k).toHaveLength(12);
+    expect(sum(k)).toBeCloseTo(1, 10);
+    const w = (dx: number, dy: number) => k.find((t) => t[0] === dx && t[1] === dy)![2];
+    expect(w(-1, 1)).toBeCloseTo(w(1, 1), 12);
+    expect(w(1, 0)).toBeGreaterThan(w(2, 0));
+    // A wider spread passes more to the far cells.
+    expect(gaussianKernel(3).find((t) => t[0] === 2 && t[1] === 2)![2]).toBeGreaterThan(w(2, 2));
+  });
+
+  it('Single-axis keeps the error on the line, minus the bleed', () => {
+    expect(axisKernel(shape)).toEqual([[1, 0, 1]]);
+    expect(sum(axisKernel({ ...shape, bleed: 0.3, smooth: 0.4 }))).toBeCloseTo(1, 10);
+    expect(axisKernel({ ...shape, vertical: true, bleed: 0.2 })).toEqual([[0, 1, 0.8], [1, 0, 0.2]]);
+  });
+
+  it('Single-axis without bleed treats every row on its own', () => {
+    const w = SIZE;
+    const a = grey(100);
+    const b = grey(100);
+    // Change the top visual row (the last buffer row) in one copy only.
+    for (let x = 0; x < w; x++) b.set([200, 200, 200, 255], ((SIZE - 1) * w + x) * 4);
+    const run = (data: Uint8Array) => diffuse(job({ data, kernel: 'axis', shape }));
+    const ra = run(a);
+    const rb = run(b);
+    expect(rb.slice(0, (SIZE - 1) * w * 4)).toEqual(ra.slice(0, (SIZE - 1) * w * 4));
+    // With bleed, the change reaches the next row.
+    const leak = (data: Uint8Array) => diffuse(job({ data, kernel: 'axis', shape: { ...shape, bleed: 0.5 } }));
+    expect(leak(b).slice((SIZE - 2) * w * 4, (SIZE - 1) * w * 4)).not.toEqual(leak(a).slice((SIZE - 2) * w * 4, (SIZE - 1) * w * 4));
+  });
+
+  it('Edge-directed splits evenly at 0 and sends everything one way at 1', () => {
+    expect(edgeShares(0.1, 0.5, 0)).toEqual([0.5, 0.5]);
+    expect(edgeShares(0.1, 0.5, 1)).toEqual([1, 0]);
+    expect(edgeShares(0.5, 0.1, 1)).toEqual([0, 1]);
+  });
+
+  it('every new kernel keeps the tone of flat greys and repeats exactly', () => {
+    for (const kernel of ['stevenson-arce', 'gaussian', 'edge-diffusion', 'axis']) {
+      for (const v of [64, 128, 192]) {
+        const j = job({ data: grey(v), kernel, shape: { ...shape, noise: 0.5, bleed: 0.2, smooth: 0.3 }, seed: 3 });
+        const out = diffuse(j);
+        expect(Math.abs(whiteFraction(out) - v / 255), `${kernel} ${v}`).toBeLessThan(0.03);
+        expect(diffuse(j)).toEqual(out);
+      }
+    }
   });
 });

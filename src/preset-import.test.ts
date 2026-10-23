@@ -294,3 +294,16 @@ describe('polygon styles', () => {
     expect(style('camo').approximated).toContain('Dither style “camo” → Voronoi');
   });
 });
+
+describe('diffusion styles', () => {
+  it('map onto the new kernels with their settings', () => {
+    const style = (s: string, controls: object = {}) => importPreset({ preset: { dither: { style: s, controls } } })!;
+    expect(style('stevenson-arce').params.algorithm).toBe('stevenson-arce');
+    expect(style('stevenson-arce').approximated).toEqual([]);
+    expect(style('gaussian', { distributionSpread: 4 }).params).toMatchObject({ algorithm: 'gaussian', gaussSpread: 28 });
+    expect(style('cracked-diffuse', { cracked: 30 }).params).toMatchObject({ algorithm: 'edge-diffusion', edgeCrack: 70 });
+    expect(style('uniform-modulation-x', { bleedFraction: 0.25, smoothingFactor: 0.5 }).params)
+      .toMatchObject({ algorithm: 'axis', axisVertical: true, axisBleed: 25, axisSmooth: 50 });
+    expect(style('modulated-diffuse-y').params.axisVertical).toBeUndefined();
+  });
+});

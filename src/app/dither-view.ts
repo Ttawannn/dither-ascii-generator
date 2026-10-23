@@ -70,6 +70,14 @@ export function drawDither(p: Params, layer = 0, t: RenderTarget = mainTarget())
       noise: t.seed ? 0.12 * (p.boilAmount / 100) : 0,
       noiseTile: p.boilPattern === 'blue' ? blueNoiseTile() : null,
       wave: p.waveStrength ? [p.waveStrength / 100, p.waveLength, p.waveBias / 100, p.waveFollow / 100] : null,
+      shape: {
+        sigma: 0.5 + (p.gaussSpread / 100) * 2.5,
+        noise: p.gaussNoise / 100,
+        crack: p.edgeCrack / 100,
+        vertical: p.axisVertical,
+        bleed: p.axisBleed / 100,
+        smooth: p.axisSmooth / 100,
+      },
       seed: t.seed,
     };
     if (t.thumb) {

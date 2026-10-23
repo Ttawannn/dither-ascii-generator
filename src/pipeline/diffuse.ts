@@ -1,4 +1,4 @@
-import { KERNELS } from './algorithms';
+import { axisKernel, edgeShares, gaussianKernel, KERNELS, type Kernel, type KernelShape } from './algorithms';
 import { OSTROMOUKHOV } from './ostromoukhov';
 import { advancedDiffuse } from './advanced-diffuse';
 import { linearPalette, linearToSrgb, srgbToLinear } from './color-space';
@@ -30,6 +30,8 @@ export interface DiffusionJob {
    *  follow 0..1 (optional): how far smoothed brightness shifts the wave, so lines bend along the image].
    */
   wave?: [number, number, number, number?] | null;
+  /** Settings for Gaussian, Edge-directed and Single-axis. */
+  shape?: KernelShape;
   seed: number;
 }
 
@@ -81,12 +83,30 @@ export function smoothLuma(data: Uint8Array, w: number, h: number, r: number): F
   return a;
 }
 
+const DEFAULT_SHAPE: KernelShape = { sigma: 1.5, noise: 0, crack: 0.5, vertical: false, bleed: 0, smooth: 0 };
+
+/** A 32-bit integer hash to 0..1 (for noise that is the same every time for a seed). */
+function hash01(n: number): number {
+  let h = Math.imul(n ^ (n >>> 16), 0x7feb352d);
+  h = Math.imul(h ^ (h >>> 15), 0x846ca68b);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
 /** Error-diffuse one frame. Pure function, shared by the worker and the tests. */
 export function diffuse(job: DiffusionJob): Uint8Array {
   if (job.kernel === 'riemersma' || job.kernel === 'dot-diffusion') return advancedDiffuse(job);
   const { width: w, height: h, data, kind, colors, strength } = job;
   const variable = job.kernel === 'ostromoukhov';
-  let kernel = KERNELS[job.kernel] ?? KERNELS['floyd-steinberg'];
+  const shape = job.shape ?? DEFAULT_SHAPE;
+  const edge = job.kernel === 'edge-diffusion';
+  // Edge-directed and Single-axis follow fixed directions, so they never alternate the row order.
+  const serpentine = job.serpentine && !edge && job.kernel !== 'axis';
+  let kernel: Kernel =
+    KERNELS[job.kernel] ??
+    (job.kernel === 'gaussian' ? gaussianKernel(shape.sigma) : job.kernel === 'axis' ? axisKernel(shape) : KERNELS['floyd-steinberg']);
+  const edgeKernel: Kernel = [[1, 0, 0], [0, 1, 0]];
+  const luma = edge ? smoothLuma(data, w, h, 0) : null;
+  const gaussNoise = job.kernel === 'gaussian' ? shape.noise * 0.25 : 0;
   const linear = !!job.linearLight;
   const pal = linear ? linearPalette(colors) : colors;
   const convert = (v: number) => (linear ? srgbToLinear(Math.min(1, Math.max(0, v))) : v);
@@ -140,7 +160,7 @@ export function diffuse(job: DiffusionJob): Uint8Array {
   // Walk in visual order (top row first). Buffer rows are bottom-up, so visual row vy is buffer row h-1-vy.
   for (let vy = 0; vy < h; vy++) {
     const row = h - 1 - vy;
-    const reverse = (job.serpentine || variable) && (vy & 1) === 1;
+    const reverse = (serpentine || variable) && (vy & 1) === 1;
     for (let k = 0; k < w; k++) {
       const x = reverse ? w - 1 - k : k;
       const i = row * w + x;
@@ -148,10 +168,24 @@ export function diffuse(job: DiffusionJob): Uint8Array {
         const level = Math.round(LR * data[i * 4] + LG * data[i * 4 + 1] + LB * data[i * 4 + 2]);
         kernel = OSTROMOUKHOV[level];
       }
+      if (luma) {
+        // Brightness differences across the pixel, in visual rows (buffer rows run bottom-up).
+        const at = (xx: number, yy: number) => luma[(h - 1 - Math.min(h - 1, Math.max(0, yy))) * w + Math.min(w - 1, Math.max(0, xx))];
+        const [right, down] = edgeShares(Math.abs(at(x + 1, vy) - at(x - 1, vy)), Math.abs(at(x, vy + 1) - at(x, vy - 1)), shape.crack);
+        edgeKernel[0][2] = right;
+        edgeKernel[1][2] = down;
+        kernel = edgeKernel;
+      }
       let ci = 0; // palette index for output colour (ramp/set)
       // Threshold modulation: the wave shifts which level is picked, the error still uses the true value.
       const bend = follow ? follow[i] * followK : 0;
-      const m = waveAmp ? 0.5 * waveAmp * Math.sin((vy + waveBias * x) * waveK + wavePhase + bend) : 0;
+      let m = waveAmp ? 0.5 * waveAmp * Math.sin((vy + waveBias * x) * waveK + wavePhase + bend) : 0;
+      if (gaussNoise) {
+        // Gaussian threshold noise (Box–Muller), fixed per pixel and seed.
+        const u1 = Math.max(1e-9, hash01(Math.imul(i, 2) + job.seed * 7919));
+        const u2 = hash01(Math.imul(i, 2) + 1 + job.seed * 7919);
+        m += gaussNoise * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+      }
 
       if (ch === 1) {
         const v = Math.min(1, Math.max(0, buf[i]));

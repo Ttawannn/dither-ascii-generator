@@ -109,8 +109,12 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
       showWhen(
         toggle('serpentine', 'Serpentine', s),
         s,
-        (p) => group(p) === 'diffusion' && !['ostromoukhov', 'riemersma', 'dot-diffusion'].includes(p.algorithm),
+        (p) => group(p) === 'diffusion' && !['ostromoukhov', 'riemersma', 'dot-diffusion', 'edge-diffusion', 'axis'].includes(p.algorithm),
       ),
+      ...['gaussSpread', 'gaussNoise'].map((k) => ditherSlider(k, (p) => p.algorithm === 'gaussian')),
+      ditherSlider('edgeCrack', (p) => p.algorithm === 'edge-diffusion'),
+      showWhen(toggle('axisVertical', 'Vertical', s), s, (p) => p.algorithm === 'axis'),
+      ...['axisBleed', 'axisSmooth'].map((k) => ditherSlider(k, (p) => p.algorithm === 'axis')),
       ...(['waveStrength', 'waveLength', 'waveBias', 'waveFollow'] as const).map((k) =>
         ditherSlider(
           k,

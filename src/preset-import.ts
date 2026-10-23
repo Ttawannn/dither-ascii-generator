@@ -98,9 +98,11 @@ interface StyleMatch {
   approx: boolean;
   /** Shape for Luma Shapes grids. */
   shape?: ShapeBand['shape'];
+  /** Single-axis down columns. */
+  vertical?: boolean;
 }
 
-/** Known style ids. `~` marks a close equivalent; `+wave` adds threshold modulation. */
+/** Known style ids. `~` marks a close equivalent; `+wave` adds threshold modulation; `+v` runs Single-axis down columns. */
 const STYLES: Record<string, string> = {
   'floyd-steinberg': 'floyd-steinberg',
   atkinson: 'atkinson',
@@ -120,9 +122,9 @@ const STYLES: Record<string, string> = {
   none: 'threshold',
   original: 'threshold',
   'bayer-matrix': 'bayer4',
-  'stevenson-arce': '~jjn',
-  gaussian: '~floyd-steinberg',
-  'cracked-diffuse': '~floyd-steinberg',
+  'stevenson-arce': 'stevenson-arce',
+  gaussian: '~gaussian',
+  'cracked-diffuse': '~edge-diffusion',
   'artifact-modulation': '~floyd-steinberg',
   'vortex-diffusion': '~floyd-steinberg',
   'bayer-void': '~bayer4',
@@ -165,17 +167,17 @@ const STYLES: Record<string, string> = {
   'atkinson-line-modulation': '~atkinson+wave',
   'atkinson-vhs': '~atkinson+wave',
   'stucki-diffusion-lines': '~stucki+wave',
-  'artifact-modulation-glitch': '~floyd-steinberg+wave',
-  'contrast-aware-x': '~floyd-steinberg+wave',
-  'contrast-aware-y': '~floyd-steinberg+wave',
-  'modulated-diffuse-x': '~floyd-steinberg+wave',
-  'modulated-diffuse-y': '~floyd-steinberg+wave',
+  'artifact-modulation-glitch': '~axis',
+  'contrast-aware-x': '~axis+v',
+  'contrast-aware-y': '~axis',
+  'modulated-diffuse-x': '~axis+v',
+  'modulated-diffuse-y': '~axis',
   'ordered-modulation': '~floyd-steinberg+wave',
-  'smooth-diffuse': '~floyd-steinberg+wave',
-  'uniform-modulation-x': '~floyd-steinberg+wave',
-  'uniform-modulation-y': '~floyd-steinberg+wave',
-  'wave-modulation-x': '~floyd-steinberg+wave',
-  'wave-modulation-y': '~floyd-steinberg+wave',
+  'smooth-diffuse': '~axis',
+  'uniform-modulation-x': '~axis+v',
+  'uniform-modulation-y': '~axis',
+  'wave-modulation-x': '~axis+wave+v',
+  'wave-modulation-y': '~axis+wave',
 };
 
 export const KNOWN_STYLES = Object.keys(STYLES);
@@ -187,8 +189,8 @@ function mapStyle(style: string): StyleMatch | null {
   const known = STYLES[s];
   if (known !== undefined) {
     if (!known) return null;
-    const m = /^(~?)([a-z0-9-]+)(?::([a-z]+))?(\+wave)?$/.exec(known)!;
-    return { algorithm: m[2], approx: !!m[1], shape: m[3] as ShapeBand['shape'] | undefined, wave: !!m[4] };
+    const m = /^(~?)([a-z0-9-]+)(?::([a-z]+))?(\+wave)?(\+v)?$/.exec(known)!;
+    return { algorithm: m[2], approx: !!m[1], shape: m[3] as ShapeBand['shape'] | undefined, wave: !!m[4], vertical: !!m[5] };
   }
   const kernel = KERNELS.find(([re]) => re.test(s));
   if (kernel) return { algorithm: kernel[1], wave: /modulat|wave/.test(s), approx: true };
@@ -304,6 +306,7 @@ function importExternal(p: Obj): ImportResult {
     if (mapped.approx)
       approximated.push(`Dither style “${style}” → ${ALGORITHMS.find((a) => a.id === out.algorithm)!.label}`);
     if (mapped.algorithm === 'threshold') out.threshold = 50; // nearest colour, no dithering
+    if (mapped.vertical) out.axisVertical = true;
     if (mapped.shape) {
       out.shapeBands = shapeGrid(mapped.shape, colors);
       if (colors.length >= 2) out.shapeBackground = colors[0];
@@ -356,6 +359,12 @@ function importExternal(p: Obj): ImportResult {
     else if (key === 'blockSize' && v !== undefined && style?.toLowerCase() === 'mosaic') {
       out.pixelSize = clamp(Math.round(v) * block, 1, 16);
       if (Math.round(v) * block > 16) approximated.push('Mosaic block size (capped at 16 px)');
+    } else if (key === 'distributionSpread' && v !== undefined) {
+      out.gaussSpread = clamp(Math.round(v * 7), 0, 100); // σ 0.5 + 0.175·spread
+    } else if (key === 'cracked' && v !== undefined) {
+      out.edgeCrack = clamp(Math.round(100 - v), 0, 100); // 0 there sends all one way; 0 here splits evenly
+    } else if ((key === 'bleedFraction' || key === 'smoothingFactor') && v !== undefined) {
+      out[key === 'bleedFraction' ? 'axisBleed' : 'axisSmooth'] = clamp(Math.round(v <= 1 ? v * 100 : v), 0, 100);
     } else if (key === 'warpIntensity' && v !== undefined) {
       // Pixels the bottom row moves; Curve moves it by a quarter of the width at 100 (read as ~1000 px wide).
       out.warpCurve = clamp(Math.round((v * 100) / 250), -100, 100);

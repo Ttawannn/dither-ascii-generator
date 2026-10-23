@@ -41,6 +41,10 @@ export const ALGORITHMS: Algorithm[] = [
   { id: 'ostromoukhov', label: 'Ostromoukhov', group: 'diffusion' },
   { id: 'riemersma', label: 'Riemersma', group: 'diffusion' },
   { id: 'dot-diffusion', label: 'Dot diffusion', group: 'diffusion' },
+  { id: 'stevenson-arce', label: 'Stevenson–Arce', group: 'diffusion' },
+  { id: 'gaussian', label: 'Gaussian', group: 'diffusion' },
+  { id: 'edge-diffusion', label: 'Edge-directed', group: 'diffusion' },
+  { id: 'axis', label: 'Single-axis', group: 'diffusion' },
   { id: 'stippling', label: 'Stippling', group: 'stipple' },
   { id: 'noise', label: 'Random noise', group: 'other', shader: 7 },
   { id: 'threshold', label: 'Threshold', group: 'other', shader: 8 },
@@ -107,4 +111,57 @@ export const KERNELS: Record<string, Kernel> = {
   sierra: kernel(32, [[5, 3], [2, 4, 5, 4, 2], [0, 2, 3, 2, 0]], 2),
   sierra2: kernel(16, [[4, 3], [1, 2, 3, 2, 1]], 2),
   'sierra-lite': kernel(4, [[2], [1, 1, 0]], 1),
+  // Stevenson & Arce (1985), weights / 200 over four rows.
+  'stevenson-arce': kernel(
+    200,
+    [[0, 32], [12, 0, 26, 0, 30, 0, 16], [0, 12, 0, 26, 0, 12, 0], [5, 0, 12, 0, 12, 0, 5]],
+    3,
+  ),
 };
+
+/** Settings of the kernels built per job: Gaussian, Edge-directed and Single-axis. */
+export interface KernelShape {
+  /** Gaussian σ in pixels. */
+  sigma: number;
+  /** Gaussian threshold noise, 0..1. */
+  noise: number;
+  /** Edge-directed: share sent the main way, 0 (half each) .. 1 (all). */
+  crack: number;
+  /** Single-axis: carry the error down columns instead of along rows. */
+  vertical: boolean;
+  /** Single-axis: share leaking to the next line, 0..1. */
+  bleed: number;
+  /** Single-axis: share passed two pixels on instead of one, 0..1. */
+  smooth: number;
+}
+
+/** Gaussian weights on the 12 not-yet-visited cells of a 5×5 window, normalised to 1. */
+export function gaussianKernel(sigma: number): Kernel {
+  const out: Kernel = [];
+  for (let dy = 0; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      if (dy === 0 && dx <= 0) continue;
+      out.push([dx, dy, Math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma))]);
+    }
+  }
+  const sum = out.reduce((s, k) => s + k[2], 0);
+  return out.map(([dx, dy, w]) => [dx, dy, w / sum]);
+}
+
+/** Single-axis kernel: along the row (or column), with a share leaking to the next line. */
+export function axisKernel(s: KernelShape): Kernel {
+  const along = 1 - s.bleed;
+  const taps: Kernel = s.vertical
+    ? [[0, 1, along * (1 - s.smooth)], [0, 2, along * s.smooth], [1, 0, s.bleed]]
+    : [[1, 0, along * (1 - s.smooth)], [2, 0, along * s.smooth], [0, 1, s.bleed]];
+  return taps.filter((k) => k[2] > 0);
+}
+
+/**
+ * Edge-directed: where brightness changes more vertically (gy ≥ gx) the error runs along the edge to
+ * the right, otherwise down; `crack` sets how much goes the main way. Returns [right, down].
+ */
+export function edgeShares(gx: number, gy: number, crack: number): [number, number] {
+  const main = 0.5 + 0.5 * crack;
+  return gy >= gx ? [main, 1 - main] : [1 - main, main];
+}
