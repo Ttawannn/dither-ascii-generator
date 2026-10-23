@@ -409,17 +409,20 @@ function importExternal(p: Obj): ImportResult {
     if (style) approximated.push('Halftone replaces the dither style');
   }
 
+  // Each instance maps into its own settings, so repeated effects can become separate layers.
+  const perInstance: { inst: Instance; o: Record<string, unknown> }[] = [];
   for (const inst of all) {
+    const o: Record<string, unknown> = {};
     const s = inst.settings;
     const n = (key: string) => num(s[key]);
     switch (inst.kind) {
       case 'sort': {
-        out.fxSort = inst.enabled;
-        if (n('low') !== undefined) out.fxSortLow = n('low');
-        if (n('high') !== undefined) out.fxSortHigh = n('high');
-        if (n('maxLength') !== undefined) out.fxSortLength = n('maxLength');
-        if (typeof s.vertical === 'boolean') out.fxSortVertical = s.vertical;
-        if (typeof s.reverse === 'boolean') out.fxSortReverse = s.reverse;
+        o.fxSort = inst.enabled;
+        if (n('low') !== undefined) o.fxSortLow = n('low');
+        if (n('high') !== undefined) o.fxSortHigh = n('high');
+        if (n('maxLength') !== undefined) o.fxSortLength = n('maxLength');
+        if (typeof s.vertical === 'boolean') o.fxSortVertical = s.vertical;
+        if (typeof s.reverse === 'boolean') o.fxSortReverse = s.reverse;
         break;
       }
       case 'dither':
@@ -427,13 +430,13 @@ function importExternal(p: Obj): ImportResult {
         break;
       case 'adjust': {
         if (!inst.enabled) break;
-        if (n('brightness') !== undefined) out.brightness = n('brightness')! - 100;
-        if (n('contrast') !== undefined) out.contrast = n('contrast')! - 100;
-        if (n('saturation') !== undefined) out.saturation = n('saturation');
-        if (n('blur') !== undefined) out.blur = n('blur');
-        if (n('denoise') !== undefined) out.denoise = n('denoise');
-        if (n('hue') !== undefined) out.hue = n('hue');
-        if (n('sharpen') !== undefined) out.sharpen = n('sharpen');
+        if (n('brightness') !== undefined) o.brightness = n('brightness')! - 100;
+        if (n('contrast') !== undefined) o.contrast = n('contrast')! - 100;
+        if (n('saturation') !== undefined) o.saturation = n('saturation');
+        if (n('blur') !== undefined) o.blur = n('blur');
+        if (n('denoise') !== undefined) o.denoise = n('denoise');
+        if (n('hue') !== undefined) o.hue = n('hue');
+        if (n('sharpen') !== undefined) o.sharpen = n('sharpen');
         approximated.push('Brightness and contrast (100 read as unchanged)');
         for (const key of ['midtones', 'highlights'])
           if (n(key) !== undefined) skipped.push(`Adjust “${key}” (scale unknown)`);
@@ -441,27 +444,27 @@ function importExternal(p: Obj): ImportResult {
       }
       case 'boil': {
         if (!inst.enabled) break;
-        out.animate = true;
-        out.boilPattern = /blue/i.test(str(s.pattern) ?? '') ? 'blue' : 'random';
-        if (n('intensity') !== undefined) out.boilAmount = clamp(n('intensity')! * 20, 0, 100);
-        if (n('speed') !== undefined) out.boilFps = clamp(Math.round(n('speed')! * 8), 1, 30);
+        o.animate = true;
+        o.boilPattern = /blue/i.test(str(s.pattern) ?? '') ? 'blue' : 'random';
+        if (n('intensity') !== undefined) o.boilAmount = clamp(n('intensity')! * 20, 0, 100);
+        if (n('speed') !== undefined) o.boilFps = clamp(Math.round(n('speed')! * 8), 1, 30);
         approximated.push(`${inst.label} → Boil`);
         break;
       }
       case 'glow': {
-        out.fxGlow = inst.enabled;
+        o.fxGlow = inst.enabled;
         if (!inst.enabled) break;
-        if (n('threshold') !== undefined) out.fxGlowThreshold = n('threshold');
-        if (n('thresholdSmoothing') !== undefined) out.fxGlowSoftness = n('thresholdSmoothing');
-        if (n('radius') !== undefined) out.fxGlowRadius = n('radius');
-        if (n('intensity') !== undefined) out.fxGlowIntensity = n('intensity')! / 10;
-        if (n('aspectRatio') !== undefined) out.fxGlowAspect = n('aspectRatio')! / 100;
-        if (n('direction') !== undefined) out.fxGlowAngle = ((n('direction')! % 180) + 180) % 180;
-        if (n('falloff') !== undefined) out.fxGlowFalloff = n('falloff')! / 10;
+        if (n('threshold') !== undefined) o.fxGlowThreshold = n('threshold');
+        if (n('thresholdSmoothing') !== undefined) o.fxGlowSoftness = n('thresholdSmoothing');
+        if (n('radius') !== undefined) o.fxGlowRadius = n('radius');
+        if (n('intensity') !== undefined) o.fxGlowIntensity = n('intensity')! / 10;
+        if (n('aspectRatio') !== undefined) o.fxGlowAspect = n('aspectRatio')! / 100;
+        if (n('direction') !== undefined) o.fxGlowAngle = ((n('direction')! % 180) + 180) % 180;
+        if (n('falloff') !== undefined) o.fxGlowFalloff = n('falloff')! / 10;
         // ε there is epsilon / 10; ours is Epsilon / 50.
-        if (n('epsilon') !== undefined) out.fxGlowEpsilon = clamp(Math.round(n('epsilon')! * 5), 0, 100);
-        if (n('distanceScale') !== undefined) out.fxGlowDistance = clamp(n('distanceScale')!, 25, 400);
-        if (typeof s.radiusCompensation === 'boolean') out.fxGlowCompensate = s.radiusCompensation;
+        if (n('epsilon') !== undefined) o.fxGlowEpsilon = clamp(Math.round(n('epsilon')! * 5), 0, 100);
+        if (n('distanceScale') !== undefined) o.fxGlowDistance = clamp(n('distanceScale')!, 25, 400);
+        if (typeof s.radiusCompensation === 'boolean') o.fxGlowCompensate = s.radiusCompensation;
         approximated.push(`${inst.label} → Glow`);
         for (const key of Object.keys(s)) {
           if (
@@ -485,13 +488,13 @@ function importExternal(p: Obj): ImportResult {
         break;
       }
       case 'glitch': {
-        out.fxGlitch = inst.enabled;
+        o.fxGlitch = inst.enabled;
         if (!inst.enabled) break;
         const share = (key: string) => {
           const m = s[key];
           return isObj(m) && m.enabled === true ? clamp(num(m.amount) ?? 0, 0, 100) : 0;
         };
-        Object.assign(out, {
+        Object.assign(o, {
           fxGlitchAmount: 100,
           fxGlitchCrush: 0,
           fxGlitchShift: share('blockShift'),
@@ -504,42 +507,42 @@ function importExternal(p: Obj): ImportResult {
         break;
       }
       case 'chroma': {
-        out.fxChroma = inst.enabled;
+        o.fxChroma = inst.enabled;
         if (!inst.enabled) break;
-        if (n('maxDisplace') !== undefined) out.fxChromaAmount = n('maxDisplace');
-        if (n('redChannel') !== undefined) out.fxChromaR = (n('redChannel')! - 50) * 2;
-        if (n('greenChannel') !== undefined) out.fxChromaG = (n('greenChannel')! - 50) * 2;
-        if (n('blueChannel') !== undefined) out.fxChromaB = (n('blueChannel')! - 50) * 2;
+        if (n('maxDisplace') !== undefined) o.fxChromaAmount = n('maxDisplace');
+        if (n('redChannel') !== undefined) o.fxChromaR = (n('redChannel')! - 50) * 2;
+        if (n('greenChannel') !== undefined) o.fxChromaG = (n('greenChannel')! - 50) * 2;
+        if (n('blueChannel') !== undefined) o.fxChromaB = (n('blueChannel')! - 50) * 2;
         approximated.push(`${inst.label} → Chromatic aberration`);
         break;
       }
       case 'tint': {
-        out.fxTint = inst.enabled;
+        o.fxTint = inst.enabled;
         if (!inst.enabled) break;
         const color = parseColorList(str(s.color) ?? '')[0];
-        if (color) out.fxTintColor = color;
+        if (color) o.fxTintColor = color;
         // "colorDodge", "Colour Dodge" and "color_dodge" all read as color-dodge.
         const mode = str(s.blendMode)
           ?.replace(/([a-z])([A-Z])/g, '$1-$2')
           .toLowerCase()
           .replace(/colour/g, 'color')
           .replace(/[\s_]+/g, '-');
-        if (mode && TINT_MODES.some((m) => m.id === mode)) out.fxTintMode = mode;
+        if (mode && TINT_MODES.some((m) => m.id === mode)) o.fxTintMode = mode;
         else if (mode) skipped.push(`Tint blend mode “${mode}”`);
-        if (n('opacity') !== undefined) out.fxTintOpacity = n('opacity');
+        if (n('opacity') !== undefined) o.fxTintOpacity = n('opacity');
         break;
       }
       case 'finish': {
         if (!inst.enabled) break;
         if (s.invert === true) {
-          out.invert = true;
+          o.invert = true;
           approximated.push('Invert (applied before dithering)');
         }
         const blur = n('blur') ?? 0;
         const sharpen = n('sharpen') ?? 0;
         const hue = n('hue') ?? 0;
         if (blur || sharpen || hue) {
-          Object.assign(out, {
+          Object.assign(o, {
             fxFinish: true,
             fxFinishBlur: clamp(blur, 0, 10),
             fxFinishSharpen: sharpen,
@@ -552,6 +555,8 @@ function importExternal(p: Obj): ImportResult {
       default:
         if (inst.enabled) skipped.push(inst.label);
     }
+    Object.assign(out, o);
+    perInstance.push({ inst, o });
   }
 
   // Effect order, from the instance order when given.
@@ -563,6 +568,16 @@ function importExternal(p: Obj): ImportResult {
     .map((i) => (i?.kind ? FX_ID[i.kind] : undefined))
     .filter((id): id is string => !!id);
   if (fxOrder.length) out.fxOrder = fxOrder.join(',');
+  // An effect used more than once becomes a stack of layers, each with its own settings.
+  const fxInstances = perInstance.filter(({ inst }) => inst.kind && FX_ID[inst.kind]);
+  const kinds = fxInstances.map(({ inst }) => inst.kind);
+  if (kinds.some((k, i) => kinds.indexOf(k) !== i)) {
+    const rank = (inst: Instance) => (order.includes(inst.id) ? order.indexOf(inst.id) : order.length);
+    const sorted = [...fxInstances].sort((a, b) => rank(a.inst) - rank(b.inst));
+    out.fxStack = JSON.stringify(
+      sorted.map(({ inst, o }) => ({ id: FX_ID[inst.kind!], type: FX_ID[inst.kind!], on: inst.enabled, before: false, settings: o })),
+    );
+  }
 
   importAscii(p, out, approximated, skipped);
 

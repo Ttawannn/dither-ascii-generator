@@ -320,3 +320,31 @@ describe('glow curve settings', () => {
     expect(r.skipped.some((x) => /epsilon|distanceScale|radiusCompensation/.test(x))).toBe(false);
   });
 });
+
+describe('repeated effects', () => {
+  it('become separate layers, in pipeline order, each with its own settings', () => {
+    const r = importPreset({
+      preset: {
+        dither: {},
+        effectInstances: {
+          'glow-1': { type: 'glow', settings: { enabled: true, radius: 10 } },
+          'tint-1': { type: 'tint', settings: { enabled: true, color: '#ff0000', blendMode: 'screen', opacity: 50 } },
+          'glow-2': { type: 'glow', settings: { enabled: false, radius: 90 } },
+        },
+        pipelineOrder: ['glow-2', 'tint-1', 'glow-1'],
+      },
+    })!;
+    const list = JSON.parse(r.params.fxStack!);
+    expect(list.map((l: { id: string; on: boolean }) => [l.id, l.on])).toEqual([['glow', false], ['tint', true], ['glow-2', true]]);
+    // A hidden layer keeps default settings: disabled effects are not read, as before.
+    expect(list[0].settings.fxGlowRadius).toBeUndefined();
+    expect(list[2].settings.fxGlowRadius).toBe(10);
+    expect(list[1].settings).toMatchObject({ fxTintColor: '#ff0000', fxTintMode: 'screen', fxTintOpacity: 50 });
+  });
+
+  it('leave single effects in the flat settings', () => {
+    const r = importPreset({ preset: { dither: {}, effectInstances: { g: { type: 'glow', settings: { enabled: true, radius: 10 } } } } })!;
+    expect(r.params.fxStack).toBeUndefined();
+    expect(r.params.fxGlowRadius).toBe(10);
+  });
+});

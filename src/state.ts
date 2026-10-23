@@ -1,7 +1,7 @@
 import { ASCII_PALETTES, CHARSETS, COLOR_MODES, isFontId, MAX_INJECT } from './ascii/charsets';
 import { LFO_SHAPES } from './ascii/lfo';
 import { ALGORITHMS } from './pipeline/algorithms';
-import { DEFAULT_ORDER, normalizeOrder, TINT_MODES } from './pipeline/effects';
+import { DEFAULT_ORDER, normalizeOrder, parseStack, serializeStack, TINT_MODES } from './pipeline/effects';
 import { parseLanes, serializeLanes } from './anim';
 import { parseLayer, serializeLayer, type Layer } from './layers';
 import { PALETTES, parseColorList, serializeColorList } from './pipeline/palettes';
@@ -170,6 +170,11 @@ export interface Params {
   asciiTransparent: boolean;
   // post-effects
   fxOrder: string;
+  /**
+   * Effect layers as JSON (see FxLayer in effects.ts). Empty for looks made before layers: the
+   * stack then comes from the flat fx* settings and `fxOrder`.
+   */
+  fxStack: string;
   fxReveal: boolean;
   fxRevealProgress: number;
   fxRevealSoftness: number;
@@ -373,6 +378,7 @@ export const DEFAULTS: Params = {
   asciiPalette: 'pico8',
   asciiTransparent: false,
   fxOrder: DEFAULT_ORDER,
+  fxStack: '',
   fxReveal: false, fxRevealProgress: 0, fxRevealSoftness: 10, fxRevealThreshold: 50, fxRevealAngle: 0, fxRevealTarget: 'original',
   fxGlow: false,
   fxGlowRadius: 6,
@@ -767,7 +773,7 @@ export const ANIM_KEYS: (keyof Params)[] = ['animate', 'boilFps', 'boilPattern',
 export const FX_KEYS: (keyof Params)[] = [
   'fxReveal', 'fxRevealTarget',
   'fxSort', 'fxSortVertical', 'fxSortReverse',
-  'fxOrder',
+  'fxOrder', 'fxStack',
   'fxGlow', 'fxGlowCompensate', 'fxGlowColor',
   'fxGlitch',
   'fxChroma',
@@ -780,6 +786,27 @@ export const FX_KEYS: (keyof Params)[] = [
   'fxFinish',
   ...Object.values(FX_SLIDERS).flatMap((list) => list.map((s) => s.key)),
 ];
+
+/** Settings of an effect besides its sliders. */
+const FX_EXTRA_KEYS: Record<string, (keyof Params)[]> = {
+  reveal: ['fxRevealTarget'],
+  sort: ['fxSortVertical', 'fxSortReverse'],
+  glow: ['fxGlowCompensate', 'fxGlowColor'],
+  tint: ['fxTintColor', 'fxTintMode'],
+};
+
+/** The settings each effect owns (its layers carry their own copy of these). */
+export const FX_TYPE_KEYS: Record<string, (keyof Params)[]> = Object.fromEntries(
+  Object.entries(FX_SLIDERS).map(([id, list]) => [id, [...list.map((spec) => spec.key), ...(FX_EXTRA_KEYS[id] ?? [])]]),
+);
+
+/** One effect layer's settings: only that effect's keys, each sanitized like any param. */
+function cleanFxSettings(type: string, settings: unknown): Partial<Params> {
+  const clean = sanitize(settings);
+  const out: Partial<Params> = {};
+  for (const key of FX_TYPE_KEYS[type] ?? []) if (clean[key] !== undefined) Object.assign(out, { [key]: clean[key] });
+  return out;
+}
 
 export const ASCII_KEYS: (keyof Params)[] = [
   'asciiShape',
@@ -930,6 +957,11 @@ export function sanitize(data: unknown): Partial<Params> {
     if (key === 'shapeBands') {
       const bands = parseShapeBands(v as string);
       if (bands) out[key] = JSON.stringify(bands);
+      continue;
+    }
+    if (key === 'fxStack') {
+      const list = (v as string) ? parseStack(v as string, cleanFxSettings) : null;
+      out[key] = list ? serializeStack(list) : '';
       continue;
     }
     if (key === 'fxOrder') {

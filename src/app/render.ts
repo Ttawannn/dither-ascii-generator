@@ -1,4 +1,5 @@
-import { activeEffects, maskEffect } from '../pipeline/effects';
+import { maskEffect } from '../pipeline/effects';
+import { stackEffects } from '../fx-stack';
 import { isVideo, type Source } from '../source/source';
 import type { Params } from '../state';
 import { LAYER_BLENDS } from '../layers';
@@ -39,6 +40,7 @@ export function draw(): void {
   if (rt.showOriginal) {
     // The original view is shown untouched.
     renderer.setEffects([], rt.seed, !transparentOutput(p));
+    renderer.setPreEffects([]);
     renderer.renderAdjust(p, true);
     renderer.renderAdjusted();
     setStatus('');
@@ -76,7 +78,9 @@ export function renderLook(p: Params, t: RenderTarget, showMask = false): boolea
   const mask = maskEffect(p, showMask);
   // The mask limits layer 2 only when asked (but "Show mask" always shows it full screen).
   const maskOnLayer = !!layer && layer.layer.maskOnly && !!mask && !showMask;
-  r.setEffects([...activeEffects(p), ...(mask && !maskOnLayer ? [mask] : [])], t.seed, !transparentOutput(p));
+  const { pre, post } = stackEffects(p);
+  r.setEffects([...post, ...(mask && !maskOnLayer ? [mask] : [])], t.seed, !transparentOutput(p));
+  r.setPreEffects(pre);
   const drawMode = (lp: Params, i: number) => (lp.mode === 'ascii' ? drawAscii(lp, i, t) : (drawDither(lp, i, t), true));
 
   if (!layer) return drawMode(p, 0);

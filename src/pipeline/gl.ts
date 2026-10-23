@@ -125,6 +125,14 @@ export class Renderer {
   private postW = 0;
   private postH = 0;
   private effects: PostEffect[] = [];
+  /** Effect layers placed before dithering: run on the adjusted picture (see runPreEffects). */
+  private preEffects: PostEffect[] = [];
+  private preTex: WebGLTexture[] = [];
+  private preFbo: WebGLFramebuffer[] = [];
+  private preGlowTex!: WebGLTexture;
+  private preGlowFbo!: WebGLFramebuffer;
+  private preW = 0;
+  private preH = 0;
   private effectSeed = 0;
   private opaque = true;
   /** Source is shown mirrored (webcam); the mask pass samples the source the same way. */
@@ -223,6 +231,11 @@ export class Renderer {
     this.probeTex = texture(gl, gl.NEAREST);
     this.probeFbo = gl.createFramebuffer()!;
     this.probeW = this.probeH = 0;
+    this.preTex = [texture(gl, gl.LINEAR), texture(gl, gl.LINEAR)];
+    this.preFbo = [gl.createFramebuffer()!, gl.createFramebuffer()!];
+    this.preGlowTex = texture(gl, gl.LINEAR_MIPMAP_LINEAR);
+    this.preGlowFbo = gl.createFramebuffer()!;
+    this.preW = this.preH = 0;
     // Cached sizes and uploads referred to the previous objects.
     this.adjW = this.adjH = 0;
     this.tmpW = this.tmpH = 0;
@@ -304,6 +317,78 @@ export class Renderer {
     if (amount > 0) this.filterAdjusted(1, 1 + 3 * amount, 0.02 + 0.18 * amount);
     const radius = (p.blur / 100) * 0.03 * Math.max(w, h);
     if (radius >= 0.5) this.filterAdjusted(0, radius, 0);
+    if (this.preEffects.length) this.runPreEffects();
+  }
+
+  /** Effect layers to run before dithering, on the adjusted picture of the following renders. */
+  setPreEffects(effects: PostEffect[]): void {
+    this.preEffects = effects;
+  }
+
+  /**
+   * Run the effects placed before dithering over the adjusted picture (ping-ponging two targets of
+   * its size, with their own glow texture) and copy the result back, so dithering, error diffusion
+   * and ASCII all read it. Pixel sorting and ASCII Reveal never come here (AFTER_ONLY).
+   */
+  private runPreEffects(): void {
+    const gl = this.gl;
+    const [w, h] = [this.adjW, this.adjH];
+    if (w !== this.preW || h !== this.preH) {
+      for (let i = 0; i < 2; i++) this.sizeTarget(this.preTex[i], this.preFbo[i], w, h);
+      gl.bindTexture(gl.TEXTURE_2D, this.preGlowTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.preGlowFbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.preGlowTex, 0);
+      this.preW = w;
+      this.preH = h;
+    }
+    const { prog, u } = this.post;
+    gl.useProgram(prog);
+    gl.uniform1i(u('u_tex'), 0);
+    gl.uniform1i(u('u_glow'), 1);
+    gl.uniform2f(u('u_size'), w, h);
+    gl.uniform1f(u('u_seed'), this.effectSeed);
+    gl.uniform1i(u('u_opaque'), 1);
+    gl.viewport(0, 0, w, h);
+    let src = this.adjTex;
+    let k = 0;
+    for (const fx of this.preEffects) {
+      gl.uniform4fv(u('u_p'), fx.params);
+      gl.uniform4fv(u('u_q'), fx.extra);
+      gl.uniform4fv(u('u_r'), fx.more ?? [0, 0, 0, 0]);
+      gl.uniform3fv(u('u_c'), fx.color ?? [0, 0, 0]);
+      if (fx.bright) {
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.preGlowFbo);
+        gl.bindTexture(gl.TEXTURE_2D, src);
+        gl.uniform1i(u('u_kind'), 100);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.preGlowTex);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.activeTexture(gl.TEXTURE0);
+        if (fx.more?.[3] && fx.params[0] > GLOW_BASE_RADIUS) {
+          const gain = compensationGain(this.glowPeak(GLOW_BASE_RADIUS, fx, w, h), this.glowPeak(fx.params[0], fx, w, h));
+          gl.uniform4f(u('u_r'), fx.more[0], gain, fx.more[2], fx.more[3]);
+        }
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.preFbo[k]);
+      gl.bindTexture(gl.TEXTURE_2D, src);
+      gl.uniform1i(u('u_kind'), fx.kind);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      src = this.preTex[k];
+      k = 1 - k;
+    }
+    const blit = this.blit;
+    gl.useProgram(blit.prog);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+    gl.bindTexture(gl.TEXTURE_2D, src);
+    gl.uniform1i(blit.u('u_tex'), 0);
+    gl.uniform2f(blit.u('u_outSize'), w, h);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
   /** (Re)allocate an RGBA8 render target when the adjusted size changed. */
@@ -700,7 +785,7 @@ export class Renderer {
         gl.generateMipmap(gl.TEXTURE_2D);
         gl.activeTexture(gl.TEXTURE0);
         if (fx.more?.[3] && fx.params[0] > GLOW_BASE_RADIUS) {
-          const gain = compensationGain(this.glowPeak(GLOW_BASE_RADIUS, fx), this.glowPeak(fx.params[0], fx));
+          const gain = compensationGain(this.glowPeak(GLOW_BASE_RADIUS, fx, this.postW, this.postH), this.glowPeak(fx.params[0], fx, this.postW, this.postH));
           gl.uniform4f(u('u_r'), fx.more[0], gain, fx.more[2], fx.more[3]);
         }
       }
@@ -716,10 +801,10 @@ export class Renderer {
    * How bright the glow's gathered light at `radius` gets (before intensity): its 99th percentile on
    * a grid of every PROBE-th pixel, read back. Needs the post program in use and the glow on unit 1.
    */
-  private glowPeak(radius: number, fx: PostEffect): number {
+  private glowPeak(radius: number, fx: PostEffect, outW: number, outH: number): number {
     const gl = this.gl;
     const { u } = this.post;
-    const [w, h] = [Math.ceil(this.postW / PROBE), Math.ceil(this.postH / PROBE)];
+    const [w, h] = [Math.ceil(outW / PROBE), Math.ceil(outH / PROBE)];
     if (w !== this.probeW || h !== this.probeH) this.sizeTarget(this.probeTex, this.probeFbo, (this.probeW = w), (this.probeH = h));
     // The probe never reads unit 0; keep the probe texture off it (no feedback loop). The caller
     // binds its input there again before the next draw.
@@ -733,7 +818,7 @@ export class Renderer {
     const px = new Uint8Array(w * h * 4);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
     gl.uniform4fv(u('u_p'), fx.params);
-    gl.viewport(0, 0, this.postW, this.postH);
+    gl.viewport(0, 0, outW, outH);
     const counts = new Uint32Array(256);
     for (let i = 0; i < px.length; i += 4) counts[Math.max(px[i], px[i + 1], px[i + 2])]++;
     let above = 0;

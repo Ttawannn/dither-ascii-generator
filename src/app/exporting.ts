@@ -10,7 +10,7 @@ import { polygonSvg, type PolygonKind } from '../export/polygon-svg';
 import { getAlgorithm } from '../pipeline/algorithms';
 import { download, imageBlob } from '../export/png';
 import { canvasToSvg } from '../export/svg';
-import { activeEffects } from '../pipeline/effects';
+import { anyEffect, hasEffect } from '../fx-stack';
 import { baseSpread } from '../pipeline/palettes';
 import { loadImageFile } from '../source/image';
 import { EXPORT_FORMATS, isAnimatedFormat, printLength, type Params } from '../state';
@@ -224,7 +224,7 @@ function vectorDots(p: Params): boolean {
     p.mode !== 'dither' ||
     !p.exportVectorDots ||
     activeLayer(p) ||
-    activeEffects(p).length ||
+    anyEffect(p) ||
     p.maskMode !== 'off'
   )
     return false;
@@ -274,7 +274,7 @@ function svgOf(p: Params): string {
   if (p.mode !== 'dither') return 'SVG export is for dither mode';
   const size = svgSize(p, canvas.width, canvas.height);
   if (p.algorithm === 'luma-shapes') {
-    if (activeLayer(p) || activeEffects(p).length || p.maskMode !== 'off')
+    if (activeLayer(p) || anyEffect(p) || p.maskMode !== 'off')
       return 'Vector shapes need a single layer without effects or a mask — use PNG for the complete image';
     const images = new Map<number, string>();
     (parseShapeBands(p.shapeBands) ?? []).forEach((band, i) => {
@@ -290,7 +290,7 @@ function svgOf(p: Params): string {
     try { return lumaShapesSvg(renderer.readAdjusted(), w, h, p, images, size, rt.seed); }
     catch (error) { return (error as Error).message; }
   }
-  if (getAlgorithm(p.algorithm).group === 'polygon' && !activeLayer(p) && !activeEffects(p).length && p.maskMode === 'off') {
+  if (getAlgorithm(p.algorithm).group === 'polygon' && !activeLayer(p) && !anyEffect(p) && p.maskMode === 'off') {
     const [width, height] = renderer.adjustedSize;
     return polygonSvg({ data: renderer.readAdjusted(), width, height }, {
       kind: p.algorithm as PolygonKind,
@@ -306,7 +306,7 @@ function svgOf(p: Params): string {
       size,
     });
   }
-  if (p.algorithm === 'stippling' && !activeLayer(p) && !p.fxSort && !activeEffects(p).length && p.maskMode === 'off') {
+  if (p.algorithm === 'stippling' && !activeLayer(p) && !hasEffect(p, 'sort') && !anyEffect(p) && p.maskMode === 'off') {
     const cached = currentStipple(p);
     if (cached) return stippleSvg(cached.result, p.ink, p.paper, p.exportScale, size);
   }

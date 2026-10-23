@@ -193,18 +193,70 @@ export function moveEffect(order: string, id: string, step: -1 | 1): string {
   return ids.join(',');
 }
 
-/** The enabled effects in chain order, ready for the renderer. */
+/** One effect's shader inputs, read from `p` (the page params, or an effect layer's view of them). */
+export function effectFor(e: EffectDef, p: Params): PostEffect {
+  return {
+    kind: e.kind,
+    params: e.uniforms(p),
+    extra: e.extra?.(p) ?? [0, 0, 0, 0],
+    bright: !!e.bright,
+    ...(e.more ? { more: e.more(p) } : {}),
+    ...(e.color ? { color: e.color(p) } : {}),
+  };
+}
+
+/** The effects switched on by the flat settings, in `fxOrder` (looks saved before effect layers). */
 export function activeEffects(p: Params): PostEffect[] {
   return normalizeOrder(p.fxOrder)
     .split(',')
     .map(getEffect)
     .filter((e) => p[e.enabled] === true)
-    .map((e) => ({
-      kind: e.kind,
-      params: e.uniforms(p),
-      extra: e.extra?.(p) ?? [0, 0, 0, 0],
-      bright: !!e.bright,
-      ...(e.more ? { more: e.more(p) } : {}),
-      ...(e.color ? { color: e.color(p) } : {}),
-    }));
+    .map((e) => effectFor(e, p));
 }
+
+// ---------- effect layers ----------
+
+/**
+ * One layer of the effect stack (the `fxStack` param). `settings` holds that effect's own keys;
+ * `before` puts it ahead of dithering (on the adjusted picture) instead of after.
+ */
+export interface FxLayer {
+  id: string;
+  type: string;
+  on: boolean;
+  before: boolean;
+  settings: Partial<Params>;
+}
+
+export const MAX_FX_LAYERS = 16;
+/** Effects that only make sense on the final picture. */
+export const AFTER_ONLY = ['sort', 'reveal'];
+
+/**
+ * Read a stack, dropping unknown types and malformed entries. `clean` repairs one layer's settings
+ * (keeps only that effect's keys, sanitized). Returns null when `raw` is not a list at all.
+ */
+export function parseStack(raw: string, clean: (type: string, settings: unknown) => Partial<Params>): FxLayer[] | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(data)) return null;
+  const out: FxLayer[] = [];
+  const ids = new Set<string>();
+  for (const item of data) {
+    if (out.length >= MAX_FX_LAYERS) break;
+    if (!item || typeof item !== 'object') continue;
+    const { id, type, on, before, settings } = item as Record<string, unknown>;
+    if (typeof type !== 'string' || !EFFECT_IDS.includes(type)) continue;
+    let key = typeof id === 'string' && /^[a-z0-9-]{1,24}$/.test(id) ? id : type;
+    for (let n = 2; ids.has(key); n++) key = `${type}-${n}`;
+    ids.add(key);
+    out.push({ id: key, type, on: on !== false, before: before === true && !AFTER_ONLY.includes(type), settings: clean(type, settings) });
+  }
+  return out;
+}
+
+export const serializeStack = (list: FxLayer[]) => JSON.stringify(list);

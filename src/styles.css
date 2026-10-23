@@ -1142,6 +1142,22 @@ html:lang(th) body * {
   font-size: 10px;
 }
 
+/* ---------- effect layers ---------- */
+
+.effect-card.off .fx-name { opacity: 0.45; }
+.effect-card.dragging { opacity: 0.4; }
+.fx-grip { cursor: grab; color: var(--muted); font-size: 11px; letter-spacing: -2px; padding: 0 4px 0 0; user-select: none; touch-action: none; }
+.fx-name { flex: 1; min-width: 0; text-align: left; background: none; border: 0; color: inherit; font: inherit; padding: 2px 4px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fx-num { color: var(--muted); }
+.fx-divider { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+.fx-divider::before, .fx-divider::after { content: ""; flex: 1; border-top: 1px dashed var(--line-strong); }
+.fx-add { position: relative; margin-top: 10px; }
+.fx-menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 4px); z-index: 5; background: var(--bg-panel, var(--bg)); border: 1px solid var(--line-strong); padding: 6px; display: grid; gap: 2px; }
+.fx-menu[hidden] { display: none; }
+.fx-menu-title { color: var(--muted); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 6px 6px 2px; }
+.fx-menu-item { text-align: left; background: none; border: 0; color: inherit; font: inherit; padding: 6px; cursor: pointer; }
+.fx-menu-item:hover, .fx-menu-item:focus-visible { background: var(--line); }
+
 /* ---------- phase 9: animation lanes ---------- */
 
 .lane-add {

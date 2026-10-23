@@ -1,3 +1,4 @@
+import { animateStack, hasEffect } from '../fx-stack';
 import { applyAnimation, parseLanes, type AudioLevel, type Lane } from '../anim';
 import { AutoScale } from '../auto-scale';
 import { getAlgorithm } from '../pipeline/algorithms';
@@ -153,8 +154,14 @@ export function isPlaying(): boolean {
 export const audioInput: { level: AudioLevel } = { level: () => 0 };
 
 /** The params to render with: slider values, with animated settings at the current clock. */
-export const animatedParams = (p: Params) =>
-  applyAnimation(p, lanesOf(p), clock(), animatableSpec, (band, window) => audioInput.level(band, window));
+export function animatedParams(p: Params): Params {
+  const lanes = lanesOf(p);
+  const t = clock();
+  const audio: AudioLevel = (band, window) => audioInput.level(band, window);
+  const animate = (view: Params, own: Lane[]) => applyAnimation(view, own, t, animatableSpec, audio);
+  // With effect layers, lanes on effect settings drive the first layer of that effect.
+  return animateStack(p, lanes, animate, animate(p, lanes));
+}
 
 export const group = (p: Params) => getAlgorithm(p.algorithm).group;
 export const notBraille = (p: Params) => p.asciiCharset !== 'braille';
@@ -164,4 +171,4 @@ export const transparentAscii = (p: Params) => p.asciiTransparent && p.asciiColo
 /** The output has transparent areas: an ASCII background, or what lies outside the mask. */
 export const transparentOutput = (p: Params) =>
   (p.mode === 'ascii' && transparentAscii(p)) || (p.mode === 'dither' && p.algorithm === 'luma-shapes' && p.shapeTransparent)
-  || p.fxReveal || (p.maskMode !== 'off' && p.maskOutside === 'transparent');
+  || hasEffect(p, 'reveal') || (p.maskMode !== 'off' && p.maskOutside === 'transparent');
