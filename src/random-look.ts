@@ -1,6 +1,7 @@
 import { CHARSETS } from './ascii/charsets';
 import { ALGORITHMS } from './pipeline/algorithms';
 import { MONO_PRESETS } from './pipeline/palettes';
+import { PALETTE_SETS } from './pipeline/palette-sets';
 import type { Params } from './state';
 
 /**
@@ -50,7 +51,8 @@ export function randomLook(random: () => number): Partial<Params> {
     look.pixelSize = pick([1, 2, 2, 3, 3, 4]);
     if (/halftone|lines|crosshatch|honeycomb/.test(look.algorithm)) look.cellSize = int(4, 10);
     if (look.algorithm !== 'halftone-cmyk') {
-      const palette = pick(['mono', 'mono', 'gameboy', 'cga', 'pico8', 'c64', 'rgb', 'image']);
+      // Built-in palette sets come up about half the time.
+      const palette = chance(0.5) ? `set:${pick(PALETTE_SETS).id}` : pick(['mono', 'mono', 'gameboy', 'cga', 'pico8', 'c64', 'rgb', 'image']);
       look.palette = palette;
       if (palette === 'mono') {
         const pair = pick(MONO_PRESETS);

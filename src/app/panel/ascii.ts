@@ -11,6 +11,7 @@ import {
 } from '../../ascii/charsets';
 import { LFO_SHAPES } from '../../ascii/lfo';
 import { getPaletteDef, MONO_PRESETS } from '../../pipeline/palettes';
+import { PALETTE_CATEGORIES, PALETTE_SETS } from '../../pipeline/palette-sets';
 import { ASCII_SLIDERS, type ParamStore, type Params } from '../../state';
 import { button, categoryPicker, colorInput, colorPresets, el, select, showWhen, slider, textInput, toggle } from '../../ui/controls';
 import { addUserFont, onUserFontsChange, removeUserFont, userFonts } from '../../user-fonts';
@@ -165,11 +166,19 @@ export function asciiControlsFor(s: ParamStore, withPreview = false): HTMLElemen
         s,
       ),
       showWhen(
-        select(
+        categoryPicker(
           'asciiPalette',
           'Colour palette',
-          ASCII_PALETTES.map((id) => ({ value: id, label: getPaletteDef(id).label })),
+          () => [
+            ...ASCII_PALETTES.map((id) => ({
+              value: id,
+              label: getPaletteDef(id).label,
+              category: id === 'custom' ? 'custom' : id === 'image' ? 'source' : 'retro',
+            })),
+            ...PALETTE_SETS.map((x) => ({ value: `set:${x.id}`, label: x.name, category: x.category })),
+          ],
           s,
+          { categories: PALETTE_CATEGORIES, noTranslate: true },
         ),
         s,
         (p) => p.asciiColor === 'palette',

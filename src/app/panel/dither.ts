@@ -1,13 +1,75 @@
 import { ALGORITHMS, FOLLOWS_IMAGE, GROUP_LABELS } from '../../pipeline/algorithms';
-import { getPaletteDef, MONO_PRESETS, PALETTES } from '../../pipeline/palettes';
+import { extractPalette, getPaletteDef, MONO_PRESETS, rgbToHex } from '../../pipeline/palettes';
+import { PALETTE_CATEGORIES, PALETTE_SETS } from '../../pipeline/palette-sets';
+import type { PickItem } from '../../ui/picker';
 import { DITHER_SLIDERS, HALFTONE_SHAPES, PALETTE_MIXING, type ParamStore, type Params } from '../../state';
 import { button, categoryPicker, colorInput, colorPresets, el, select, showWhen, slider, swatches, toggle } from '../../ui/controls';
-import { actions, group, stippleProgress, store } from '../core';
-import { customPaletteEditor } from './custom-palette';
+import { actions, group, rt, sourceListeners, stippleProgress, store } from '../core';
+import { customPaletteEditor, libraryPalettes, onLibraryChange, useLibraryPalette } from './custom-palette';
 import { lumaShapesEditor } from './luma-shapes';
 
 const cmyk = (p: Params) => p.algorithm === 'halftone-cmyk';
 const lumaShapes = (p: Params) => p.algorithm === 'luma-shapes';
+
+// ---------- palette picker ----------
+
+const SOURCE_SIZES = [3, 4, 8, 16, 32];
+let sourceSizes: { source: unknown; sizes: number[] } | null = null;
+
+/** Colour counts for the Source category, without counts that give the same colours as a smaller one. */
+function distinctSourceSizes(): number[] {
+  const src = rt.current;
+  if (!src) return SOURCE_SIZES;
+  if (sourceSizes?.source !== src) {
+    const seen = new Set<string>();
+    const sizes = SOURCE_SIZES.filter((n) => {
+      const key = extractPalette(src.paletteElement ?? src.element, src.width, src.height, n).map(rgbToHex).sort().join();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    sourceSizes = { source: src, sizes };
+  }
+  return sourceSizes.sizes;
+}
+
+/** Category → Palette, for `palette` (Source entries also set the colour count). */
+function palettePicker(s: ParamStore): HTMLElement {
+  const read = (p: Params) => (p.palette === 'image' ? `image@${p.levels}` : p.palette);
+  const items = (): PickItem[] => {
+    const sets = (category: string) =>
+      PALETTE_SETS.filter((x) => x.category === category).map((x) => ({ value: `set:${x.id}`, label: x.name, category }));
+    const sizes = distinctSourceSizes();
+    const levels = s.params.palette === 'image' && !sizes.includes(s.params.levels) ? [s.params.levels] : [];
+    return [
+      { value: 'mono', label: 'Ink & paper', category: 'monochrome' },
+      ...sets('monochrome'),
+      ...[...sizes, ...levels].map((n) => ({ value: `image@${n}`, label: `${n} colours`, category: 'source' })),
+      { value: 'rgb', label: 'RGB levels', category: 'source' },
+      ...sets('abstract'),
+      ...sets('nature'),
+      ...sets('prismatic'),
+      ...['gameboy', 'cga', 'pico8', 'c64'].map((id) => ({ value: id, label: getPaletteDef(id).label, category: 'retro' })),
+      ...sets('retro'),
+      ...sets('simple'),
+      { value: 'custom', label: 'Custom', category: 'custom' },
+      ...libraryPalettes().map((p) => ({ value: `lib:${p.name}`, label: p.name, category: p.category ?? 'Library' })),
+    ];
+  };
+  const write = (value: string) => {
+    if (value.startsWith('image@')) {
+      s.set('levels', Number(value.slice(6)));
+      s.set('palette', 'image');
+    } else if (value.startsWith('lib:')) {
+      const p = libraryPalettes().find((x) => x.name === value.slice(4));
+      if (p) useLibraryPalette(s, p);
+    } else s.set('palette', value);
+  };
+  const picker = categoryPicker('palette', 'Palette', items, s, { categories: PALETTE_CATEGORIES, noTranslate: true, read, write });
+  sourceListeners.add(picker.refresh);
+  onLibraryChange(picker.refresh);
+  return picker;
+}
 
 /** Colour chips of layer 1's palette; filled by dither-view.ts. */
 export const paletteSwatches = swatches();
@@ -131,12 +193,7 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
           'div',
           {},
           el('div', { class: 'subhead' }, 'Palette'),
-          select(
-            'palette',
-            'Palette',
-            PALETTES.map((p) => ({ value: p.id, label: p.label })),
-            s,
-          ),
+          palettePicker(s),
           ...(withSwatches ? [showWhen(paletteSwatches.root, s, (p) => p.palette !== 'custom')] : []),
           showWhen(customPaletteEditor(s), s, (p) => p.palette === 'custom'),
           showWhen(

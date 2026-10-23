@@ -38,6 +38,9 @@ export const stippleProgress = {
   listeners: new Set<(busy: boolean, progress: number) => void>(),
 };
 
+/** Called after a new source is set (the panel refreshes lists that depend on the picture). */
+export const sourceListeners = new Set<() => void>();
+
 export const actions = {
   syncAudioClock: (_time: number, _playing: boolean): void => {},
   beginUndo: (): void => {},

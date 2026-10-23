@@ -144,6 +144,10 @@ export interface PickerOptions {
   categories: { id: string; label: string }[];
   /** Item names are user content or proper names: keep them out of translation. */
   noTranslate?: boolean;
+  /** The current item when it isn't simply the param (Source palettes also carry a colour count). */
+  read?: (p: Params) => string;
+  /** Apply an item when it isn't simply setting the param. */
+  write?: (value: string) => void;
 }
 
 /**
@@ -163,6 +167,7 @@ export function categoryPicker(
   const itemSelect = el('select', { 'aria-label': label });
   if (opts.noTranslate) itemSelect.setAttribute('translate', 'no');
   let shown = ALL;
+  const read = () => (opts.read ? opts.read(store.params) : store.params[key]);
 
   const step = (cls: string, text: string, name: string, onClick: () => void) => {
     const b = button(text, onClick, `btn small picker-step ${cls}`);
@@ -170,13 +175,15 @@ export function categoryPicker(
     b.title = name;
     return b;
   };
-  const star = button('☆', () => toggleFavourite(favKey, store.params[key]), 'link picker-star');
+  const star = button('☆', () => toggleFavourite(favKey, read()), 'link picker-star');
   star.title = 'Add to favourites';
 
+  // Listed categories first, in their order, then any others the items use (user categories).
   const categoryIds = () => {
     const ids = [ALL, ...(favourites(favKey).length ? [FAVOURITES] : [])];
-    const present = new Set(items().map((i) => i.category));
-    return [...ids, ...opts.categories.filter((c) => present.has(c.id)).map((c) => c.id)];
+    const present = [...new Set(items().map((i) => i.category))];
+    const known = opts.categories.map((c) => c.id);
+    return [...ids, ...known.filter((id) => present.includes(id)), ...present.filter((id) => !known.includes(id))];
   };
   const categoryLabel = (id: string) =>
     id === ALL ? 'All' : id === FAVOURITES ? 'Favourites' : (opts.categories.find((c) => c.id === id)?.label ?? id);
@@ -184,7 +191,7 @@ export function categoryPicker(
   const render = () => {
     const list = items();
     const fav = favourites(favKey);
-    const current = store.params[key];
+    const current = read();
     shown = categoryFor(list, current, shown, fav);
     catSelect.replaceChildren(...categoryIds().map((id) => el('option', { value: id }, categoryLabel(id))));
     catSelect.value = shown;
@@ -212,11 +219,15 @@ export function categoryPicker(
     star.setAttribute('aria-label', on ? 'Remove from favourites' : 'Add to favourites');
   };
 
-  const choose = (value: string) => value !== store.params[key] && store.set(key, value as Params[typeof key]);
+  const choose = (value: string) => {
+    if (value === read()) return;
+    if (opts.write) opts.write(value);
+    else store.set(key, value as Params[typeof key]);
+  };
   catSelect.addEventListener('change', () => {
     shown = catSelect.value;
     const first = itemsIn(items(), shown, favourites(favKey))[0];
-    if (first && !itemsIn(items(), shown, favourites(favKey)).some((i) => i.value === store.params[key])) choose(first.value);
+    if (first && !itemsIn(items(), shown, favourites(favKey)).some((i) => i.value === read())) choose(first.value);
     render();
   });
   itemSelect.addEventListener('change', () => choose(itemSelect.value));
@@ -227,9 +238,10 @@ export function categoryPicker(
     if (first) choose(first.value);
     render();
   };
-  const stepValue = (dir: number) => choose(stepItem(items(), store.params[key], dir, shown, favourites(favKey)));
+  const stepValue = (dir: number) => choose(stepItem(items(), read(), dir, shown, favourites(favKey)));
 
-  store.subscribe((_, changed) => changed === key && render());
+  // Source palettes read the colour count too, so a change of `levels` can change the item.
+  store.subscribe((_, changed) => (changed === key || (opts.read && changed === 'levels')) && render());
   onFavouritesChange(render);
   render();
 

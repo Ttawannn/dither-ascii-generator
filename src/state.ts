@@ -5,6 +5,9 @@ import { DEFAULT_ORDER, normalizeOrder, TINT_MODES } from './pipeline/effects';
 import { parseLanes, serializeLanes } from './anim';
 import { parseLayer, serializeLayer, type Layer } from './layers';
 import { PALETTES, parseColorList, serializeColorList } from './pipeline/palettes';
+import { PALETTE_SETS } from './pipeline/palette-sets';
+
+const SET_IDS = PALETTE_SETS.map((p) => `set:${p.id}`);
 import { DEFAULT_SHAPE_BANDS, parseShapeBands } from './pipeline/shape-bands';
 import { TEMPORAL_PATTERNS, TEMPORAL_SLIDERS } from './temporal';
 
@@ -541,7 +544,7 @@ export const DITHER_SLIDERS: Record<string, SliderSpec> = {
   cellSize: { key: 'cellSize', label: 'Cell size', min: 2, max: 32, step: 1, format: (v) => `${v}px` },
   angle: { key: 'angle', label: 'Angle', min: 0, max: 90, step: 1, format: (v) => `${v}°` },
   diffusion: { key: 'diffusion', label: 'Diffusion', min: 0, max: 100, step: 1, format: pct },
-  levels: { key: 'levels', label: 'Levels', min: 2, max: 16, step: 1 },
+  levels: { key: 'levels', label: 'Levels', min: 2, max: 32, step: 1 },
   waveStrength: { key: 'waveStrength', label: 'Wave', min: 0, max: 100, step: 1, format: pct },
   waveLength: { key: 'waveLength', label: 'Wavelength', min: 2, max: 64, step: 1, format: (v) => `${v}px` },
   waveBias: { key: 'waveBias', label: 'Tilt', min: -100, max: 100, step: 1, format: (v) => `${signed(v)}%` },
@@ -822,12 +825,12 @@ const ENUMS: Partial<Record<keyof Params, string[]>> = {
   halftoneShape: HALFTONE_SHAPES.map((x) => x.id),
   mode: ['dither', 'ascii'],
   algorithm: ALGORITHMS.map((a) => a.id),
-  palette: PALETTES.map((p) => p.id),
+  palette: [...PALETTES.map((p) => p.id), ...SET_IDS],
   asciiCharset: CHARSETS.map((c) => c.id),
   asciiColor: COLOR_MODES.map((c) => c.id),
   asciiOffsetLfo: LFO_SHAPES.map((s) => s.id),
   asciiDepthLfo: LFO_SHAPES.map((s) => s.id),
-  asciiPalette: ASCII_PALETTES,
+  asciiPalette: [...ASCII_PALETTES, ...SET_IDS],
   exportFormat: EXPORT_FORMATS.map((f) => f.id),
   exportUnit: EXPORT_UNITS.map((u) => u.id),
   exportAnsi: ANSI_DEPTHS.map((d) => d.id),

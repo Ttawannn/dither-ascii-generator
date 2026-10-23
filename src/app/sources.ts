@@ -1,7 +1,7 @@
 import { isImageFile, loadImageFile, sampleImage } from '../source/image';
 import { isVideo, type Source } from '../source/source';
 import { isVideoFile, loadVideoFile, openWebcam } from '../source/video';
-import { actions, requestRender, rt, store } from './core';
+import { actions, requestRender, rt, sourceListeners, store } from './core';
 import { syncSwatches } from './dither-view';
 import { renderer, viewer } from './gpu';
 import { setExportEnabled } from './panel/export';
@@ -27,6 +27,7 @@ export function setSource(src: Source): void {
   if (isVideo(src)) watchVideo(src);
   requestRender();
   actions.refreshThumbs(true);
+  for (const fn of sourceListeners) fn();
 }
 
 function clearSource(): void {

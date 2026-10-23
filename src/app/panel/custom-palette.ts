@@ -78,7 +78,7 @@ export async function importPaletteFiles(files: File[], s: ParamStore = store): 
     flash(`No colours found in ${files.map((f) => f.name).join(', ')}`);
     return;
   }
-  setLibrary(mergeLibrary(library, found));
+  setLibrary(mergeLibrary(library, found.map((p) => ({ category: 'Imported', ...p }))));
   if (found.length === 1) {
     setColorsOf(s, found[0].colors);
     useCustom(s);
@@ -89,6 +89,16 @@ export async function importPaletteFiles(files: File[], s: ParamStore = store): 
 }
 
 export const importPaletteFile = (file: File) => importPaletteFiles([file]);
+
+/** The library, for the palette picker. */
+export const libraryPalettes = (): readonly LibraryPalette[] => library;
+export const onLibraryChange = (fn: () => void) => libraryListeners.add(fn);
+
+/** Copy a library palette into the custom palette and use it (presets then carry the colours). */
+export function useLibraryPalette(s: ParamStore, p: LibraryPalette): void {
+  setColorsOf(s, p.colors);
+  useCustom(s);
+}
 
 // ---------- editor ----------
 
@@ -208,7 +218,7 @@ export function customPaletteEditor(s: ParamStore = store): HTMLElement {
 
   function saveCurrent(): void {
     const name = saveName.value.trim() || `Palette ${library.length + 1}`;
-    setLibrary(mergeLibrary(library, [{ name, colors: colors() }]));
+    setLibrary(mergeLibrary(library, [{ name, colors: colors(), category: 'Saved' }]));
     saveName.value = '';
     flash(`Saved “${name}” to the library`);
   }

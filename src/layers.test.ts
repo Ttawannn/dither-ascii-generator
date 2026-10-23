@@ -31,7 +31,7 @@ describe('layer2 param', () => {
     });
     const layer = readLayer({ ...DEFAULTS, ...sanitize({ layer2: json }) } as Params)!;
     // levels is clamped, contrast / fxGlow are shared settings and dropped, unknown keys dropped.
-    expect(layer.params).toEqual({ mode: 'dither', algorithm: 'honeycomb', levels: 16 });
+    expect(layer.params).toEqual({ mode: 'dither', algorithm: 'honeycomb', levels: 32 });
     expect(layer.blend).toBe('screen');
   });
 

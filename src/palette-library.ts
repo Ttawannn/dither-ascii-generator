@@ -4,6 +4,8 @@ import { parseColorList } from './pipeline/palettes';
 export interface LibraryPalette {
   name: string;
   colors: string[];
+  /** Picker category ("Imported", "Saved" or the user's own); none in older libraries. */
+  category?: string;
 }
 
 const STORAGE_KEY = 'dag.palettes.v1';
@@ -15,10 +17,11 @@ export function sanitizeLibrary(data: unknown): LibraryPalette[] {
   const out: LibraryPalette[] = [];
   for (const item of data) {
     if (!item || typeof item !== 'object') continue;
-    const { name, colors } = item as Record<string, unknown>;
+    const { name, colors, category } = item as Record<string, unknown>;
     if (typeof name !== 'string' || !Array.isArray(colors)) continue;
     const list = parseColorList(colors.filter((c): c is string => typeof c === 'string').join(' '));
-    if (list.length >= 2) out.push({ name: name.slice(0, 60), colors: list });
+    if (list.length < 2) continue;
+    out.push({ name: name.slice(0, 60), colors: list, ...(typeof category === 'string' && category.trim() ? { category: category.trim().slice(0, 40) } : {}) });
   }
   return out.slice(-MAX_LIBRARY);
 }

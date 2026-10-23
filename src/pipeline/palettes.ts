@@ -1,3 +1,5 @@
+import { getPaletteSet } from './palette-sets';
+
 export type RGB = [number, number, number]; // 0..1
 
 /**
@@ -33,6 +35,8 @@ export const PALETTES: PaletteDef[] = [
 ];
 
 export function getPaletteDef(id: string): PaletteDef {
+  const set = getPaletteSet(id);
+  if (set) return { id, label: set.name, uses: { nearest: !set.ramp } };
   return PALETTES.find((p) => p.id === id) ?? PALETTES[0];
 }
 
@@ -112,6 +116,11 @@ export function resolvePalette(
   },
 ): Palette {
   if (FIXED[id]) return FIXED[id];
+  const set = getPaletteSet(id);
+  if (set) {
+    const colors = set.colors.map(hexToRgb);
+    return set.ramp ? { kind: 'ramp', levels: colors.length, colors } : { kind: 'set', levels: colors.length, colors };
+  }
   if (id === 'custom') {
     const colors = parseColorList(opts.custom ?? '').map(hexToRgb);
     if (colors.length >= 2) {
