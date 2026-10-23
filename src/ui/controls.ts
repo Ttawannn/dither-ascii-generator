@@ -39,10 +39,13 @@ export function slider(spec: SliderSpec, store: ParamStore): HTMLElement {
     step: `${spec.step}`,
     'aria-label': spec.label,
   });
+  // ↺ shows while the value differs from the default (the `changed` class) and restores it.
+  const reset = el('button', { class: 'reset-one', type: 'button', title: 'Reset to default', 'aria-label': 'Reset to default' }, '↺');
+  reset.addEventListener('click', () => store.set(spec.key, DEFAULTS[spec.key]));
   const root = el(
     'div',
     { class: 'control', title: 'Double-click to reset' },
-    el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, spec.label), value),
+    el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, spec.label), reset, value),
     input,
   );
 
@@ -372,6 +375,12 @@ export function swatches(): { root: HTMLElement; update: (hexes: string[], extra
 }
 
 /** Show `node` only while `when(params)` is true. */
+/** Mark a control as advanced: in Basic mode it shows only after "More settings…" in its section. */
+export function advanced<T extends HTMLElement>(node: T): T {
+  node.classList.add('adv');
+  return node;
+}
+
 export function showWhen(node: HTMLElement, store: ParamStore, when: (p: Params) => boolean): HTMLElement {
   const sync = (p: Params) => (node.hidden = !when(p));
   store.subscribe(sync);

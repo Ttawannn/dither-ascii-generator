@@ -3,7 +3,7 @@ import { extractPalette, getPaletteDef, MONO_PRESETS, rgbToHex } from '../../pip
 import { PALETTE_CATEGORIES, PALETTE_SETS } from '../../pipeline/palette-sets';
 import type { PickItem } from '../../ui/picker';
 import { DITHER_SLIDERS, HALFTONE_SHAPES, PALETTE_MIXING, type ParamStore, type Params } from '../../state';
-import { button, categoryPicker, colorInput, colorPresets, el, select, showWhen, slider, swatches, toggle } from '../../ui/controls';
+import { advanced, button, categoryPicker, colorInput, colorPresets, el, select, showWhen, slider, swatches, toggle } from '../../ui/controls';
 import { actions, group, rt, sourceListeners, stippleProgress, store } from '../core';
 import { customPaletteEditor, libraryPalettes, onLibraryChange, useLibraryPalette } from './custom-palette';
 import { lumaShapesEditor } from './luma-shapes';
@@ -71,6 +71,9 @@ function palettePicker(s: ParamStore): HTMLElement {
   return picker;
 }
 
+/** Dither sliders shown in Basic mode. */
+const BASIC_DITHER = ['strength', 'cellSize', 'threshold', 'diffusion', 'levels'];
+
 /** Colour chips of layer 1's palette; filled by dither-view.ts. */
 export const paletteSwatches = swatches();
 
@@ -79,8 +82,11 @@ export const paletteSwatches = swatches();
  * the palette swatches (they need the source image for "From image").
  */
 export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElement {
-  const ditherSlider = (key: keyof typeof DITHER_SLIDERS, when: (p: Params) => boolean) =>
-    showWhen(slider(DITHER_SLIDERS[key], s), s, when);
+  // Basic mode keeps the main amount of each kind of algorithm; the rest are advanced.
+  const ditherSlider = (key: keyof typeof DITHER_SLIDERS, when: (p: Params) => boolean) => {
+    const node = showWhen(slider(DITHER_SLIDERS[key], s), s, when);
+    return BASIC_DITHER.includes(key) ? node : advanced(node);
+  };
 
   const monoPresets = colorPresets(MONO_PRESETS, (ink, paper) => {
     s.set('ink', ink);
@@ -140,7 +146,7 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
       ),
       ditherSlider('polyJitter', (p) => p.algorithm === 'voronoi'),
       ditherSlider('polyBorder', (p) => group(p) === 'polygon'),
-      showWhen(colorInput('polyBorderColor', 'Border colour', s), s, (p) => group(p) === 'polygon' && p.polyBorder > 0),
+      advanced(showWhen(colorInput('polyBorderColor', 'Border colour', s), s, (p) => group(p) === 'polygon' && p.polyBorder > 0)),
       ditherSlider('hexRings', (p) => p.algorithm === 'honeycomb'),
       ...['contourLevels', 'contourSmooth'].map((k) => ditherSlider(k, (p) => p.algorithm === 'contour')),
       ...['modulationAmount', 'modulationWidth', 'modulationPhase'].map((k) =>
@@ -152,11 +158,11 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
       ...(['orbSize', 'orbCount', 'orbIntensity', 'orbRandom'] as const).map((k) =>
         ditherSlider(k, (p) => p.algorithm === 'orbs'),
       ),
-      showWhen(toggle('orbVertical', 'Vertical', s), s, (p) => p.algorithm === 'orbs'),
+      advanced(showWhen(toggle('orbVertical', 'Vertical', s), s, (p) => p.algorithm === 'orbs')),
       ...(
         ['cmykAngleC', 'cmykAngleM', 'cmykAngleY', 'cmykAngleK', 'cmykDotGain', 'cmykGcr', 'cmykSupersample'] as const
       ).map((k) => ditherSlider(k, cmyk)),
-      showWhen(
+      advanced(showWhen(
         select(
           'halftoneShape',
           'Dot shape',
@@ -165,18 +171,18 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
         ),
         s,
         (p) => p.algorithm === 'halftone' || cmyk(p),
-      ),
-      showWhen(toggle('linearLight', 'Linear light', s), s, (p) => !cmyk(p) && !lumaShapes(p) && p.algorithm !== 'stippling'),
+      )),
+      advanced(showWhen(toggle('linearLight', 'Linear light', s), s, (p) => !cmyk(p) && !lumaShapes(p) && p.algorithm !== 'stippling')),
       ditherSlider('threshold', (p) => p.algorithm === 'threshold'),
       ditherSlider('diffusion', (p) => group(p) === 'diffusion'),
-      showWhen(
+      advanced(showWhen(
         toggle('serpentine', 'Serpentine', s),
         s,
         (p) => group(p) === 'diffusion' && !['ostromoukhov', 'riemersma', 'dot-diffusion', 'edge-diffusion', 'axis'].includes(p.algorithm),
-      ),
+      )),
       ...['gaussSpread', 'gaussNoise'].map((k) => ditherSlider(k, (p) => p.algorithm === 'gaussian')),
       ditherSlider('edgeCrack', (p) => p.algorithm === 'edge-diffusion'),
-      showWhen(toggle('axisVertical', 'Vertical', s), s, (p) => p.algorithm === 'axis'),
+      advanced(showWhen(toggle('axisVertical', 'Vertical', s), s, (p) => p.algorithm === 'axis')),
       ...['axisBleed', 'axisSmooth'].map((k) => ditherSlider(k, (p) => p.algorithm === 'axis')),
       ...(['waveStrength', 'waveLength', 'waveBias', 'waveFollow'] as const).map((k) =>
         ditherSlider(
@@ -196,12 +202,12 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
           palettePicker(s),
           ...(withSwatches ? [showWhen(paletteSwatches.root, s, (p) => p.palette !== 'custom')] : []),
           showWhen(customPaletteEditor(s), s, (p) => p.palette === 'custom'),
-          showWhen(
+          advanced(showWhen(
             toggle('perceptual', 'Perceptual match', s),
             s,
             (p) => !!getPaletteDef(p.palette).uses.nearest && !(p.palette === 'custom' && p.customRamp),
-          ),
-          showWhen(
+          )),
+          advanced(showWhen(
             select(
               'paletteMixing',
               'Palette mixing',
@@ -213,7 +219,7 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
               !!getPaletteDef(p.palette).uses.nearest &&
               !(p.palette === 'custom' && p.customRamp) &&
               (group(p) === 'ordered' || group(p) === 'pattern'),
-          ),
+          )),
           ditherSlider('levels', (p) => !!getPaletteDef(p.palette).uses.levels),
           showWhen(
             el(

@@ -276,6 +276,33 @@ select {
   border-top: 1px solid var(--line);
 }
 
+/* ---------- panel frame: icon row, folding, Basic / Advanced ---------- */
+
+.panel-top { border-bottom: 1px solid var(--line); padding: 6px 8px; }
+.panel-jump { display: flex; align-items: center; justify-content: space-between; overflow-x: auto; scrollbar-width: none; }
+.jump-btn { position: relative; flex: none; width: 27px; height: 30px; display: grid; place-items: center; background: none; border: 0; border-radius: 4px; color: var(--muted); cursor: pointer; }
+.jump-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.jump-btn:hover, .jump-btn:focus-visible, .jump-btn.current { color: var(--text); background: var(--line); }
+.jump-btn.has-changes::after { content: ""; position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.panel-mode { display: grid; grid-template-columns: 1fr 1fr; margin-top: 6px; border: 1px solid var(--line-strong); }
+.mode-btn { background: none; border: 0; color: var(--muted); padding: 4px 8px; font: inherit; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; }
+.mode-btn + .mode-btn { border-left: 1px solid var(--line-strong); }
+.mode-btn:hover, .mode-btn:focus-visible { color: var(--text); }
+.mode-btn[aria-pressed="true"] { color: var(--bg); background: var(--accent); }
+.section-fold { flex: 1; display: flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.section-chevron { font-size: 10px; color: var(--faint); transition: transform 0.15s; }
+.section.folded .section-chevron { transform: rotate(-90deg); }
+.section.folded > :not(.section-head) { display: none !important; }
+.section.folded .section-head { margin-bottom: 0; }
+.section-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.section-dot[hidden] { display: none; }
+.panel.ui-basic .section:not(.show-adv) .adv { display: none !important; }
+.panel.ui-advanced .more-settings { display: none; }
+.more-settings { margin-top: 10px; }
+.reset-one { visibility: hidden; margin-left: auto; padding: 0 6px; background: none; border: 0; color: var(--faint); font-size: 12px; line-height: 1; cursor: pointer; }
+.control.changed .reset-one { visibility: visible; }
+.reset-one:hover, .reset-one:focus-visible { color: var(--text); }
+
 /* ---------- controls ---------- */
 
 .btn {

@@ -1,5 +1,5 @@
 import { ANSI_DEPTHS, EXPORT_FORMATS, EXPORT_SLIDERS, EXPORT_UNITS, isAnimatedFormat, MAX_EXPORT_NAME } from '../../state';
-import { button, el, section, select, showWhen, slider, textInput, toggle } from '../../ui/controls';
+import { advanced, button, el, section, select, showWhen, slider, textInput, toggle } from '../../ui/controls';
 import { actions, store } from '../core';
 
 /** Size / frame-count summary under the export settings; filled by exporting.ts. */
@@ -29,39 +29,39 @@ export const exportSection = section(
     store,
   ),
   slider(EXPORT_SLIDERS.scale, store),
-  showWhen(slider(EXPORT_SLIDERS.quality, store), store, (p) => p.exportFormat === 'jpg' || p.exportFormat === 'webp'),
+  advanced(showWhen(slider(EXPORT_SLIDERS.quality, store), store, (p) => p.exportFormat === 'jpg' || p.exportFormat === 'webp')),
   showWhen(slider(EXPORT_SLIDERS.duration, store), store, (p) => isAnimatedFormat(p.exportFormat)),
   showWhen(slider(EXPORT_SLIDERS.fps, store), store, (p) => isAnimatedFormat(p.exportFormat)),
-  showWhen(
+  advanced(showWhen(
     toggle('exportVectorDots', 'Vector dots', store),
     store,
     (p) => p.exportFormat === 'svg' && p.mode === 'dither' && VECTOR_DOTS.includes(p.algorithm),
-  ),
-  showWhen(
+  )),
+  advanced(showWhen(
     toggle('exportSeparations', 'Separate plates', store),
     store,
     (p) => p.exportFormat === 'svg' && p.mode === 'dither' && p.algorithm === 'halftone-cmyk' && p.exportVectorDots,
-  ),
-  showWhen(
+  )),
+  advanced(showWhen(
     toggle('exportMarks', 'Registration marks', store),
     store,
     (p) => p.exportFormat === 'svg' && p.algorithm === 'halftone-cmyk' && p.exportVectorDots && p.exportSeparations,
-  ),
-  showWhen(toggle('exportPrint', 'Print size', store), store, still),
-  showWhen(slider(EXPORT_SLIDERS.dpi, store), store, (p) => still(p) && p.exportPrint),
-  showWhen(
+  )),
+  advanced(showWhen(toggle('exportPrint', 'Print size', store), store, still)),
+  advanced(showWhen(slider(EXPORT_SLIDERS.dpi, store), store, (p) => still(p) && p.exportPrint)),
+  advanced(showWhen(
     select('exportUnit', 'Unit', EXPORT_UNITS.map((u) => ({ value: u.id, label: u.label })), store),
     store,
     (p) => still(p) && p.exportPrint,
-  ),
-  fileNameInput,
+  )),
+  advanced(fileNameInput),
   exportInfo,
   showWhen(el('div', { class: 'pal-actions' }, batchBtn, batchPicker), store, still),
-  showWhen(
+  advanced(showWhen(
     select('exportAnsi', 'ANSI colours', ANSI_DEPTHS.map((d) => ({ value: d.id, label: d.label })), store),
     store,
     (p) => p.mode === 'ascii',
-  ),
+  )),
 );
 
 export const exportBtn = button('Export', () => void actions.exportClick(), 'btn primary');
