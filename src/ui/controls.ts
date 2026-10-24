@@ -222,6 +222,8 @@ export interface PickerOptions {
   read?: (p: Params) => string;
   /** Apply an item when it isn't simply setting the param. */
   write?: (value: string) => void;
+  /** A picture for an item (colour swatches, a thumbnail); adds a ⊞ grid of the category to browse. */
+  visual?: (item: PickItem) => HTMLElement | null;
 }
 
 /**
@@ -316,7 +318,39 @@ export function categoryPicker(
 
   // Source palettes read the colour count too, so a change of `levels` can change the item.
   store.subscribe((_, changed) => (changed === key || (opts.read && changed === 'levels')) && render());
-  onFavouritesChange(render);
+  // ⊞: the items of the shown category as a grid of pictures, kept open while browsing.
+  const grid = el('div', { class: 'picker-grid', hidden: '' });
+  if (opts.noTranslate) grid.setAttribute('translate', 'no');
+  const renderGrid = () => {
+    if (grid.hidden || !opts.visual) return;
+    const current = read();
+    grid.replaceChildren(
+      ...itemsIn(items(), shown, favourites(favKey)).map((it) => {
+        const tile = button('', () => choose(it.value), 'picker-tile');
+        tile.classList.toggle('active', it.value === current);
+        tile.setAttribute('aria-pressed', `${it.value === current}`);
+        const pic = opts.visual!(it);
+        tile.append(...(pic ? [pic] : []), el('span', { class: 'picker-tile-name' }, it.label));
+        tile.title = it.label;
+        return tile;
+      }),
+    );
+  };
+  const gridBtn = opts.visual
+    ? step('grid', '⊞', `Browse ${label.toLowerCase()}`, () => {
+        grid.hidden = !grid.hidden;
+        gridBtn!.setAttribute('aria-expanded', `${!grid.hidden}`);
+        renderGrid();
+      })
+    : null;
+  gridBtn?.setAttribute('aria-expanded', 'false');
+  const renderAll = () => {
+    render();
+    renderGrid();
+  };
+  store.subscribe((_, changed) => (changed === key || (opts.read && changed === 'levels')) && renderGrid());
+  catSelect.addEventListener('change', renderGrid);
+  onFavouritesChange(renderAll);
   render();
 
   const root = el(
@@ -337,9 +371,12 @@ export function categoryPicker(
       el('div', { class: 'select' }, itemSelect),
       step('prev', '‹', `Previous ${label.toLowerCase()}`, () => stepValue(-1)),
       step('next', '›', `Next ${label.toLowerCase()}`, () => stepValue(1)),
+      ...(gridBtn ? [gridBtn] : []),
     ),
+    grid,
   );
-  return Object.assign(root, { refresh: render });
+  if (gridBtn) root.classList.add('with-grid');
+  return Object.assign(root, { refresh: renderAll });
 }
 
 export type ColorKey =
@@ -375,6 +412,11 @@ export function swatches(): { root: HTMLElement; update: (hexes: string[], extra
 }
 
 /** Show `node` only while `when(params)` is true. */
+/** A row of colour swatches, for picker tiles. */
+export function swatchStrip(colors: string[]): HTMLElement {
+  return el('span', { class: 'tile-swatch', 'aria-hidden': 'true' }, ...colors.slice(0, 32).map((c) => el('span', { style: `background:${c}` })));
+}
+
 /** Mark a control as advanced: in Basic mode it shows only after "More settings…" in its section. */
 export function advanced<T extends HTMLElement>(node: T): T {
   node.classList.add('adv');

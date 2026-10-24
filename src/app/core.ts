@@ -4,7 +4,7 @@ import { AutoScale } from '../auto-scale';
 import { getAlgorithm } from '../pipeline/algorithms';
 import type { Source } from '../source/source';
 import type { Layer } from '../layers';
-import { animatableSpec, layerParams, readLayer, Store, type Params } from '../state';
+import { animatableSpec, layerParams, readLayer, Store, type Params, type ReadyExport } from '../state';
 
 /** The one settings store for the page. */
 export const store = new Store();
@@ -38,6 +38,12 @@ export const stippleProgress = {
   value: 0,
   listeners: new Set<(busy: boolean, progress: number) => void>(),
 };
+
+/**
+ * Thumbnails wanted besides the preset buttons (the algorithm grid): canvas → look. app/thumbs.ts
+ * draws those on screen and drops the ones that left it.
+ */
+export const pickerThumbs = new Map<HTMLCanvasElement, Partial<Params>>();
 
 /** Called after a new source is set (the panel refreshes lists that depend on the picture). */
 export const sourceListeners = new Set<() => void>();
@@ -77,6 +83,8 @@ export const actions = {
   drawSplit: (): void => {},
   /** Redraw preset thumbnails: all of them for a new picture, otherwise only missing ones. */
   refreshThumbs: (_pictureChanged: boolean): void => {},
+  /** Apply a ready-made export entry for the current output size (app/exporting.ts). */
+  applyReadyExport: (_r: ReadyExport): void => {},
 };
 
 let drawFn = () => {};

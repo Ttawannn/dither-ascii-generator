@@ -1,10 +1,10 @@
 import { ALGORITHMS, FOLLOWS_IMAGE, GROUP_LABELS } from '../../pipeline/algorithms';
-import { extractPalette, getPaletteDef, MONO_PRESETS, rgbToHex } from '../../pipeline/palettes';
+import { extractPalette, getPaletteDef, MONO_PRESETS, parseColorList, resolvePalette, rgbToHex } from '../../pipeline/palettes';
 import { PALETTE_CATEGORIES, PALETTE_SETS } from '../../pipeline/palette-sets';
 import type { PickItem } from '../../ui/picker';
 import { DITHER_SLIDERS, HALFTONE_SHAPES, PALETTE_MIXING, type ParamStore, type Params } from '../../state';
-import { advanced, button, categoryPicker, colorInput, colorPresets, el, select, showWhen, slider, swatches, toggle } from '../../ui/controls';
-import { actions, group, rt, sourceListeners, stippleProgress, store } from '../core';
+import { advanced, button, categoryPicker, colorInput, colorPresets, el, select, showWhen, slider, swatches, swatchStrip, toggle } from '../../ui/controls';
+import { actions, group, pickerThumbs, rt, sourceListeners, stippleProgress, store } from '../core';
 import { customPaletteEditor, libraryPalettes, onLibraryChange, useLibraryPalette } from './custom-palette';
 import { lumaShapesEditor } from './luma-shapes';
 
@@ -31,6 +31,15 @@ function distinctSourceSizes(): number[] {
     sourceSizes = { source: src, sizes };
   }
   return sourceSizes.sizes;
+}
+
+/** Colours a palette entry shows in the picker grid (none for palettes made from the picture). */
+export function paletteColors(value: string, p: Params): string[] {
+  if (value.startsWith('lib:')) return libraryPalettes().find((x) => x.name === value.slice(4))?.colors ?? [];
+  if (value.startsWith('image') || value === 'rgb') return [];
+  if (value === 'custom') return parseColorList(p.customPalette);
+  const pal = resolvePalette(value, { levels: p.levels, ink: p.ink, paper: p.paper, extracted: null });
+  return pal.colors.map(rgbToHex);
 }
 
 /** Category → Palette, for `palette` (Source entries also set the colour count). */
@@ -65,7 +74,11 @@ function palettePicker(s: ParamStore): HTMLElement {
       if (p) useLibraryPalette(s, p);
     } else s.set('palette', value);
   };
-  const picker = categoryPicker('palette', 'Palette', items, s, { categories: PALETTE_CATEGORIES, noTranslate: true, read, write });
+  const visual = (it: PickItem) => {
+    const colors = paletteColors(it.value, s.params);
+    return colors.length ? swatchStrip(colors) : null;
+  };
+  const picker = categoryPicker('palette', 'Palette', items, s, { categories: PALETTE_CATEGORIES, noTranslate: true, read, write, visual });
   sourceListeners.add(picker.refresh);
   onLibraryChange(picker.refresh);
   return picker;
@@ -117,7 +130,16 @@ export function ditherControlsFor(s: ParamStore, withSwatches = false): HTMLElem
         'Algorithm',
         () => ALGORITHMS.map((a) => ({ value: a.id, label: a.label, category: a.group })),
         s,
-        { categories: Object.entries(GROUP_LABELS).map(([id, label]) => ({ id, label })) },
+        {
+          categories: Object.entries(GROUP_LABELS).map(([id, label]) => ({ id, label })),
+          // Each algorithm drawn small with the current picture and palette (app/thumbs.ts).
+          visual: (it) => {
+            const canvas = el('canvas', { class: 'tile-thumb' });
+            pickerThumbs.set(canvas, { mode: 'dither', algorithm: it.value });
+            queueMicrotask(() => actions.refreshThumbs(false));
+            return canvas;
+          },
+        },
       ),
       showWhen(lumaShapesEditor(s), s, lumaShapes),
       showWhen(

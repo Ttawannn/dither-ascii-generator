@@ -13,11 +13,12 @@ import { LFO_SHAPES } from '../../ascii/lfo';
 import { getPaletteDef, MONO_PRESETS } from '../../pipeline/palettes';
 import { PALETTE_CATEGORIES, PALETTE_SETS } from '../../pipeline/palette-sets';
 import { ASCII_SLIDERS, type ParamStore, type Params } from '../../state';
-import { advanced, button, categoryPicker, colorInput, colorPresets, el, select, showWhen, slider, textInput, toggle } from '../../ui/controls';
+import { advanced, button, categoryPicker, colorInput, colorPresets, el, select, showWhen, slider, swatchStrip, textInput, toggle } from '../../ui/controls';
 import { addUserFont, onUserFontsChange, removeUserFont, userFonts } from '../../user-fonts';
 import { notBraille, store } from '../core';
 import { flash } from '../shell';
 import { customPaletteEditor } from './custom-palette';
+import { paletteColors } from './dither';
 
 /** Font choice bound to `s`: the built-in fonts plus fonts added in this browser, with Add / Remove. */
 function fontPicker(s: ParamStore): HTMLElement {
@@ -181,7 +182,14 @@ export function asciiControlsFor(s: ParamStore, withPreview = false): HTMLElemen
             ...PALETTE_SETS.map((x) => ({ value: `set:${x.id}`, label: x.name, category: x.category })),
           ],
           s,
-          { categories: PALETTE_CATEGORIES, noTranslate: true },
+          {
+            categories: PALETTE_CATEGORIES,
+            noTranslate: true,
+            visual: (it) => {
+              const colors = paletteColors(it.value, s.params);
+              return colors.length ? swatchStrip(colors) : null;
+            },
+          },
         ),
         s,
         (p) => p.asciiColor === 'palette',

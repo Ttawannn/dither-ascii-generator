@@ -1,7 +1,7 @@
 import { Renderer } from '../pipeline/gl';
 import type { Source } from '../source/source';
 import type { Params } from '../state';
-import { actions, rt, store } from './core';
+import { actions, pickerThumbs, rt, store } from './core';
 import { presetThumbs } from './panel/presets';
 import { renderLook } from './render';
 
@@ -99,7 +99,10 @@ async function run(): Promise<void> {
         await sleep(500);
         continue;
       }
-      const todo = presetThumbs().filter(
+      // Picker tiles that left the screen are dropped; the rest queue after the preset buttons.
+      for (const canvas of [...pickerThumbs.keys()]) if (!canvas.isConnected) pickerThumbs.delete(canvas);
+      const jobs = [...presetThumbs(), ...[...pickerThumbs].map(([canvas, params]) => ({ canvas, params }))];
+      const todo = jobs.filter(
         (t) => t.canvas.isConnected && drawnFor.get(t.canvas) !== generation && (tries.get(t.canvas) ?? 0) < MAX_TRIES,
       );
       if (!todo.length) break;

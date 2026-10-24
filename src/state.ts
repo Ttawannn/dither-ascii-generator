@@ -467,6 +467,51 @@ export const EXPORT_FORMATS = [
 
 export const MAX_EXPORT_NAME = 80;
 
+/** Ready-made export settings. `long`: wanted long side in pixels (Scale is chosen to get near it). */
+export interface ReadyExport {
+  id: string;
+  label: string;
+  format: string;
+  long?: number;
+  print?: boolean;
+  quality?: number;
+  duration?: number;
+  fps?: number;
+}
+
+export const READY_EXPORTS: ReadyExport[] = [
+  { id: 'social', label: 'Social post · 1080 px', format: 'png', long: 1080 },
+  { id: 'story', label: 'Tall story · 1920 px', format: 'png', long: 1920 },
+  { id: 'web', label: 'Web image · WebP 1600 px', format: 'webp', long: 1600, quality: 85 },
+  { id: 'a4', label: 'Print A4 · 300 dpi', format: 'png', long: 3508, print: true },
+  { id: 'a3', label: 'Poster A3 · 300 dpi', format: 'png', long: 4961, print: true },
+  { id: 'svg', label: 'Vector SVG', format: 'svg' },
+  { id: 'gif', label: 'Looping GIF · 3 s', format: 'gif', duration: 3, fps: 15 },
+  { id: 'video', label: 'Video MP4 · 10 s', format: 'mp4', long: 1080, duration: 10, fps: 30 },
+];
+
+/**
+ * The export settings for a ready-made entry, for an output of `outW` × `outH` pixels. Scale is
+ * the whole number that gets the long side nearest the wanted size (1–8); `reached` is the long
+ * side that gives, which can fall short of the wanted size for small outputs.
+ */
+export function readyExport(r: ReadyExport, outW: number, outH: number): { params: Partial<Params>; reached: number } {
+  const long = Math.max(1, outW, outH);
+  const scale = r.long ? Math.min(8, Math.max(1, Math.round(r.long / long))) : 1;
+  return {
+    params: {
+      exportFormat: r.format,
+      exportScale: scale,
+      exportPrint: !!r.print,
+      ...(r.print ? { exportDpi: 300 } : {}),
+      ...(r.quality ? { exportQuality: r.quality } : {}),
+      ...(r.duration ? { exportDuration: r.duration } : {}),
+      ...(r.fps ? { exportFps: r.fps } : {}),
+    },
+    reached: long * scale,
+  };
+}
+
 export const isAnimatedFormat = (id: string) => EXPORT_FORMATS.some((f) => f.id === id && f.animated);
 
 export const EXPORT_SLIDERS: Record<string, SliderSpec> = {

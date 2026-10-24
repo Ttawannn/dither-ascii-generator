@@ -13,7 +13,7 @@ import { canvasToSvg } from '../export/svg';
 import { anyEffect, hasEffect } from '../fx-stack';
 import { baseSpread } from '../pipeline/palettes';
 import { loadImageFile } from '../source/image';
-import { EXPORT_FORMATS, isAnimatedFormat, printLength, type Params } from '../state';
+import { EXPORT_FORMATS, isAnimatedFormat, printLength, readyExport, type Params } from '../state';
 import { writeZip, type ZipEntry } from '../zip';
 import { exportAudio } from './audio';
 import {
@@ -36,6 +36,14 @@ import { batchBtn, exportBtn, exportInfo } from './panel/export';
 import { isVideo } from '../source/source';
 import { draw, setOriginal, stopBoil, syncBoil, watchVideo } from './render';
 import { canvas, flash, transport } from './shell';
+
+/** A ready-made export: format and size for the current output, with a note when it can't get that big. */
+actions.applyReadyExport = (r) => {
+  const { params, reached } = readyExport(r, canvas.width, canvas.height);
+  actions.beginUndo();
+  store.apply(params);
+  if (r.long && reached < r.long * 0.9) flash(`At most ${reached} px at this pixel size — lower the pixel size for a bigger file`);
+};
 
 /** Update the export button label and the size / frame-count summary. */
 function syncExportInfo(): void {

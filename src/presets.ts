@@ -131,6 +131,34 @@ export function resolvePreset(p: Preset): Partial<Params> {
   return { ...out, ...p.params };
 }
 
+export type PresetCategory = 'dither' | 'ascii' | 'animated';
+
+/** Which filter a look belongs to: animated looks first, then by mode. */
+export function presetCategory(params: Partial<Params>): PresetCategory {
+  if (params.animate || (params.animLanes ?? '') !== DEFAULTS.animLanes) return 'animated';
+  return params.mode === 'ascii' ? 'ascii' : 'dither';
+}
+
+/**
+ * A preset at a strength: its numbers moved from the defaults towards the preset's values by
+ * `strength` (0..1), everything else (algorithm, palette, colours, switches) taken as it is.
+ * At 1 it is the preset exactly.
+ */
+export function blendLook(preset: Partial<Params>, strength: number): Partial<Params> {
+  if (strength >= 1) return { ...preset };
+  const s = Math.max(0, strength);
+  const out: Partial<Params> = {};
+  for (const key of Object.keys(preset) as (keyof Params)[]) {
+    const to = preset[key];
+    const from = DEFAULTS[key];
+    if (typeof to === 'number' && typeof from === 'number') {
+      const v = from + (to - from) * s;
+      Object.assign(out, { [key]: Number.isInteger(from) && Number.isInteger(to) ? Math.round(v) : Math.round(v * 1000) / 1000 });
+    } else Object.assign(out, { [key]: to });
+  }
+  return out;
+}
+
 /** The preset-controlled subset of the current params. */
 export function snapshot(params: Params): Partial<Params> {
   const out: Partial<Params> = {};

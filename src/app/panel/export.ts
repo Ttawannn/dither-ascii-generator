@@ -1,4 +1,4 @@
-import { ANSI_DEPTHS, EXPORT_FORMATS, EXPORT_SLIDERS, EXPORT_UNITS, isAnimatedFormat, MAX_EXPORT_NAME } from '../../state';
+import { ANSI_DEPTHS, EXPORT_FORMATS, EXPORT_SLIDERS, EXPORT_UNITS, isAnimatedFormat, MAX_EXPORT_NAME, READY_EXPORTS } from '../../state';
 import { advanced, button, el, section, select, showWhen, slider, textInput, toggle } from '../../ui/controls';
 import { actions, store } from '../core';
 
@@ -20,8 +20,23 @@ batchBtn.title = 'Choose several images: each is saved with this look, together 
 const fileNameInput = textInput('exportName', 'File name', store, MAX_EXPORT_NAME);
 fileNameInput.title = 'Tags: {name} {mode} {algo} {date} {time}';
 
+// Ready-made: one choice sets the format, size and print settings, which can be changed afterwards.
+const readyPicker = el('select', { 'aria-label': 'Ready-made settings' }, el('option', { value: '' }, 'Choose…'), ...READY_EXPORTS.map((r) => el('option', { value: r.id }, r.label)));
+readyPicker.addEventListener('change', () => {
+  const r = READY_EXPORTS.find((x) => x.id === readyPicker.value);
+  readyPicker.value = '';
+  if (r) actions.applyReadyExport(r);
+});
+const readyControl = el(
+  'label',
+  { class: 'control' },
+  el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, 'Ready-made')),
+  el('div', { class: 'select' }, readyPicker),
+);
+
 export const exportSection = section(
   'Export',
+  readyControl,
   select(
     'exportFormat',
     'Format',

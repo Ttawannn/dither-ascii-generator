@@ -11,13 +11,18 @@ import {
   presetFile,
   presetFileName,
   presetListFile,
+  blendLook,
+  PRESET_KEYS,
+  presetCategory,
   resolvePreset,
   snapshot,
+  type PresetCategory,
   storeSaved,
   type Preset,
 } from '../../presets';
 import { ADJUST_SLIDERS, DEFAULTS, type Params } from '../../state';
 import { button, el, section } from '../../ui/controls';
+import { favourites, onFavouritesChange, toggleFavourite } from '../../favourites';
 import { actions, store } from '../core';
 import { flash } from '../shell';
 
@@ -33,7 +38,74 @@ let thumbList: { params: Partial<Params>; canvas: HTMLCanvasElement }[] = [];
 /** Each preset button's look and thumbnail canvas (filled by app/thumbs.ts). */
 export const presetThumbs = () => thumbList;
 
-function chip(preset: Preset): HTMLButtonElement {
+// ---------- strength ----------
+
+// After a preset is picked, Strength moves its numbers between the defaults and the preset. Any
+// other change to the look ends that (the slider hides) so it never undoes the user's edits.
+let picked: Partial<Params> | null = null;
+let blending = false;
+const strengthInput = el('input', { type: 'range', min: '0', max: '100', step: '1', value: '100', 'aria-label': 'Preset strength' });
+const strengthValue = el('span', { class: 'control-value' }, '100%');
+const strengthRow = el(
+  'div',
+  { class: 'control strength-row', hidden: '' },
+  el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, 'Strength'), strengthValue),
+  strengthInput,
+);
+strengthInput.addEventListener('pointerdown', () => actions.beginUndo());
+strengthInput.addEventListener('input', () => {
+  if (!picked) return;
+  const s = Number(strengthInput.value);
+  strengthValue.textContent = `${s}%`;
+  strengthInput.style.setProperty('--fill', `${s}%`);
+  blending = true;
+  store.apply(blendLook(picked, s / 100));
+  blending = false;
+});
+store.subscribe((_, changed) => {
+  if (!blending && picked && PRESET_KEYS.includes(changed)) {
+    picked = null;
+    strengthRow.hidden = true;
+  }
+});
+
+function pickPreset(params: Partial<Params>): void {
+  actions.beginUndo();
+  blending = true;
+  store.apply(params);
+  blending = false;
+  picked = params;
+  strengthInput.value = '100';
+  strengthValue.textContent = '100%';
+  strengthInput.style.setProperty('--fill', '100%');
+  strengthRow.hidden = false;
+}
+
+// ---------- filter ----------
+
+type Filter = 'all' | PresetCategory | 'favourites';
+let filter: Filter = 'all';
+const FILTERS: { id: Filter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'dither', label: 'Dither' },
+  { id: 'ascii', label: 'ASCII' },
+  { id: 'animated', label: 'Animated' },
+  { id: 'favourites', label: '★' },
+];
+const filterRow = el('div', { class: 'preset-filter', role: 'group', 'aria-label': 'Show presets' });
+const filterButtons = FILTERS.map((f) => {
+  const b = button(f.label, () => {
+    filter = f.id;
+    renderPresets();
+  }, 'chip');
+  if (f.id === 'favourites') b.setAttribute('aria-label', 'Favourites');
+  filterRow.append(b);
+  return b;
+});
+const favKey = (preset: Preset, own: boolean) => `${own ? 's' : 'b'}:${preset.name}`;
+onFavouritesChange(() => renderPresets());
+
+function chip(preset: Preset, own = false): HTMLElement {
   const params = resolvePreset(preset);
   const key = JSON.stringify(params);
   let canvas = thumbCanvases.get(key);
@@ -42,32 +114,45 @@ function chip(preset: Preset): HTMLButtonElement {
     thumbCanvases.set(key, canvas);
   }
   thumbList.push({ params, canvas });
-  const b = button('', () => store.apply(params), 'chip preset-chip');
+  const b = button('', () => pickPreset(params), 'chip preset-chip');
   // Preset names are names, not UI text: they stay as they are in every language.
   b.setAttribute('translate', 'no');
   b.append(canvas, el('span', { class: 'chip-name' }, preset.name));
   b.title = preset.name;
-  return b;
+  const id = favKey(preset, own);
+  const starred = favourites('preset').includes(id);
+  const star = button(starred ? '★' : '☆', () => toggleFavourite('preset', id), 'chip-star');
+  star.setAttribute('aria-pressed', `${starred}`);
+  star.setAttribute('aria-label', starred ? 'Remove from favourites' : 'Add to favourites');
+  star.title = star.getAttribute('aria-label')!;
+  return el('span', { class: 'chip-wrap' }, b, star);
 }
 
 function renderPresets(): void {
   thumbList = [];
-  builtInGrid.replaceChildren(...BUILT_IN.map(chip));
+  const favs = favourites('preset');
+  const shown = BUILT_IN.filter((p) =>
+    filter === 'all' ? true : filter === 'favourites' ? favs.includes(favKey(p, false)) : presetCategory(resolvePreset(p)) === filter,
+  );
+  filterButtons.forEach((b, i) => b.classList.toggle('active', FILTERS[i].id === filter));
+  builtInGrid.replaceChildren(...shown.map((p) => chip(p)));
+  // Under Favourites, saved looks that are starred show too.
+  const savedShown = filter === 'favourites' ? saved.filter((p) => favs.includes(favKey(p, true))) : saved;
   savedGrid.replaceChildren(
-    ...saved.map((preset) =>
-      el(
-        'span',
-        { class: 'chip-wrap' },
-        chip(preset),
+    ...savedShown.map((preset) => {
+      const wrap = chip(preset, true);
+      wrap.append(
         button('×', () => {
           saved = saved.filter((s) => s !== preset);
           storeSaved(saved);
           renderPresets();
         }, 'chip chip-x'),
-      ),
-    ),
+      );
+      return wrap;
+    }),
   );
-  savedHead.hidden = savedGrid.hidden = saved.length === 0;
+  if (!shown.length && !savedShown.length) builtInGrid.append(el('div', { class: 'note' }, 'No favourites yet — star a preset'));
+  savedHead.hidden = savedGrid.hidden = savedShown.length === 0;
   exportAllBtn.disabled = saved.length === 0;
   actions.refreshThumbs(false);
 }
@@ -204,7 +289,9 @@ function shuffleAdjustments(): void {
 
 export const presetsSection = section(
   'Presets',
+  filterRow,
   builtInGrid,
+  strengthRow,
   el('div', { class: 'btn-row' }, button('Surprise me', surprise, 'btn small share-btn')),
   el('div', { class: 'btn-row' }, button('Shuffle adjustments', shuffleAdjustments, 'btn small')),
   el('div', { class: 'note' }, 'Keep during shuffle'),
