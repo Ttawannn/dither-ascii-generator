@@ -3,6 +3,7 @@ import { canAddLayer, canGoBefore, currentStack, layerView, newFxLayer, serializ
 import { FX_KEYS, FX_SLIDERS, FX_TYPE_KEYS, type Listener, type ParamStore, type Params } from '../../state';
 import { button, colorInput, dial, el, section, select, slider, toggle } from '../../ui/controls';
 import { store } from '../core';
+import { reorderGrip } from '../../ui/reorder';
 
 // Effects as a stack of layers (the `fxStack` param): add from the menu, show / hide, duplicate,
 // remove, reorder by dragging or with ↑ ↓. Layers above the Dither line run before dithering.
@@ -118,7 +119,6 @@ const list = el('div', { class: 'effect-list' });
 const cards = new Map<string, Card>();
 const divider = el('div', { class: 'fx-divider', role: 'separator' }, el('span', {}, 'Dither'));
 const empty = el('div', { class: 'note' }, 'No effects yet — add one');
-let dragging: string | null = null;
 
 function iconButton(text: string, label: string, onClick: () => void): HTMLButtonElement {
   const b = button(text, onClick, 'chip chip-icon');
@@ -150,38 +150,16 @@ function makeCard(layer: FxLayer): void {
     ...FX_SLIDERS[fx.id].filter((spec) => spec.key !== 'fxGlowAngle').map((spec) => slider(spec, s)),
     ...(fx.animated ? [el('div', { class: 'note' }, 'Moves when Boil is on')] : []),
   );
-  const grip = el('span', { class: 'fx-grip', title: 'Drag to reorder', 'aria-hidden': 'true' }, '⋮⋮');
+  const grip = el('span', { class: 'fx-grip', title: 'Hold and drag to reorder', 'aria-hidden': 'true' }, '⋮⋮');
   const card = el('div', { class: 'effect-card' }, el('div', { class: 'effect-head' }, grip, eye, name, up, down, copy, remove), body);
-  // Drag from the grip only, so sliders and buttons keep working normally.
-  grip.addEventListener('pointerdown', () => card.setAttribute('draggable', 'true'));
-  card.addEventListener('dragstart', (e) => {
-    dragging = layer.id;
-    card.classList.add('dragging');
-    e.dataTransfer?.setData('text/plain', layer.id);
-  });
-  card.addEventListener('dragend', () => {
-    dragging = null;
-    card.classList.remove('dragging');
-    card.removeAttribute('draggable');
-  });
+  reorderGrip(grip, card,
+    () => displayOrder(stack()).filter((id) => id !== layer.id).map((id) => id === DIVIDER ? divider : cards.get(id)!.card),
+    (index) => moveTo(layer.id, index));
   cards.set(layer.id, { store: s, card, name, eye, up, down });
 }
 
-list.addEventListener('dragover', (e) => dragging && e.preventDefault());
-list.addEventListener('drop', (e) => {
-  if (!dragging) return;
-  e.preventDefault();
-  // Insert before the first element whose middle is below the pointer.
-  const order = displayOrder(stack()).filter((x) => x !== dragging);
-  const nodes = order.map((id) => (id === DIVIDER ? divider : cards.get(id)!.card));
-  const at = nodes.findIndex((node) => {
-    const r = node.getBoundingClientRect();
-    return e.clientY < r.top + r.height / 2;
-  });
-  moveTo(dragging, at < 0 ? order.length : at);
-});
-
 let shape = '';
+let lastOrder = '';
 
 function sync(p: Params): void {
   const layers = currentStack(p);
@@ -196,7 +174,10 @@ function sync(p: Params): void {
     for (const layer of layers) if (!cards.has(layer.id)) makeCard(layer);
     shape = ids;
   }
-  list.replaceChildren(...order.map((id) => (id === DIVIDER ? divider : cards.get(id)!.card)), ...(layers.length ? [] : [empty]));
+  if (order.join() !== lastOrder) {
+    list.replaceChildren(...order.map((id) => (id === DIVIDER ? divider : cards.get(id)!.card)), ...(layers.length ? [] : [empty]));
+    lastOrder = order.join();
+  }
   divider.firstElementChild!.textContent = p.mode === 'ascii' ? 'ASCII' : 'Dither';
   const count = new Map<string, number>();
   order.forEach((id, i) => {

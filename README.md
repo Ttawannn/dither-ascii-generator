@@ -42,6 +42,12 @@ New to it? Start from one of the **Presets** (Mac 1-bit, Game Boy, Newsprint, Te
 
 **Language:** the **ไทย / EN** button in the header (or `L`) switches the interface between English and Thai without reloading. It starts in Thai when the browser is set to Thai, and the choice is remembered in this browser.
 
+**Find a setting:** press `Ctrl+K` (`⌘K` on Mac), or tap the search button. Search settings, algorithms, palettes and saved presets in English or Thai; choose a result with the arrow keys and Enter. Search opens collapsed sections and advanced settings, and activates the mode or algorithm needed by a conditional setting. “Add effect” results create a new effect layer.
+
+**Precise values and help:** click a slider’s number to type a value, press Enter to apply or Esc to cancel. Values snap to its step and stay within its limits. A focused slider accepts mouse-wheel steps (Shift for ten steps); otherwise the wheel scrolls the panel. The ⓘ buttons explain unfamiliar settings on hover, focus or tap.
+
+**On a phone:** buttons have at least 40 px tap targets. Hold an effect’s ⋮⋮ grip briefly, then drag to reorder it; ↑ / ↓ also work. Hold the floating “Hold to show original” button to compare. The bottom-sheet handle supports dragging, tapping, Enter and Space; the section icons and compact header scroll sideways when needed.
+
 ## Dither mode
 
 | Group | Algorithms | Extra controls |
@@ -165,6 +171,7 @@ For animated formats, set the **duration** (up to 30 s) and **frame rate** (5–
 
 | Key | Action |
 |---|---|
+| `Ctrl+K` / `⌘K` | Search settings, algorithms, palettes and presets |
 | Hold `Space` | Show original |
 | `S` | Split view: original \| result |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |

@@ -29,6 +29,16 @@ const textShown = new WeakMap<Text, string>();
 const attrEn = new WeakMap<Element, Map<string, string>>();
 const attrShown = new WeakMap<Element, Map<string, string>>();
 
+/** Search includes the English source even while the panel is displayed in Thai. */
+export function englishText(root: Node): string {
+  if (root instanceof Text) return textEn.get(root) ?? root.data;
+  return [...root.childNodes].map(englishText).join(' ');
+}
+
+export function englishAttribute(root: Element, name: string): string {
+  return attrEn.get(root)?.get(name) ?? root.getAttribute(name) ?? '';
+}
+
 function doText(node: Text): void {
   if (!node.parentElement || node.parentElement.closest(TEXT_SKIP)) return;
   const now = node.data;

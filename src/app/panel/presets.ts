@@ -21,7 +21,7 @@ import {
   type Preset,
 } from '../../presets';
 import { ADJUST_SLIDERS, DEFAULTS, type Params } from '../../state';
-import { button, el, section } from '../../ui/controls';
+import { button, editableRange, el, section } from '../../ui/controls';
 import { favourites, onFavouritesChange, toggleFavourite } from '../../favourites';
 import { actions, store } from '../core';
 import { flash } from '../shell';
@@ -62,6 +62,10 @@ strengthInput.addEventListener('input', () => {
   store.apply(blendLook(picked, s / 100));
   blending = false;
 });
+editableRange(strengthRow, strengthInput, strengthValue, (value) => {
+  strengthInput.value = `${value}`;
+  strengthInput.dispatchEvent(new Event('input'));
+});
 store.subscribe((_, changed) => {
   if (!blending && picked && PRESET_KEYS.includes(changed)) {
     picked = null;
@@ -80,6 +84,12 @@ function pickPreset(params: Partial<Params>): void {
   strengthInput.style.setProperty('--fill', '100%');
   strengthRow.hidden = false;
 }
+
+/** Search all presets independently of the visible grid's filter. */
+export const searchablePresets = () => [...BUILT_IN, ...saved].map((p) => ({
+  label: p.name,
+  choose: () => pickPreset(resolvePreset(p)),
+}));
 
 // ---------- filter ----------
 

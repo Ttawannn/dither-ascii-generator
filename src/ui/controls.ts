@@ -1,6 +1,9 @@
 import { DEFAULTS, type BooleanKey, type ParamStore, type Params, type SliderSpec, type StringKey } from '../state';
 import { favourites, onFavouritesChange, toggleFavourite } from '../favourites';
 import { ALL, categoryFor, FAVOURITES, itemsIn, stepItem, type PickItem } from './picker';
+import { sliderNumber } from './numeric';
+import { CONTROL_HINTS } from './hints';
+import { searchCondition, searchDomain, searchOptions } from './search';
 
 type Attrs = Record<string, string>;
 
@@ -28,27 +31,86 @@ export function section(title: string, ...children: Node[]): { root: HTMLElement
   return { root, head };
 }
 
-/** Range slider bound to a numeric param. Double-click resets to default. */
+let hintId = 0;
+
+/** Accessible hint: hover, keyboard focus, or tap the info button on a touch screen. */
+export function controlHint(root: HTMLElement, input: Element, text?: string): void {
+  if (!text) return;
+  const id = `control-hint-${++hintId}`;
+  const tip = el('span', { id, class: 'control-tooltip', role: 'tooltip' }, text);
+  const info = button('ⓘ', () => {
+    const on = root.classList.toggle('hint-open');
+    info.setAttribute('aria-expanded', `${on}`);
+  }, 'hint-button');
+  info.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+  info.setAttribute('aria-label', 'About this setting');
+  info.setAttribute('aria-describedby', id);
+  info.setAttribute('aria-expanded', 'false');
+  input.setAttribute('aria-describedby', id);
+  root.querySelector('.value-editor')?.setAttribute('aria-describedby', id);
+  root.classList.add('has-hint');
+  const row = root.querySelector('.control-row');
+  (row ?? root).append(info);
+  root.append(tip);
+  root.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      root.classList.remove('hint-open');
+      info.setAttribute('aria-expanded', 'false');
+    }
+  });
+}
+
+/** Add the same value editor and focused-wheel behavior to any range control. */
+export function editableRange(root: HTMLElement, input: HTMLInputElement, value: HTMLElement, write: (value: number) => void): void {
+  const editor = el('input', { type: 'number', class: 'value-editor', hidden: '', min: input.min, max: input.max, step: input.step, 'aria-label': input.getAttribute('aria-label') ?? 'Value' });
+  const edit = button('', () => {
+    editor.value = input.value;
+    edit.hidden = true;
+    editor.hidden = false;
+    editor.focus();
+    editor.select();
+  }, 'control-value value-button');
+  edit.title = 'Type a value';
+  value.replaceWith(edit, editor);
+  value.classList.remove('control-value');
+  edit.append(value);
+  const finish = (commit: boolean) => {
+    if (editor.hidden) return;
+    if (commit && editor.value.trim() && Number.isFinite(editor.valueAsNumber)) {
+      write(sliderNumber(editor.valueAsNumber, Number(input.min), Number(input.max), Number(input.step) || 1));
+    }
+    editor.hidden = true;
+    edit.hidden = false;
+  };
+  editor.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      e.preventDefault();
+      finish(e.key === 'Enter');
+      edit.focus();
+    }
+  });
+  editor.addEventListener('blur', () => finish(true));
+  editor.addEventListener('dblclick', (e) => e.stopPropagation());
+  edit.addEventListener('dblclick', (e) => e.stopPropagation());
+  input.addEventListener('wheel', (e) => {
+    if (document.activeElement !== input || !e.deltaY || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    write(sliderNumber(Number(input.value) + (e.deltaY < 0 ? 1 : -1) * Number(input.step || 1) * (e.shiftKey ? 10 : 1), Number(input.min), Number(input.max), Number(input.step) || 1));
+  }, { passive: false });
+  root.dataset.numeric = 'true';
+}
+
+/** Range slider bound to a numeric param. Double-click the track to reset. */
 export function slider(spec: SliderSpec, store: ParamStore): HTMLElement {
   const fmt = spec.format ?? ((v: number) => `${v}`);
   const value = el('span', { class: 'control-value' });
-  const input = el('input', {
-    type: 'range',
-    min: `${spec.min}`,
-    max: `${spec.max}`,
-    step: `${spec.step}`,
-    'aria-label': spec.label,
-  });
-  // ↺ shows while the value differs from the default (the `changed` class) and restores it.
+  const input = el('input', { type: 'range', min: `${spec.min}`, max: `${spec.max}`, step: `${spec.step}`, 'aria-label': spec.label });
   const reset = el('button', { class: 'reset-one', type: 'button', title: 'Reset to default', 'aria-label': 'Reset to default' }, '↺');
   reset.addEventListener('click', () => store.set(spec.key, DEFAULTS[spec.key]));
-  const root = el(
-    'div',
-    { class: 'control', title: 'Double-click to reset' },
-    el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, spec.label), reset, value),
-    input,
-  );
-
+  const root = el('div', { class: 'control' },
+    el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, spec.label), reset, value), input);
   const sync = (p: Params) => {
     const v = p[spec.key];
     input.value = `${v}`;
@@ -56,16 +118,18 @@ export function slider(spec: SliderSpec, store: ParamStore): HTMLElement {
     input.style.setProperty('--fill', `${((v - spec.min) / (spec.max - spec.min)) * 100}%`);
     root.classList.toggle('changed', v !== DEFAULTS[spec.key]);
   };
-
   input.addEventListener('input', () => store.set(spec.key, Number(input.value)));
-  root.addEventListener('dblclick', () => store.set(spec.key, DEFAULTS[spec.key]));
+  input.addEventListener('dblclick', () => store.set(spec.key, DEFAULTS[spec.key]));
   store.subscribe((p, changed) => changed === spec.key && sync(p));
   sync(store.params);
+  editableRange(root, input, value, (v) => store.set(spec.key, v));
+  controlHint(root, input, spec.hint ?? CONTROL_HINTS[spec.key]);
+  searchDomain(store, spec.key, () => [spec.min, spec.max, DEFAULTS[spec.key]]);
   return root;
 }
 
 /** On/off switch bound to a boolean param. */
-export function toggle(key: BooleanKey, label: string, store: ParamStore): HTMLElement {
+export function toggle(key: BooleanKey, label: string, store: ParamStore, hint = CONTROL_HINTS[key]): HTMLElement {
   const root = el(
     'button',
     { class: 'toggle control', type: 'button', role: 'switch' },
@@ -79,6 +143,12 @@ export function toggle(key: BooleanKey, label: string, store: ParamStore): HTMLE
   root.addEventListener('click', () => store.set(key, !store.params[key]));
   store.subscribe((p, changed) => changed === key && sync(p));
   sync(store.params);
+  searchDomain(store, key, () => [false, true]);
+  if (hint) {
+    const wrapper = el('div', { class: 'control hinted-toggle' }, root);
+    controlHint(wrapper, root, hint);
+    return wrapper;
+  }
   return root;
 }
 
@@ -88,6 +158,7 @@ export function segmented<K extends 'mode'>(
   options: { value: Params[K]; label: string }[],
   store: ParamStore,
 ): HTMLElement {
+  searchDomain(store, key, () => options.map((o) => o.value));
   const root = el('div', { class: 'segmented', role: 'tablist' });
   const buttons = options.map((opt) => {
     const b = button(opt.label, () => store.set(key, opt.value), '');
@@ -114,7 +185,7 @@ export interface SelectOption {
 }
 
 /** Native <select> bound to a string param; options with a `group` go into <optgroup>s. */
-export function select(key: StringKey, label: string, options: SelectOption[], store: ParamStore): HTMLElement {
+export function select(key: StringKey, label: string, options: SelectOption[], store: ParamStore, hint = CONTROL_HINTS[key]): HTMLElement {
   const input = el('select', { 'aria-label': label });
   const groups = new Map<string, HTMLOptGroupElement>();
   for (const opt of options) {
@@ -139,6 +210,8 @@ export function select(key: StringKey, label: string, options: SelectOption[], s
   input.addEventListener('change', () => store.set(key, input.value as Params[typeof key]));
   store.subscribe((p, changed) => changed === key && (input.value = p[key]));
   input.value = store.params[key];
+  searchDomain(store, key, () => options.map((o) => o.value));
+  controlHint(root, input, hint);
   return root;
 }
 
@@ -238,6 +311,7 @@ export function categoryPicker(
   store: ParamStore,
   opts: PickerOptions,
 ): HTMLElement & { refresh(): void } {
+  searchDomain(store, key, () => [...new Set(items().map((it) => it.value.startsWith('image@') ? 'image' : it.value))]);
   const favKey = key as string;
   const catSelect = el('select', { 'aria-label': `${label} category` });
   const itemSelect = el('select', { 'aria-label': label });
@@ -300,6 +374,7 @@ export function categoryPicker(
     if (opts.write) opts.write(value);
     else store.set(key, value as Params[typeof key]);
   };
+  searchOptions.set(itemSelect, () => items().map((it) => ({ label: it.label, choose: () => choose(it.value) })));
   catSelect.addEventListener('change', () => {
     shown = catSelect.value;
     const first = itemsIn(items(), shown, favourites(favKey))[0];
@@ -423,7 +498,8 @@ export function advanced<T extends HTMLElement>(node: T): T {
   return node;
 }
 
-export function showWhen(node: HTMLElement, store: ParamStore, when: (p: Params) => boolean): HTMLElement {
+export function showWhen(node: HTMLElement, store: ParamStore, when: (p: Params) => boolean, reveal?: () => void): HTMLElement {
+  searchCondition(node, store, when, reveal);
   const sync = (p: Params) => (node.hidden = !when(p));
   store.subscribe(sync);
   sync(store.params);
@@ -492,12 +568,15 @@ export function freeSlider(
     onInput(v);
   });
   show(value);
-  return el(
+  const root = el(
     'div',
     { class: 'control' },
     el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, spec.label), out),
     input,
   );
+  editableRange(root, input, out, (v) => { show(v); onInput(v); });
+  controlHint(root, input, spec.hint);
+  return root;
 }
 
 /** A <select> that isn't bound to a store key. */

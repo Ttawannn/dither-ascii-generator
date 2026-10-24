@@ -128,19 +128,38 @@ export function setStatus(text: string): void {
 }
 
 /** Press-and-hold comparison for touch screens (Space does the same on a keyboard). */
-function holdOriginalButton(): HTMLButtonElement {
-  const b = button('Original', () => {}, 'btn small hold');
+function holdOriginalButton(floating = false): HTMLButtonElement {
+  const b = button(floating ? 'Hold to show original' : 'Original', () => {}, floating ? 'btn hold floating-original' : 'btn small hold');
   b.title = 'Hold to compare with the original (Space)';
+  b.setAttribute('aria-pressed', 'false');
+  const show = (on: boolean) => {
+    actions.setOriginal(on);
+    b.setAttribute('aria-pressed', `${on}`);
+  };
   b.addEventListener('pointerdown', (e) => {
-    if (!rt.current) return;
+    if (e.button !== 0 || !rt.current) return;
+    e.preventDefault();
     b.setPointerCapture(e.pointerId);
-    actions.setOriginal(true);
+    show(true);
   });
   for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) {
-    b.addEventListener(ev, () => actions.setOriginal(false));
+    b.addEventListener(ev, () => show(false));
   }
+  b.addEventListener('contextmenu', (e) => e.preventDefault());
+  b.addEventListener('keydown', (e) => {
+    if (!['Space', 'Enter'].includes(e.code) || !rt.current) return;
+    e.preventDefault(); e.stopPropagation(); show(true);
+  });
+  b.addEventListener('keyup', (e) => {
+    if (!['Space', 'Enter'].includes(e.code)) return;
+    e.preventDefault(); e.stopPropagation(); show(false);
+  });
+  b.addEventListener('blur', () => show(false));
+  window.addEventListener('blur', () => show(false));
+  document.addEventListener('visibilitychange', () => { if (document.hidden) show(false); });
   return b;
 }
+stage.append(holdOriginalButton(true));
 
 export const footer = el(
   'footer',
@@ -160,6 +179,7 @@ export const footer = el(
 // ---------- help ----------
 
 const SHORTCUTS: [string, string][] = [
+  ['Ctrl+K', 'Search settings and commands'],
   ['Space (hold)', 'Show original'],
   ['S', 'Split: original | result'],
   ['F · double-click', 'Fit to view'],

@@ -1,6 +1,6 @@
 import { LAYER_BLENDS, newLayer, serializeLayer } from '../../layers';
 import { ADJUST_SLIDERS, readLayer } from '../../state';
-import { button, el, section, segmented, showWhen, slider } from '../../ui/controls';
+import { button, editableRange, el, section, segmented, showWhen, slider } from '../../ui/controls';
 import { store } from '../core';
 import { layerStore } from '../layer-store';
 import { asciiControlsFor } from './ascii';
@@ -89,7 +89,9 @@ const body = showWhen(
   ),
   store,
   isOn,
+  () => { if (!isOn()) onSwitch.click(); },
 );
+editableRange(opacityInput.parentElement!, opacityInput, opacityValue, (value) => layerStore.setLayer({ opacity: value }));
 
 export const layerSection = section('Layer 2', onSwitch, body);
 layerSection.head.append(

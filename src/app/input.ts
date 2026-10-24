@@ -9,6 +9,7 @@ import { redo, undo } from './undo';
 import { openFile } from './sources';
 import { toggleLang } from './lang';
 import { fileInput, flash, stage, toggleHelp, toggleTheme, transport } from './shell';
+import { openSearch } from './search';
 
 // File picker, drag and drop, paste, and keyboard shortcuts.
 
@@ -56,8 +57,14 @@ const ownsKeys = (t: EventTarget | null) =>
   t instanceof HTMLSelectElement || (t instanceof HTMLInputElement && t.type !== 'range' && t.type !== 'checkbox');
 
 window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    openSearch();
+    return;
+  }
   // Text fields keep their own undo.
-  const textField = e.target instanceof HTMLTextAreaElement || (e.target instanceof HTMLInputElement && e.target.type === 'text');
+  const textField = e.target instanceof HTMLTextAreaElement || (e.target instanceof HTMLElement && e.target.isContentEditable) ||
+    (e.target instanceof HTMLInputElement && !['range', 'checkbox', 'button'].includes(e.target.type));
   if ((e.ctrlKey || e.metaKey) && !e.altKey && !textField) {
     const key = e.key.toLowerCase();
     if (key === 'z' || key === 'y') {
@@ -67,7 +74,7 @@ window.addEventListener('keydown', (e) => {
       return;
     }
   }
-  if (ownsKeys(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (textField || ownsKeys(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.code === 'Space' && renderer.hasSource) {
     e.preventDefault();
     setOriginal(true);

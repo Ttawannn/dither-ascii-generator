@@ -48,13 +48,14 @@ function sync(): void {
 NARROW.addEventListener('change', sync);
 window.addEventListener('resize', () => NARROW.matches && setLevel(level));
 sync();
+panel.addEventListener('reveal-settings', () => { if (NARROW.matches) setLevel('full'); });
 
 // Drag the handle to any height; on release it settles on a level. A tap steps to the next level.
-let drag: { y: number; h: number; lastY: number; lastT: number; velocity: number; moved: boolean } | null = null;
+let drag: { id: number; y: number; h: number; lastY: number; lastT: number; velocity: number; moved: boolean } | null = null;
 handle.addEventListener('pointerdown', (e) => {
-  if (!NARROW.matches) return;
+  if (!NARROW.matches || e.button !== 0 || drag) return;
   const now = performance.now();
-  drag = { y: e.clientY, h: heights()[level], lastY: e.clientY, lastT: now, velocity: 0, moved: false };
+  drag = { id: e.pointerId, y: e.clientY, h: heights()[level], lastY: e.clientY, lastT: now, velocity: 0, moved: false };
   try {
     handle.setPointerCapture(e.pointerId);
   } catch {
@@ -63,7 +64,7 @@ handle.addEventListener('pointerdown', (e) => {
   panel.classList.add('dragging');
 });
 handle.addEventListener('pointermove', (e) => {
-  if (!drag) return;
+  if (!drag || drag.id !== e.pointerId) return;
   const { peek, full } = heights();
   if (Math.abs(e.clientY - drag.y) > 4) drag.moved = true;
   setHeight(Math.min(full, Math.max(peek, drag.h + drag.y - e.clientY)));
@@ -73,7 +74,7 @@ handle.addEventListener('pointermove', (e) => {
   drag.lastT = now;
 });
 const release = (e: PointerEvent) => {
-  if (!drag) return;
+  if (!drag || drag.id !== e.pointerId) return;
   const d = drag;
   drag = null;
   panel.classList.remove('dragging');
@@ -85,4 +86,26 @@ const release = (e: PointerEvent) => {
   setLevel(snapSheet(h, heights(), velocity));
 };
 handle.addEventListener('pointerup', release);
-handle.addEventListener('pointercancel', release);
+const cancel = () => {
+  if (!drag) return;
+  drag = null;
+  panel.classList.remove('dragging');
+  setLevel(level);
+};
+handle.addEventListener('pointercancel', cancel);
+handle.addEventListener('lostpointercapture', cancel);
+window.addEventListener('blur', cancel);
+// Pointer taps use `release`; keyboard / assistive-technology clicks have detail zero.
+handle.addEventListener('click', (e) => { if (!e.detail && NARROW.matches) setLevel(nextLevel(level)); });
+handle.addEventListener('keydown', (e) => {
+  if (!NARROW.matches || ![' ', 'Enter'].includes(e.key)) return;
+  e.preventDefault(); e.stopPropagation();
+  if (!e.repeat) setLevel(nextLevel(level));
+});
+handle.addEventListener('keyup', (e) => {
+  if ([' ', 'Enter'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); }
+});
+// ASCII adds export buttons: a peeked sheet must still fit its footer after switching mode.
+const sizeObserver = new ResizeObserver(() => { if (NARROW.matches && !drag) setLevel(level); });
+sizeObserver.observe(exportFoot);
+sizeObserver.observe(header);

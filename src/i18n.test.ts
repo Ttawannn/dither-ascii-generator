@@ -8,6 +8,7 @@ import { ALGORITHMS, GROUP_LABELS } from './pipeline/algorithms';
 import { EFFECTS, TINT_MODES } from './pipeline/effects';
 import { MONO_PRESETS, PALETTES } from './pipeline/palettes';
 import { BAND_SHAPES, SHAPE_SETS } from './pipeline/shape-bands';
+import { CONTROL_HINTS } from './ui/hints';
 import {
   ADJUST_SLIDERS,
   ANIM_DURATION_SLIDER,
@@ -59,6 +60,16 @@ describe('translate', () => {
 
 describe('Thai dictionary', () => {
   const th = DICTIONARIES.th;
+  it('covers every control hint and command search instruction', () => {
+    const copy = [...Object.values(CONTROL_HINTS),
+      'About this setting', 'Type a value', 'Search settings and commands',
+      'Search settings and commands (Ctrl+K)', 'Search settings, palettes, presets…',
+      'Search results', 'Add effect', '↑ ↓ to choose · Enter to open · Esc to close',
+      'No matching settings or commands', 'This setting is unavailable for the current source',
+      'Hold to show original', 'Hold and drag to reorder',
+    ];
+    expect(copy.filter((text) => !covered(text, 'th'))).toEqual([]);
+  });
   it('has a translation for every entry, with the same placeholders', () => {
     for (const [en, tr] of Object.entries(th)) {
       expect(tr.trim(), en).not.toBe('');

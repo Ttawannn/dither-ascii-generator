@@ -541,6 +541,7 @@ export type BooleanKey = KeysOfType<boolean>;
 export type StringKey = KeysOfType<string>;
 
 export interface SliderSpec {
+  hint?: string;
   key: NumericKey;
   label: string;
   min: number;
