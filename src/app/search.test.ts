@@ -86,8 +86,10 @@ describe('command search in the real settings panel', () => {
   it('finds and selects algorithms outside the selected picker category and mode', () => {
     store.set('mode', 'ascii');
     const input = search('Gaussian');
-    const result = results().find((row) => row.textContent === 'GaussianAlgorithm');
+    const result = results().find((row) => row.children[0].textContent === 'Gaussian' && !row.children[1].textContent!.includes('Layer 2'));
     expect(result).toBeDefined();
+    // The row says beforehand which setting it will change.
+    expect(result!.children[1].textContent).toMatch(/Algorithm → Mode: Dither$/);
     (result as HTMLElement).click();
     expect(store.params.mode).toBe('dither');
     expect(store.params.algorithm).toBe('gaussian');

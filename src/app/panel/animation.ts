@@ -32,11 +32,18 @@ import { button, el, freeSelect, freeSlider, section, select, showWhen, slider, 
 import { lanesOf, store } from '../core';
 import { keyframeEditor, timelineControls } from './timeline';
 
+/** Dither sliders that share a label with another one, prefixed with what they belong to. */
+const DITHER_CONTEXT: Partial<Record<string, string>> = {
+  waveFollow: 'Wave', patternFollow: 'Pattern',
+  axisSmooth: 'Single-axis', cmykSupersample: 'Halftone CMYK',
+  shapeSizeJitter: 'Luma Shapes', orbRandom: 'Orbs',
+};
+
 /** Settings a lane can drive, labelled with enough context to tell them apart. */
 const LANE_TARGETS = [
   ...TEMPORAL_SLIDERS.map((s) => ({ group: 'Animation', key: s.key, label: s.label })),
   ...ADJUST_SLIDERS.map((s) => ({ group: 'Adjust', key: s.key, label: s.label })),
-  ...Object.values(DITHER_SLIDERS).map((s) => ({ group: 'Dither', key: s.key, label: s.label })),
+  ...Object.values(DITHER_SLIDERS).map((s) => ({ group: 'Dither', key: s.key, label: DITHER_CONTEXT[s.key] ? `${DITHER_CONTEXT[s.key]} · ${s.label}` : s.label })),
   ...Object.entries(ASCII_SLIDERS).map(([name, s]) => ({
     group: 'ASCII',
     key: s.key,

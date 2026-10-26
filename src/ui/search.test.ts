@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS, Store } from '../state';
-import { matchScore, revealConditions, searchCondition, searchDomain } from './search';
+import { matchScore, revealConditions, revealPlan, searchCondition, searchDomain, type RevealChange } from './search';
 
 describe('command matching', () => {
   it('matches in order and ignores case and surrounding whitespace', () => {
@@ -53,5 +53,29 @@ describe('revealing a conditional search result', () => {
     searchCondition(node, s, () => false);
     expect(revealConditions(node)).toBe(false);
     expect(s.params).toEqual(before);
+  });
+  it('plans the changes without making them, then reports the ones it made', () => {
+    const s = new Store();
+    s.apply({ ...DEFAULTS, mode: 'ascii', algorithm: 'floyd' });
+    searchDomain(s, 'mode', () => ['dither', 'ascii'], { name: 'Mode', value: (v) => (v === 'dither' ? 'Dither' : 'ASCII') });
+    searchDomain(s, 'algorithm', () => ['floyd', 'radial']);
+    const outer = document.createElement('div');
+    const inner = document.createElement('input');
+    outer.append(inner);
+    searchCondition(outer, s, (p) => p.mode === 'dither');
+    searchCondition(inner, s, (p) => p.algorithm === 'radial');
+    const plan = revealPlan(inner)!;
+    expect(plan.map((c) => [c.key, c.value, c.name, c.shown])).toEqual([['mode', 'dither', 'Mode', 'Dither'], ['algorithm', 'radial', undefined, undefined]]);
+    expect(s.params.mode).toBe('ascii');
+    const applied: RevealChange[] = [];
+    expect(revealConditions(inner, applied)).toBe(true);
+    expect(applied.map((c) => c.key)).toEqual(['mode', 'algorithm']);
+    expect(revealPlan(inner)).toEqual([]);
+  });
+  it('plans null when nothing can show the control', () => {
+    const s = new Store();
+    const node = document.createElement('input');
+    searchCondition(node, s, () => false);
+    expect(revealPlan(node)).toBeNull();
   });
 });

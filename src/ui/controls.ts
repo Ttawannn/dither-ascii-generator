@@ -124,7 +124,7 @@ export function slider(spec: SliderSpec, store: ParamStore): HTMLElement {
   sync(store.params);
   editableRange(root, input, value, (v) => store.set(spec.key, v));
   controlHint(root, input, spec.hint ?? CONTROL_HINTS[spec.key]);
-  searchDomain(store, spec.key, () => [spec.min, spec.max, DEFAULTS[spec.key]]);
+  searchDomain(store, spec.key, () => [spec.min, spec.max, DEFAULTS[spec.key]], { name: spec.label, value: (v) => fmt(v as number) });
   return root;
 }
 
@@ -143,7 +143,7 @@ export function toggle(key: BooleanKey, label: string, store: ParamStore, hint =
   root.addEventListener('click', () => store.set(key, !store.params[key]));
   store.subscribe((p, changed) => changed === key && sync(p));
   sync(store.params);
-  searchDomain(store, key, () => [false, true]);
+  searchDomain(store, key, () => [false, true], { name: label, value: (v) => (v ? 'On' : 'Off') });
   if (hint) {
     const wrapper = el('div', { class: 'control hinted-toggle' }, root);
     controlHint(wrapper, root, hint);
@@ -158,7 +158,8 @@ export function segmented<K extends 'mode'>(
   options: { value: Params[K]; label: string }[],
   store: ParamStore,
 ): HTMLElement {
-  searchDomain(store, key, () => options.map((o) => o.value));
+  const shown = (v: unknown) => options.find((o) => o.value === v)?.label ?? `${v}`;
+  searchDomain(store, key, () => options.map((o) => o.value), { name: 'Mode', value: shown });
   const root = el('div', { class: 'segmented', role: 'tablist' });
   const buttons = options.map((opt) => {
     const b = button(opt.label, () => store.set(key, opt.value), '');
@@ -210,7 +211,7 @@ export function select(key: StringKey, label: string, options: SelectOption[], s
   input.addEventListener('change', () => store.set(key, input.value as Params[typeof key]));
   store.subscribe((p, changed) => changed === key && (input.value = p[key]));
   input.value = store.params[key];
-  searchDomain(store, key, () => options.map((o) => o.value));
+  searchDomain(store, key, () => options.map((o) => o.value), { name: label, value: (v) => options.find((o) => o.value === v)?.label ?? `${v}` });
   controlHint(root, input, hint);
   return root;
 }
@@ -311,7 +312,10 @@ export function categoryPicker(
   store: ParamStore,
   opts: PickerOptions,
 ): HTMLElement & { refresh(): void } {
-  searchDomain(store, key, () => [...new Set(items().map((it) => it.value.startsWith('image@') ? 'image' : it.value))]);
+  searchDomain(store, key, () => [...new Set(items().map((it) => it.value.startsWith('image@') ? 'image' : it.value))], {
+    name: label,
+    value: (v) => items().find((it) => it.value === v || (v === 'image' && it.value.startsWith('image@')))?.label ?? `${v}`,
+  });
   const favKey = key as string;
   const catSelect = el('select', { 'aria-label': `${label} category` });
   const itemSelect = el('select', { 'aria-label': label });

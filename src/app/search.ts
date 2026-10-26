@@ -1,14 +1,16 @@
 import { translate } from '../i18n';
+import type { Params } from '../state';
 import { button, el } from '../ui/controls';
 import { setFolded } from '../ui/prefs';
-import { matchScore, revealConditions, searchOptions } from '../ui/search';
+import { matchScore, revealConditions, revealPlan, searchOptions, type RevealChange } from '../ui/search';
 import { actions } from './core';
 import { currentLang, englishAttribute, englishText, onLangChange } from './lang';
 import { panel } from './panel';
 import { searchablePresets } from './panel/presets';
 import { flash, header } from './shell';
 
-interface Command { label: string; detail: string; aliases: string; run(): void }
+/** `changes` gives " → Algorithm: Radial" when choosing would change other settings; worked out only for shown rows. */
+interface Command { label: string; detail: string; changes?: () => string; aliases: string; run(): void }
 const dialog = el('dialog', { class: 'command-dialog', 'aria-label': 'Search settings and commands' });
 const input = el('input', {
   type: 'search', class: 'command-input', placeholder: 'Search settings, palettes, presets…',
@@ -26,6 +28,12 @@ let selected = 0;
 let previousFocus: HTMLElement | null = null;
 let skipRestore = false;
 
+const tr = (s: string) => translate(s, currentLang());
+
+/** "Algorithm: Radial, Mode: Dither" for the changes whose control gave a name, in the current language. */
+const changeText = (changes: RevealChange[]) =>
+  changes.filter((c) => c.name).map((c) => `${tr(c.name!)}: ${tr(c.shown ?? `${c.value}`)}`).join(', ');
+
 function reveal(target: HTMLElement): boolean {
   // A collapsed mobile sheet must open before scrolling / focusing its controls.
   panel.dispatchEvent(new Event('reveal-settings'));
@@ -38,30 +46,56 @@ function reveal(target: HTMLElement): boolean {
   }
   const body = target.closest<HTMLElement>('.effect-body');
   if (body) body.hidden = false;
-  if (!revealConditions(target)) { flash('This setting is unavailable for the current source'); return false; }
+  const applied: RevealChange[] = [];
+  if (!revealConditions(target, applied)) { flash('This setting is unavailable for the current source'); return false; }
+  // Say what had to change, so a switched mode or algorithm doesn't come as a surprise (Undo puts it back).
+  if (changeText(applied)) flash(`${tr('Changed to show this setting')}: ${changeText(applied)}`);
   (target.closest('.control, .color-input') ?? target).scrollIntoView({ block: 'center' });
   target.focus({ preventScroll: true });
   return true;
 }
 
-const tr = (s: string) => translate(s, currentLang());
+/** The section title and any context. */
+function detailFor(target: HTMLElement, ...context: (string | undefined)[]): string {
+  const section = target.closest('[data-section]')?.querySelector('.section-title')?.textContent ?? '';
+  return [section, ...context].filter(Boolean).join(' · ');
+}
+
+// Shared while the dialog is open: settings don't change under the modal.
+let planCache = new Map<HTMLElement, Partial<Params> | null>();
+
+/** What choosing `target` would change, worked out once on first use. */
+function changesFor(target: HTMLElement): () => string {
+  let text: string | undefined;
+  return () => {
+    if (text === undefined) {
+      const changes = changeText(revealPlan(target, planCache) ?? []);
+      text = changes ? ` → ${changes}` : '';
+    }
+    return text;
+  };
+}
 
 function indexCommands(): Command[] {
+  planCache = new Map();
   const list: Command[] = [];
   const indexed = new Set<HTMLElement>();
-  const addControl = (target: HTMLElement, name: string, english: string) => {
-    const section = target.closest('[data-section]')?.querySelector('.section-title');
-    const detail = section?.textContent ?? '';
-    list.push({ label: name, detail, aliases: `${english} ${translate(english, 'th')}`, run: () => { reveal(target); } });
+  const addControl = (target: HTMLElement, name: string, english: string, context = '') => {
+    list.push({ label: name, detail: detailFor(target, context), changes: changesFor(target), aliases: `${english} ${translate(english, 'th')}`, run: () => { reveal(target); } });
     indexed.add(target);
   };
   for (const label of panel.querySelectorAll<HTMLElement>('.control-label')) {
     const root = label.closest<HTMLElement>('.control, .color-input');
+    const category = englishText(label).trim() === 'Category';
     const target = root?.matches('button') ? root : root?.classList.contains('picker')
-      ? root.querySelectorAll<HTMLSelectElement>('select')[englishText(label).trim() === 'Category' ? 0 : 1]
+      ? root.querySelectorAll<HTMLSelectElement>('select')[category ? 0 : 1]
       : root?.querySelector<HTMLElement>('input:not([type=number]), select, textarea, [role=slider]') ?? root?.querySelector<HTMLElement>('button');
-    if (!target) continue;
-    addControl(target, label.textContent ?? '', englishText(label));
+    if (!target || !root) continue;
+    // "Category" of which picker, and colours apart from same-named controls (Characters: the set or its colour).
+    const context = category && root.classList.contains('picker')
+      ? tr(englishAttribute(root.querySelectorAll('select')[1], 'aria-label'))
+      : root.classList.contains('color-input') ? tr('Colour') : '';
+    addControl(target, label.textContent ?? '', englishText(label), context);
   }
   for (const target of panel.querySelectorAll<HTMLElement>('input[aria-label]:not([type=number]):not([type=file]), select[aria-label], textarea[aria-label], [role=slider][aria-label]')) {
     if (!indexed.has(target)) addControl(target, target.getAttribute('aria-label') ?? '', englishAttribute(target, 'aria-label'));
@@ -69,12 +103,15 @@ function indexCommands(): Command[] {
   for (const select of panel.querySelectorAll('select')) {
     if (englishAttribute(select, 'aria-label').endsWith(' category')) continue;
     const label = tr(englishAttribute(select, 'aria-label'));
-    const options = searchOptions.get(select)?.() ?? [...select.options].filter((o) => !o.disabled).map((o) => ({
+    const changes = changesFor(select);
+    const options: { label: string; group?: string; choose(): void }[] = searchOptions.get(select)?.() ?? [...select.options].filter((o) => !o.disabled).map((o) => ({
       label: englishText(o), choose: () => { select.value = o.value; select.dispatchEvent(new Event('change')); },
+      // Same-named options in different groups (Hue under Adjust and under Mask) need the group to tell apart.
+      group: o.parentElement instanceof HTMLOptGroupElement ? englishAttribute(o.parentElement, 'label') : undefined,
     }));
     for (const opt of options) {
       list.push({
-        label: tr(opt.label), detail: label, aliases: `${opt.label} ${translate(opt.label, 'th')}`,
+        label: tr(opt.label), detail: detailFor(select, label, opt.group && tr(opt.group)), changes, aliases: `${opt.label} ${translate(opt.label, 'th')}`,
         run: () => { if (reveal(select)) opt.choose(); },
       });
     }
@@ -128,7 +165,7 @@ function render(): void {
     .slice(0, 80).map((item) => item.command);
   results.replaceChildren(...shown.map((cmd, i) => {
     const row = el('div', { role: 'option', id: `command-${i}`, class: 'command-result', 'aria-selected': 'false', translate: 'no' },
-      el('span', {}, cmd.label), el('small', {}, cmd.detail));
+      el('span', {}, cmd.label), el('small', {}, cmd.detail + (cmd.changes?.() ?? '')));
     row.addEventListener('pointerdown', (e) => e.preventDefault());
     row.addEventListener('click', () => run(i));
     return row;
