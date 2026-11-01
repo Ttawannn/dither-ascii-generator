@@ -21,14 +21,26 @@ import {
   type Preset,
 } from '../../presets';
 import { ADJUST_SLIDERS, DEFAULTS, type Params } from '../../state';
-import { button, editableRange, el, section } from '../../ui/controls';
+import { advanced, button, editableRange, el, section } from '../../ui/controls';
 import { favourites, onFavouritesChange, toggleFavourite } from '../../favourites';
 import { actions, store } from '../core';
 import { flash } from '../shell';
 
 let saved = loadSaved();
-const builtInGrid = el('div', { class: 'preset-grid' });
-const savedGrid = el('div', { class: 'preset-grid' });
+const builtInGrid = el('div', { class: 'preset-grid strip' });
+const savedGrid = el('div', { class: 'preset-grid strip' });
+
+// One row that scrolls sideways keeps the settings below in reach; See all shows every preset.
+const seeAll = button('', () => {
+  const strip = !builtInGrid.classList.contains('strip');
+  for (const g of [builtInGrid, savedGrid]) g.classList.toggle('strip', strip);
+  syncSeeAll();
+}, 'link see-all');
+function syncSeeAll(): void {
+  const strip = builtInGrid.classList.contains('strip');
+  seeAll.textContent = strip ? `See all · ${builtInGrid.querySelectorAll('.preset-chip').length}` : 'Show fewer';
+  seeAll.setAttribute('aria-expanded', `${!strip}`);
+}
 const savedHead = el('div', { class: 'subhead' }, 'Saved');
 const presetName = el('input', { type: 'text', maxlength: '40', placeholder: 'Name this look', 'aria-label': 'Preset name' });
 
@@ -163,6 +175,7 @@ function renderPresets(): void {
   );
   if (!shown.length && !savedShown.length) builtInGrid.append(el('div', { class: 'note' }, 'No favourites yet — star a preset'));
   savedHead.hidden = savedGrid.hidden = savedShown.length === 0;
+  syncSeeAll();
   exportAllBtn.disabled = saved.length === 0;
   actions.refreshThumbs(false);
 }
@@ -301,22 +314,23 @@ export const presetsSection = section(
   'Presets',
   filterRow,
   builtInGrid,
+  seeAll,
   strengthRow,
   el('div', { class: 'btn-row' }, button('Surprise me', surprise, 'btn small share-btn')),
-  el('div', { class: 'btn-row' }, button('Shuffle adjustments', shuffleAdjustments, 'btn small')),
-  el('div', { class: 'note' }, 'Keep during shuffle'),
-  el('div', { class: 'btn-row' }, ...groupLocks),
+  advanced(el('div', { class: 'btn-row' }, button('Shuffle adjustments', shuffleAdjustments, 'btn small'))),
+  advanced(el('div', { class: 'note' }, 'Keep during shuffle')),
+  advanced(el('div', { class: 'btn-row' }, ...groupLocks)),
   savedHead,
   savedGrid,
   el('div', { class: 'save-row' }, presetName, button('Save', savePreset, 'btn small')),
-  el(
+  el('div', { class: 'btn-row' }, button('Copy share link', () => void copyShareLink(), 'btn small share-btn')),
+  advanced(el(
     'div',
     { class: 'btn-row' },
-    button('Copy share link', () => void copyShareLink(), 'btn small share-btn'),
     button('Import preset…', () => presetPicker.click(), 'btn small share-btn'),
     button('Export look', exportLook, 'btn small share-btn'),
     exportAllBtn,
-  ),
+  )),
   importReport,
   presetPicker,
 );

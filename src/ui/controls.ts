@@ -432,17 +432,18 @@ export function categoryPicker(
   onFavouritesChange(renderAll);
   render();
 
+  // The Category row is an advanced setting: Basic mode keeps the item with ‹ › and ⊞.
   const root = el(
     'div',
     { class: 'control picker' },
-    el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, 'Category')),
-    el(
+    advanced(el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, 'Category'))),
+    advanced(el(
       'div',
       { class: 'picker-row' },
       el('div', { class: 'select' }, catSelect),
       step('prev', '‹', 'Previous category', () => stepCategory(-1)),
       step('next', '›', 'Next category', () => stepCategory(1)),
-    ),
+    )),
     el('div', { class: 'control-row' }, el('span', { class: 'control-label' }, label), star),
     el(
       'div',

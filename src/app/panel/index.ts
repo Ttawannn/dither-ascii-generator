@@ -2,7 +2,7 @@ import { anyEffect } from '../../fx-stack';
 import { ADJUST_KEYS, ASCII_KEYS, DEFAULTS, DITHER_KEYS, MASK_KEYS, type Params } from '../../state';
 import { button, el, section } from '../../ui/controls';
 import { isFolded, onPrefsChange, panelMode, setFolded, setPanelMode } from '../../ui/prefs';
-import { activeLayer, lanesOf, store } from '../core';
+import { activeLayer, lanesOf, rt, sourceListeners, store } from '../core';
 import { adjustSection } from './adjust';
 import { animationSection } from './animation';
 import { asciiControls } from './ascii';
@@ -32,12 +32,14 @@ interface PanelSection {
   s: { root: HTMLElement; head: HTMLElement };
   /** SVG path(s) for the icon row, 24×24, stroked. */
   icon: string;
-  folded: boolean;
+  /** Folded unless the user opened it; a function when that depends on the app's state. */
+  folded: boolean | (() => boolean);
   changed?: (p: Params) => boolean;
 }
 
 const SECTIONS: PanelSection[] = [
-  { id: 'source', s: sourceSection, folded: false, icon: 'M4 6h16v12H4z M4 15l5-4 4 3 3-2 4 3' },
+  // Once a picture is open, Source folds to its head (with Open…) so the settings move up.
+  { id: 'source', s: sourceSection, folded: () => rt.current !== null, icon: 'M4 6h16v12H4z M4 15l5-4 4 3 3-2 4 3' },
   { id: 'project', s: projectSection, folded: true, icon: 'M3 7h7l2 2h9v9H3z' },
   { id: 'presets', s: presetsSection, folded: false, icon: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z' },
   { id: 'adjust', s: adjustSection, folded: true, changed: differs(ADJUST_KEYS), icon: 'M5 4v16 M12 4v16 M19 4v16 M3 8h4 M10 15h4 M17 10h4' },
@@ -80,12 +82,13 @@ for (const sec of SECTIONS) {
   const fold = el('button', { class: 'section-fold', type: 'button' }, el('span', { class: 'section-chevron', 'aria-hidden': 'true' }, '▾'), title, dot);
   head.prepend(fold);
   const apply = () => {
-    const folded = isFolded(sec.id, sec.folded);
+    const folded = isFolded(sec.id, typeof sec.folded === 'function' ? sec.folded() : sec.folded);
     root.classList.toggle('folded', folded);
     fold.setAttribute('aria-expanded', `${!folded}`);
   };
   fold.addEventListener('click', () => setFolded(sec.id, !root.classList.contains('folded')));
   onPrefsChange(apply);
+  if (typeof sec.folded === 'function') sourceListeners.add(apply);
   apply();
   dots.set(sec.id, dot);
 

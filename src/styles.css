@@ -938,7 +938,16 @@ input[type='text']:focus {
 .chip-star:hover, .chip-star:focus-visible, .chip-star[aria-pressed="true"] { color: var(--accent); }
 .chip-wrap:has(.chip-x) .chip-star { right: 26px; }
 .preset-filter { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
-.preset-filter .chip.active { color: var(--text); border-color: var(--accent); }
+.preset-filter .chip.active { color: var(--text); border-color: var(--accent); background: none; }
+/* Room for the star, so it doesn't cover the end of the name. */
+.chip-wrap .preset-chip { padding-right: 20px; }
+
+/* Presets start as one row that scrolls sideways; "See all" wraps them into the full grid. */
+.preset-grid.strip { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x proximity; scrollbar-width: thin; }
+.preset-grid.strip > * { flex: none; scroll-snap-align: start; }
+.preset-grid.strip:has(.chip-thumb:not([hidden])) { display: flex; }
+.preset-grid.strip:has(.chip-thumb:not([hidden])) > .chip-wrap { width: 92px; }
+.see-all { margin-top: 4px; }
 .strength-row { margin-top: 10px; }
 .strength-row[hidden] { display: none; }
 

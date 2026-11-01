@@ -2,6 +2,7 @@ import type { DiffusionResult } from '../pipeline/diffuse';
 import { Diffuser } from '../pipeline/diffuser';
 import { Renderer } from '../pipeline/gl';
 import { el } from '../ui/controls';
+import { panelMode } from '../ui/prefs';
 import { Viewer } from '../ui/viewer';
 import { actions, activeLayer, autoScale, group, isPlaying, requestRender, rt, store } from './core';
 import { canvas, flash, info, setStatus, stage } from './shell';
@@ -67,7 +68,8 @@ function onDiffused(layer: number, result: DiffusionResult): void {
   } else if (layer === 0) {
     renderer.renderResult(result);
   }
-  if (layer === 0) setStatus(`${Math.round(result.ms)} ms`);
+  // Render time is for tuning: Basic mode leaves the footer quiet.
+  if (layer === 0) setStatus(panelMode() === 'advanced' ? `${Math.round(result.ms)} ms` : '');
   // The worker is often the slow part: its time counts towards the playback preview resolution.
   if (isPlaying() && autoScale.sample(result.ms)) requestRender();
 }

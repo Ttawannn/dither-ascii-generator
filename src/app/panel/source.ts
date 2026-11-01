@@ -16,3 +16,4 @@ export const sourceSection = section(
   el('div', { class: 'note source-note' }, 'Images or videos · drop, paste or upload'),
   toggle('mirror', 'Mirror', store),
 );
+sourceSection.head.append(button('Open…', () => fileInput.click(), 'link'));
